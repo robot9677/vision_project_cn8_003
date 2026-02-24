@@ -1,0 +1,228 @@
+import os
+import json
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
+
+import cv2
+import numpy as np
+
+from .recipe import load_recipe, get_roi_cfg, save_recipe
+from .analyzers import run_analyzer
+from .preprocess import normalize_by_roi
+from .temporal import TemporalMeanFilter
+from .roi_tracker import ROITracker
+# add near top of file
+from inspection.score import combined_score
+
+@dataclass
+class ROIResult:
+    roi_id: Any
+    ok: bool
+    reason: str
+    metrics: Dict[str, Any]
+
+class Inspector:
+    def __init__(self, roi_mgr, recipe_path: str, logs_root: str):
+        self.roi_mgr = roi_mgr
+        self.recipe_path = recipe_path
+        self.logs_root = logs_root
+        self.recipe = load_recipe(recipe_path)
+        self.mean_filter = TemporalMeanFilter(win=5)
+        self.tracker = ROITracker(search_margin=20, thr=0.6)
+
+
+    def reload_recipe(self):
+        self.recipe = load_recipe(self.recipe_path)
+
+    def inspect(self, frame_gray8: np.ndarray) -> Tuple[bool, Dict[str, ROIResult]]:
+        results: Dict[str, ROIResult] = {}
+
+        ref = self.roi_mgr.get_selected()
+        norm_gain = 1.0
+        dx = dy = 0
+
+        # 1) ref 기반 정규화 + ref 위치 추적(Δ 계산)
+        if ref is not None:
+            ref_id = ref["id"]
+            rx, ry, rw, rh = ref["x"], ref["y"], ref["w"], ref["h"]
+
+            # template은 "정규화 전 원본"에서 확보
+            ref_crop_raw = self.roi_mgr.crop(frame_gray8, ref_id)
+            self.tracker.set_template(ref_crop_raw)
+
+            # 정규화
+            if ref_crop_raw is not None and ref_crop_raw.size > 0:
+                frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=50.0)
+
+            # ref만 추적해서 Δ 계산(정규화된 프레임에서)
+            nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
+            dx, dy = int(nrx - rx), int(nry - ry)
+
+        # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
+        H, W = frame_gray8.shape[:2]
+
+        for roi in getattr(self.roi_mgr, "rois", []):
+            roi_id = roi.get("id")
+            key = str(roi_id)
+
+            x, y, w, h = int(roi["x"]), int(roi["y"]), int(roi["w"]), int(roi["h"])
+            x, y = x + dx, y + dy
+
+            # clamp
+            x = max(0, min(x, W - 1))
+            y = max(0, min(y, H - 1))
+            x2 = max(1, min(W, x + w))
+            y2 = max(1, min(H, y + h))
+
+            crop = frame_gray8[y:y2, x:x2]
+            if crop is None or crop.size == 0:
+                results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
+                continue
+
+            # cfg = get_roi_cfg(self.recipe, roi_id)
+            # ok, metrics, reason = run_analyzer(crop, cfg)
+
+            # === 분석 및 mean+score 기반 판정 통합 ===
+            cfg = get_roi_cfg(self.recipe, roi_id)
+
+            # 기존 analyzer 호출 (유지하되 metrics를 확장)
+            ok, metrics, reason = run_analyzer(crop, cfg)
+
+            # ensure metrics is a dict
+            if metrics is None:
+                metrics = {}
+
+            # temporal smoothing (기존 코드 유지)
+            if "mean" in metrics:
+                metrics["mean_raw"] = float(metrics["mean"])
+                metrics["mean"] = self.mean_filter.update(metrics["mean_raw"])
+
+            # compute score (texture/edge) and attach
+            try:
+                score = combined_score(crop)
+            except Exception:
+                score = 0.0
+            metrics["score"] = float(score)
+
+            # recipe thresholds (default 및 ROI override)
+            default_min = float(self.recipe.get("default", {}).get("min_mean", 0.0))
+            default_max = float(self.recipe.get("default", {}).get("max_mean", 255.0))
+            default_score_thresh = float(self.recipe.get("default", {}).get("score_threshold", 0.25))
+
+            over = self.recipe.get("overrides", {}).get(cfg.get("name", f"ROI{roi_id}"), {})
+            # allow override by ROI name or ROI{ID}
+            if not over:
+                # try by explicit ROI key (e.g. "ROI1")
+                over = self.recipe.get("overrides", {}).get(f"ROI{roi_id}", {})
+
+            min_mean = float(over.get("min_mean", cfg.get("min_mean", default_min)))
+            max_mean = float(over.get("max_mean", cfg.get("max_mean", default_max)))
+            score_thresh = float(over.get("score_threshold", default_score_thresh))
+
+            # after metrics updated with 'mean' and 'score' etc.
+            mean_val = float(metrics.get("mean", metrics.get("mean_raw", np.mean(crop))))
+            mean_ok = (min_mean <= mean_val <= max_mean)
+            score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
+
+            # final decision: require analyzer ok AND mean_ok AND score_ok
+            final_ok = bool(ok) and mean_ok and score_ok
+
+            # override stored ROIResult / metrics
+            reason = "OK" if final_ok else ("MEAN_OUT_OF_RANGE" if not mean_ok else ("LOW_SCORE" if not score_ok else "FAIL"))
+            results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
+            
+            # temporal smoothing
+            if "mean" in metrics:
+                metrics["mean_raw"] = float(metrics["mean"])
+                metrics["mean"] = self.mean_filter.update(metrics["mean_raw"])
+
+            # mean_threshold면 필터된 mean으로 판정 덮어쓰기
+            if cfg.get("type") == "mean_threshold" and "mean" in metrics:
+                mn = float(cfg.get("min_mean", 0))
+                mx = float(cfg.get("max_mean", 255))
+                m  = float(metrics["mean"])
+                ok = (mn <= m <= mx)
+                reason = "OK" if ok else ("LOW_MEAN" if m < mn else "HIGH_MEAN")
+
+            metrics["norm_gain"] = float(norm_gain)
+            metrics["dx"] = dx
+            metrics["dy"] = dy
+
+            results[key] = ROIResult(roi_id=roi_id, ok=ok, reason=reason, metrics=metrics)
+
+        overall_ok = all(r.ok for r in results.values()) if results else False
+        return overall_ok, results
+
+
+    def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
+        day = time.strftime("%Y%m%d")
+        ts  = time.strftime("%H%M%S")
+        mmm = int((time.time() * 1000) % 1000)
+        run_dir = os.path.join(self.logs_root, day, f"{ts}_{mmm:03d}")
+        os.makedirs(run_dir, exist_ok=True)
+
+        cv2.imwrite(os.path.join(run_dir, "raw.png"), frame_gray8)
+        cv2.imwrite(os.path.join(run_dir, "overlay.png"), overlay_bgr)
+
+        out = {
+            "overall_ok": bool(overall_ok),
+            "ts": time.time(),
+            "results": {
+                k: {
+                    "roi_id": str(v.roi_id),
+                    "ok": bool(v.ok),
+                    "reason": v.reason,
+                    "metrics": v.metrics,
+                } for k, v in results.items()
+            }
+        }
+        with open(os.path.join(run_dir, "result.json"), "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+
+        return run_dir
+    
+    # def save_recipe(path: str, recipe: Dict[str, Any]) -> None:
+    #     import os, json
+    #     os.makedirs(os.path.dirname(path), exist_ok=True)
+    #     with open(path, "w", encoding="utf-8") as f:
+    #         json.dump(recipe, f, ensure_ascii=False, indent=2)
+
+    def autotune_recipe_from_frame(self, frame_gray8: np.ndarray, margin: float = 15.0, target_mean: float = 70.0):
+        """
+        현재 프레임 기준으로 ROI별 mean을 읽고
+        recipe_static.json(overrides)에 ROI별 min/max를 자동 생성해서 저장
+        """
+        # 1) 기준 ROI로 정규화(현재 inspect랑 동일 로직)
+        ref = self.roi_mgr.get_selected()
+        if ref is not None:
+            ref_crop = self.roi_mgr.crop(frame_gray8, ref["id"])
+            frame_n, _gain = normalize_by_roi(frame_gray8, ref_crop, target_mean=target_mean)
+        else:
+            frame_n = frame_gray8
+
+        overrides = {}
+        for roi in getattr(self.roi_mgr, "rois", []):
+            roi_id = roi.get("id")
+            crop = self.roi_mgr.crop(frame_n, roi_id)
+            if crop is None or crop.size == 0:
+                continue
+            m = float(np.mean(crop))
+            mn = max(0.0, m - margin)
+            mx = min(255.0, m + margin)
+            overrides[f"ROI{roi_id}"] = {
+                "type": "mean_threshold",
+                "min_mean": float(mn),
+                "max_mean": float(mx),
+            }
+
+        recipe = {
+            "default": {"type": "mean_threshold", "min_mean": 0.0, "max_mean": 255.0},
+            "overrides": overrides,
+            "decision": {"mode": "any_fail_is_ng"},
+        }
+
+        save_recipe(self.recipe_path, recipe)
+        self.recipe = recipe  # 즉시 반영
+        return recipe
+

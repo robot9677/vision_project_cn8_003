@@ -1,0 +1,870 @@
+#!/usr/bin/env python3
+import os
+import time
+import cv2
+import numpy as np
+import time
+
+from enum import Enum
+from capture.camera_gst import CameraGST
+from roi.roi_manager import ROIManager
+from roi.roi_editor import ROIEditor
+from inspection.inspector import Inspector
+from ui.overlay import put_text_with_bg, draw_status_bar, draw_control_bar, draw_rois_clean
+from ui import overlay_clean as overlay
+from inspection.aligner import Aligner
+from inspection.normalize import normalize_frame
+from inspection.logger import save_snapshot, save_template_copy
+
+# 개발자 모드: True 이면 화면에 키보드 도움말(개발자 HUD)을 표시
+DEV_MODE = True
+
+NORMALIZE_ENABLED = True
+NORMALIZE_TARGET_MEAN = 120.0
+
+# snapshot cooldown (초)
+last_snapshot_time = 0.0
+SNAPSHOT_COOLDOWN = 5.0
+
+# =========================
+# Command System
+# =========================
+class UICmd(Enum):
+    NONE = 0
+    TOGGLE_MODE = 1
+    INSPECT = 2
+    AUTO = 3
+    RELOAD = 4
+    SAVE = 5
+    NEXT = 6
+    CLEAR = 7
+    QUIT = 8
+    DELETE = 9
+
+BUTTON_TO_CMD = {
+    "toggle_edit": UICmd.TOGGLE_MODE,
+    "inspect": UICmd.INSPECT,
+    "autotune": UICmd.AUTO,
+    "reload": UICmd.RELOAD,
+    "save": UICmd.SAVE,
+    "next": UICmd.NEXT,
+    "nxt": UICmd.NEXT,       # backwards compat
+    "clear": UICmd.CLEAR,
+    "delete": UICmd.DELETE,
+    "quit": UICmd.QUIT,
+}
+
+# =========================
+# App Config
+# =========================
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_DIR     = os.path.join(PROJECT_ROOT, "data")
+ROI_DIR      = os.path.join(DATA_DIR, "roi")
+ROI_PATH     = os.path.join(ROI_DIR, "roi.json")
+RECIPE_PATH  = os.path.join(ROI_DIR, "recipe_static.json")
+LOGS_ROOT    = os.path.join(DATA_DIR, "logs")
+
+DEV    = "/dev/video0"
+WIDTH  = 1280
+HEIGHT = 720
+FPS    = 30
+
+GST_PIPELINE = (
+    f"v4l2src device={DEV} ! "
+    f"video/x-raw,format=GRAY16_LE,width={WIDTH},height={HEIGHT},framerate={FPS}/1 ! "
+    "videoconvert ! video/x-raw,format=GRAY8 ! "
+    "appsink drop=true max-buffers=1 sync=false"
+)
+
+# alignment template (파일 경로)
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "roi", "align_template.png")
+
+def clahe_equalize(gray8, clip_limit=2.0, tile_grid_size=(8,8)):
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+    return clahe.apply(gray8)
+
+def scale_to_target_mean(gray8, target_mean=120.0, max_scale=2.5, min_scale=0.5):
+    m = float(max(1.0, gray8.mean()))
+    scale = float(target_mean) / m
+    scale = max(min_scale, min(max_scale, scale))
+    # use convertScaleAbs for brightness scaling
+    out = cv2.convertScaleAbs(gray8, alpha=scale, beta=0)
+    return out, scale
+
+def normalize_frame(gray8, target_mean=120.0, do_clahe=True):
+    """
+    Returns (normalized_gray8, info_dict)
+    info_dict: {"scale":float, "method":"clahe|scale|both"}
+    """
+    if gray8 is None:
+        return None, {"scale":1.0, "method":"none"}
+    # quick clamp type
+    if gray8.dtype != 'uint8':
+        gray8 = cv2.normalize(gray8, None, 0, 255, cv2.NORM_MINMAX).astype('uint8')
+
+    scaled, scale = scale_to_target_mean(gray8, target_mean=target_mean)
+    method = "scale"
+    if do_clahe:
+        scaled = clahe_equalize(scaled)
+        method = "scale+clahe"
+    return scaled, {"scale": scale, "method": method}
+
+def ensure_dirs():
+    os.makedirs(ROI_DIR, exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "logs"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "images", "ok"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "images", "ng"), exist_ok=True)
+
+def _extract_info_from_results(last_results):
+    if not last_results:
+        return None
+    for v in last_results.values():
+        metrics = getattr(v, "metrics", None) if not isinstance(v, dict) else v.get("metrics", None)
+        if isinstance(metrics, dict):
+            return {
+                "norm_gain": metrics.get("norm_gain", 1.0),
+                "dx": metrics.get("dx", 0),
+                "dy": metrics.get("dy", 0),
+            }
+    return None
+
+def draw_dev_hud(img, edit_mode):
+    """Draw keyboard help when DEV_MODE is True."""
+    h, w = img.shape[:2]
+    if edit_mode:
+        text1 = "EDIT: n=next  x=delete  r=clear  s=save  e=run"
+    else:
+        text1 = "RUN: SPACE=inspect  c=auto  p=reload  e=edit"
+
+    # semi-transparent background for readability
+    ovl = img.copy()  # 이미지 복사 변수명은 ovl로 해서 모듈명 충돌 방지
+    overlay.draw_rect(ovl, (8, h-64), (w-8, h-8), color=(0,0,0), fill=True)
+    cv2.addWeighted(ovl, 0.45, img, 0.55, 0, img)
+
+    # 텍스트는 overlay 모듈의 draw_text 사용
+    overlay.draw_text(img, text1, (16, h-80), color=(220,220,220), scale=0.6, thickness=1, align="lt")
+
+def draw_mode_indicator(img, edit_mode, dev_mode=False):
+    """Draw mode indicator at top-right."""
+    h, w = img.shape[:2]
+    text = "EDIT MODE" if edit_mode else "RUN MODE"
+    color = (0,200,255) if edit_mode else (0,200,0)
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+    x = w - tw - 16
+    y = 28
+
+    # small background — use different var name so we don't shadow overlay module
+    ovl = img.copy()
+    # draw filled bg on ovl, then blend into img
+    overlay.draw_rect(ovl, (x-8, y-22), (x+tw+8, y+6), color=(0,0,0), fill=True)
+    cv2.addWeighted(ovl, 0.4, img, 0.6, 0, img)
+
+    # draw main text via overlay module
+    overlay.draw_text(img, text, (x, y), color=color, scale=None, thickness=None, align="lt")
+
+    if dev_mode:
+        dtxt = "DEV"
+        overlay.draw_text(img, dtxt, (x, y+20), color=(180,180,180), scale=0.5, thickness=1, align="lt")
+
+# --- overlay helper: convert ROIManager.rois to overlay format ---
+def _roi_mgr_to_list(roi_mgr):
+    if roi_mgr is None: return []
+    return [ {"id": r.get("id"), "label": r.get("name"), "rect": (int(r.get("x",0)), int(r.get("y",0)), int(r.get("w",0)), int(r.get("h",0)))} for r in roi_mgr.rois ]
+def main():
+    ensure_dirs()
+
+    cam = CameraGST(GST_PIPELINE)
+
+    # --- CAMERA QUICK DIAG (임시) ---
+    try:
+        cam.open()
+        for _i in range(5):
+            frm = cam.read()
+            if frm is None:
+                print("[DBG CAMERA] read returned None")
+                continue
+
+            import cv2, numpy as np
+            if len(frm.shape) == 2 or frm.shape[2] == 1:
+                gray = frm.copy()   # 이미 mono
+            else:
+                gray = cv2.cvtColor(frm, cv2.COLOR_BGR2GRAY)
+
+            print(f"[DBG CAMERA] frame#{_i} mean:{gray.mean():.2f} min:{int(gray.min())} max:{int(gray.max())}")
+            # 덤프는 한 번만 저장
+            if _i == 0:
+                try:
+                    cv2.imwrite("/tmp/debug_frame_raw.jpg", frm)
+                    print("[DBG CAMERA] dumped to /tmp/debug_frame_raw.jpg")
+                except Exception as e:
+                    print("[DBG CAMERA] dump failed:", e)
+            # 잠깐 쉬어서 파이프라인 안정화 허용
+            import time
+            time.sleep(0.1)
+        cam.release()
+    except Exception as e:
+        print("[DBG CAMERA] quick diag failed:", e)
+    # --- end diag ---
+    
+    roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
+    # load ROI file if exists; load returns bool but ignore failures
+    try:
+        roi_mgr.load(ROI_PATH)
+    except Exception:
+        pass
+
+    editor = ROIEditor(roi_mgr)
+    inspector = Inspector(roi_mgr, recipe_path=RECIPE_PATH, logs_root=LOGS_ROOT)
+
+    NORMALIZE_ENABLED = True
+    NORMALIZE_TARGET_MEAN = 120.0
+
+    from inspection.stabilizer import Stabilizer
+    # ...
+    stabilizer = Stabilizer(window=5, move_thresh_px=3, alpha=0.7)
+    # auto-commit toggle (원하면 True)
+    auto_commit_on_stable = False
+
+    # --- TRACKER STARTUP DEBUG (insert after inspector init) ---
+    try:
+        if hasattr(inspector, "tracker"):
+            tracker = inspector.tracker
+            print("[DBG] inspector.tracker exists. attrs:", [a for a in dir(tracker) if not a.startswith("_")])
+            # check if template is set (try common names)
+            tpl_present = False
+            if hasattr(tracker, "template") and getattr(tracker, "template") is not None:
+                tpl_present = True
+            if hasattr(tracker, "has_template") and callable(getattr(tracker, "has_template")):
+                try:
+                    tpl_present = tpl_present or bool(tracker.has_template())
+                except Exception:
+                    pass
+            print(f"[DBG] tracker template present: {tpl_present}")
+        else:
+            print("[DBG] inspector.tracker NOT found on inspector")
+    except Exception as e:
+        print("[DBG] tracker startup debug exception:", e)
+    # --- end startup debug ---
+
+    # --- load saved alignment template if present ---
+    try:
+        if os.path.exists(TEMPLATE_PATH):
+            tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
+            if tpl is not None and hasattr(inspector, "tracker"):
+                tracker = inspector.tracker
+                if hasattr(tracker, "set_template"):
+                    tracker.set_template(tpl)
+                    print("[INFO] alignment template loaded into tracker.")
+                else:
+                    print("[WARN] inspector.tracker has no set_template()")
+            else:
+                print("[INFO] template file exists but tpl is None or inspector.tracker missing.")
+    except Exception as e:
+        print("[WARN] failed to load alignment template:", e)
+    # --- end: load saved alignment template if present ---
+
+    edit_mode = True
+    status = "EDIT MODE"
+
+    last_results = None
+    last_overall_ok = None
+    quit_requested = False
+    space_lock = False
+
+    # pending command set by mouse_router or keyboard; processed in main loop
+    pending_cmd = None
+
+    win = "Static Mode - ROI Setup"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(win, WIDTH, HEIGHT)
+
+    last_ok_frame_time = time.time()
+    last_buttons = []
+
+    last_snapshot_time = 0.0
+    SNAPSHOT_COOLDOWN = 5.0
+
+    # =========================
+    # Command Executor (runs in main loop)
+    # =========================
+    def execute_command(cmd, frame):
+        nonlocal edit_mode, status, last_results, last_overall_ok, quit_requested, space_lock
+
+        if cmd is None or cmd == UICmd.NONE:
+            return
+
+        # MODE toggle
+        if cmd == UICmd.TOGGLE_MODE:
+            edit_mode = not edit_mode
+            try:
+                inspector.mean_filter.reset()
+            except Exception:
+                pass
+            try:
+                if edit_mode:
+                    # switched INTO EDIT mode -> clear in-memory template so user can set new one
+                    if hasattr(inspector, "tracker") and hasattr(inspector.tracker, "set_template"):
+                        inspector.tracker.set_template(None)
+                else:
+                    # switched INTO RUN mode -> if there is a saved template on disk, reload it into tracker
+                    if os.path.exists(TEMPLATE_PATH):
+                        tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
+                        if tpl is not None and hasattr(inspector, "tracker") and hasattr(inspector.tracker, "set_template"):
+                            inspector.tracker.set_template(tpl)
+            except Exception:
+                pass
+            status = "EDIT MODE" if edit_mode else "RUN MODE"
+            return
+
+        # EDIT MODE commands
+        if edit_mode:
+            if cmd == UICmd.SAVE:
+                try:
+                    roi_mgr.save(ROI_PATH)
+
+                    # frame : 현재 프레임 (BGR 또는 Gray)
+                    frame_gray8 = None
+                    try:
+                        if frame is None:
+                            print("[DEBUG] frame is None")
+                        else:
+                            # 이미 그레이일 경우 (height, width)
+                            if len(frame.shape) == 2:
+                                frame_gray8 = frame.copy()
+                                print("[DEBUG] frame already gray, shape:", frame_gray8.shape)
+                            # 컬러(BGR)일 경우 변환
+                            elif len(frame.shape) == 3 and frame.shape[2] == 3:
+                                frame_gray8 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                                print("[DEBUG] frame converted BGR->GRAY, shape:", frame_gray8.shape)
+                            else:
+                                print("[DEBUG] frame has unexpected shape:", frame.shape)
+                    except Exception as e:
+                        print("[DEBUG] frame->gray exception:", e)
+                        frame_gray8 = None
+
+                    tpl_ok = False
+                    try:
+                        tpl_ok = roi_mgr.save_alignment_template(frame_gray8, TEMPLATE_PATH, roi_id=None)
+                        print(f"[DEBUG] save_alignment_template returned: {tpl_ok}")
+                    except Exception as e:
+                        print("[DEBUG] save_alignment_template exception:", e)
+
+                    # debug: 어떤 ROI를 쓰는지 출력
+                    try:
+                        sel = roi_mgr.get_selected()
+                        print("[DEBUG] selected ROI:", sel)
+                        all_rois = roi_mgr.get_rois()
+                        print("[DEBUG] num rois:", len(all_rois))
+                    except Exception as e:
+                        print("[DEBUG] roi_mgr debug exception:", e)
+
+                    # 파일 존재/크기 확인
+                    if os.path.exists(TEMPLATE_PATH):
+                        s = os.path.getsize(TEMPLATE_PATH)
+                        print(f"[DEBUG] TEMPLATE_PATH exists: {TEMPLATE_PATH} size={s}")
+                    else:
+                        print(f"[DEBUG] TEMPLATE_PATH NOT FOUND: {TEMPLATE_PATH}")
+
+                    status = "Saved ROI"
+                except Exception as e:
+                    status = f"Save failed: {e}"
+                    print("[DEBUG] frame->gray 실패:", e)
+                    return
+                # 추가: 선택된 ROI 기준으로 alignment template도 저장 (그레이 이미지 필요)
+                try:
+                    frame_gray8 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if (frame is not None and len(frame.shape) == 3) else (frame if frame is not None and len(frame.shape) == 2 else None)
+                    ok_tpl = roi_mgr.save_alignment_template(frame_gray8, TEMPLATE_PATH, roi_id=None)
+                    if ok_tpl and hasattr(inspector, "tracker"):
+                        tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
+                        if tpl is not None and hasattr(inspector.tracker, "set_template"):
+                            inspector.tracker.set_template(tpl)
+                            status = "Saved ROI + Template"
+
+                except Exception:
+                    # 실패해도 무시하되 상태는 ROI 저장으로 놔둠
+                    pass
+                return
+
+            if cmd == UICmd.NEXT:
+                try:
+                    roi_mgr.select_next()
+                    status = f"Selected ROI: {roi_mgr.selected_id}"
+                except Exception:
+                    status = "Select next failed"
+                return
+            if cmd == UICmd.CLEAR:
+                try:
+                    # prefer clear if exists, otherwise remove all via list
+                    if hasattr(roi_mgr, "clear"):
+                        roi_mgr.clear()
+                    else:
+                        for r in list(roi_mgr.list()):
+                            try:
+                                roi_mgr.remove(r["id"])
+                            except Exception:
+                                pass
+                    status = "Cleared ROIs"
+                except Exception:
+                    status = "Clear failed"
+                return
+            if cmd == UICmd.DELETE:
+                try:
+                    if hasattr(roi_mgr, "delete_selected"):
+                        ok = roi_mgr.delete_selected()
+                        status = "Deleted selected" if ok else "No ROI to delete"
+                    else:
+                        sid = roi_mgr.selected_id
+                        if sid is not None:
+                            roi_mgr.remove(sid)
+                            status = f"Deleted ROI {sid}"
+                        else:
+                            status = "No ROI to delete"
+                except Exception:
+                    status = "Delete failed"
+                return
+            if cmd == UICmd.RELOAD:
+                try:
+                    if os.path.exists(ROI_PATH):
+                        roi_mgr.load(ROI_PATH)
+                        status = "ROI Reloaded"
+                    else:
+                        status = "No ROI file"
+                except Exception as e:
+                    status = f"Reload failed: {e}"
+                return
+
+        # RUN MODE commands
+        else:
+            # Allow SAVE while in RUN to commit tracked/moved ROIs to roi.json
+            if cmd == UICmd.SAVE and not edit_mode:
+                try:
+                    # require a tracker/template and a recent frame
+                    tracker = getattr(inspector, "tracker", None)
+                    if tracker is None or getattr(tracker, "template", None) is None:
+                        status = "No tracker/template to commit"
+                        return
+
+                    # Build moved list exactly the same way RUN drawing does
+                    frame_gray8 = frame if (hasattr(frame, "ndim") and frame.ndim == 2) else (cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame is not None else None)
+                    if frame_gray8 is None:
+                        status = "No frame to commit"
+                        return
+
+                    if hasattr(roi_mgr, "list"):
+                        rois_src = roi_mgr.list()
+                    elif hasattr(roi_mgr, "get_rois"):
+                        rois_src = roi_mgr.get_rois()
+                    else:
+                        rois_src = []
+
+                    moved_rois = []
+                    for r in rois_src:
+                        x = int(r.get("x",0)); y = int(r.get("y",0)); w = int(r.get("w",0)); h = int(r.get("h",0))
+                        try:
+                            out = tracker.track(frame_gray8, x, y, w, h) if hasattr(tracker, "track") else None
+                            if out is None:
+                                nx, ny, nw, nh = x, y, w, h
+                            elif isinstance(out, (list,tuple)) and len(out) == 4:
+                                nx, ny, nw, nh = map(int, out)
+                            elif isinstance(out, (list,tuple)) and len(out) == 2:
+                                dx, dy = map(int, out); nx, ny, nw, nh = x+dx, y+dy, w, h
+                            elif isinstance(out, dict):
+                                nx = int(out.get("x", x)); ny = int(out.get("y", y))
+                                nw = int(out.get("w", w)); nh = int(out.get("h", h))
+                            else:
+                                nx, ny, nw, nh = x, y, w, h
+                        except Exception:
+                            nx, ny, nw, nh = x, y, w, h
+                        # preserve id/name when possible
+                        moved_rois.append({"id": r.get("id"), "name": r.get("name",""), "x": int(nx), "y": int(ny), "w": int(nw), "h": int(nh)})
+
+                    # Try to write back into roi_mgr internal structure safely
+                    written = False
+                    try:
+                        # best-effort: set attribute names commonly used
+                        if hasattr(roi_mgr, "rois"):
+                            roi_mgr.rois = moved_rois
+                            written = True
+                        elif hasattr(roi_mgr, "_rois"):
+                            roi_mgr._rois = moved_rois
+                            written = True
+                        elif hasattr(roi_mgr, "replace_all"):
+                            roi_mgr.replace_all(moved_rois)
+                            written = True
+                        elif hasattr(roi_mgr, "save"):  # fallback: overwrite by saving file directly
+                            # overwrite ROI file with moved_rois (as list)
+                            import json
+                            with open(ROI_PATH, "w") as f:
+                                json.dump({"rois": moved_rois}, f, indent=2)
+                            written = True
+                    except Exception:
+                        written = False
+
+                    if written:
+                        status = "Committed moved ROIs"
+                    else:
+                        status = "Commit failed (no write method)"
+
+                except Exception as e:
+                    status = f"Commit failed: {e}"
+                return
+            
+            if cmd == UICmd.INSPECT and not space_lock:
+                try:
+                    # DEBUG wrapper for inspect
+                    #print("[DBG] INSPECT requested")
+                    space_lock = True
+
+                    # ensure grayscale frame is passed
+                    frame_gray_for_inspect = None
+                    try:
+                        if frame is None:
+                            frame_gray_for_inspect = None
+                        elif hasattr(frame, "ndim") and frame.ndim == 2:
+                            frame_gray_for_inspect = frame
+                        elif hasattr(frame, "shape") and frame.shape[2] == 3:
+                            frame_gray_for_inspect = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        else:
+                            frame_gray_for_inspect = frame
+                    except Exception as _e:
+                        frame_gray_for_inspect = frame
+
+                    #print("[DBG] INSPECT frame shape/dtype:",
+                    #      None if frame_gray_for_inspect is None else (frame_gray_for_inspect.shape, frame_gray_for_inspect.dtype))
+
+                    # call inspect and log full results
+                    overall_ok, results = inspector.inspect(frame_gray_for_inspect)
+                    #print("[DBG] INSPECT returned overall_ok:", overall_ok)
+                    # if results is None:
+                    #     print("[DBG] INSPECT results is None")
+                    # else:
+                    #     # results expected to be dict of ROIResult objects
+                    #     for k, v in results.items():
+                    #         # if ROIResult dataclass
+                    #         try:
+                    #             ok = getattr(v, "ok", None)
+                    #             reason = getattr(v, "reason", None)
+                    #             metrics = getattr(v, "metrics", None)
+                    #         except Exception:
+                    #             ok = None; reason = None; metrics = None
+                    #          print(f"[DBG] INSPECT ROI key={k} ok={ok} reason={reason} metrics={metrics}")
+
+                    # save run artifacts
+                    try:
+                        run_dir = inspector.save_run(frame_gray_for_inspect, vis.copy(), overall_ok, results)
+                        # print("[DBG] saved run to", run_dir)
+                    except Exception as e:
+                        print("[DBG] save_run failed:", e)
+
+                    # store for UI overlay
+                    last_results = {str(k): v for k, v in results.items()} if results else {}
+                    last_overall_ok = overall_ok
+                    status = f"INSPECT {'OK' if overall_ok else 'NG'}"
+                except Exception as e:
+                    # print detailed exception info but keep app alive
+                    import traceback
+                    #print("[DBG] inspect failed exception:", e)
+                    traceback.print_exc()
+                    status = f"Inspect failed: {e}"
+                finally:
+                    space_lock = False
+                return
+
+            if cmd == UICmd.AUTO:
+                try:
+                    inspector.autotune_recipe_from_frame(frame)
+                    status = "Auto recipe saved"
+                except Exception as e:
+                    status = f"Autotune failed: {e}"
+                return
+
+            if cmd == UICmd.RELOAD:
+                try:
+                    inspector.reload_recipe()
+                    status = "Recipe reloaded"
+                except Exception as e:
+                    status = f"Reload recipe failed: {e}"
+                return
+
+        if cmd == UICmd.QUIT:
+            quit_requested = True
+            return
+
+    # =========================
+    # Mouse Router: SETS pending_cmd, doesn't execute
+    # =========================
+    def mouse_router(event, x, y, flags, param):
+        nonlocal last_buttons, edit_mode, pending_cmd
+
+        # Only care about left-button down for button clicks
+        if event != cv2.EVENT_LBUTTONDOWN:
+            # still forward move/down/up to editor for editing interactions
+            if edit_mode:
+                try:
+                    editor._on_mouse(event, x, y, flags, None)
+                except Exception:
+                    pass
+            return
+
+        # check button hit first
+        for b in last_buttons:
+            x1, y1, x2, y2 = b.get("rect", (0,0,0,0))
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                if b.get("enabled", True):
+                    bid = b.get("id")
+                    pending_cmd = BUTTON_TO_CMD.get(bid, UICmd.NONE)
+                return
+
+        # not on any button: forward to editor (for ROI create/move/resize)
+        if edit_mode:
+            try:
+                editor._on_mouse(event, x, y, flags, None)
+            except Exception:
+                pass
+
+    cv2.setMouseCallback(win, mouse_router)
+
+    cam.open()
+
+    # main loop
+    while True:
+        frame = cam.read()
+        if frame is None:
+            if time.time() - last_ok_frame_time > 1.0:
+                status = "No frames >1s (check camera)"
+            cv2.waitKey(1)
+            if quit_requested:
+                break
+            continue
+
+        last_ok_frame_time = time.time()
+
+        # ensure GRAY8 single channel
+        if frame.ndim == 3:
+            frame = frame[:, :, 0]
+
+        vis = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+
+        # Overlays depending on mode
+        if edit_mode:
+            # editor draws handles/selection on vis
+            editor.update(vis)
+           # overlay.draw_rois(vis, rois=_roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id)
+        else:
+            # RUN mode: single, deterministic tracker pass -> draw moved ROIs
+            info_save = _extract_info_from_results(last_results)
+
+            # prepare gray frame (frame already GRAY8)
+            frame_gray8 = frame if (hasattr(frame, "ndim") and frame.ndim == 2) else (cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame is not None else None)
+
+            # 정규화 적용
+            if NORMALIZE_ENABLED and frame_gray8 is not None:
+                frame_gray8, ninfo = normalize_frame(frame_gray8, target_mean=NORMALIZE_TARGET_MEAN, do_clahe=True)
+                # status 짧게 표시에 쓰려면 status = f"norm:{ninfo['method']} s={ninfo['scale']:.2f}"
+
+            tracker = getattr(inspector, "tracker", None)
+            moved = []
+
+            try:
+                # if tracker and template present -> track each ROI once
+                if tracker is not None and getattr(tracker, "template", None) is not None and frame_gray8 is not None:
+                    # get list of rois in a compatible way
+                    if hasattr(roi_mgr, "list"):
+                        rois_src = roi_mgr.list()
+                    elif hasattr(roi_mgr, "get_rois"):
+                        rois_src = roi_mgr.get_rois()
+                    else:
+                        rois_src = []
+
+                    # Single pass: call tracker.track(...) per ROI and collect results
+                    for r in rois_src:
+                        x = int(r.get("x", 0)); y = int(r.get("y", 0)); w = int(r.get("w", 0)); h = int(r.get("h", 0))
+                        try:
+                            # Expecting (nx,ny,nw,nh) per debug logs
+                            out = None
+                            if hasattr(tracker, "track"):
+                                out = tracker.track(frame_gray8, x, y, w, h)
+                            elif hasattr(tracker, "update"):
+                                out = tracker.update(frame_gray8, x, y, w, h)
+                            # normalize output
+                            if out is None:
+                                nx, ny, nw, nh = x, y, w, h
+                            elif isinstance(out, (list, tuple)) and len(out) == 4:
+                                nx, ny, nw, nh = map(int, out)
+                            elif isinstance(out, (list, tuple)) and len(out) == 2:
+                                dx, dy = map(int, out); nx, ny, nw, nh = x+dx, y+dy, w, h
+                            elif isinstance(out, dict):
+                                nx = int(out.get("x", x)); ny = int(out.get("y", y))
+                                nw = int(out.get("w", w)); nh = int(out.get("h", h))
+                            else:
+                                nx, ny, nw, nh = x, y, w, h
+                        except Exception as e:
+                            # fallback to original ROI on error
+                            nx, ny, nw, nh = x, y, w, h
+                        moved.append({"id": r.get("id"), "name": r.get("name",""), "x": nx, "y": ny, "w": nw, "h": nh})
+
+                        # moved: list of dicts with integer coords from tracker
+                        # apply stabilizer -> smoothed (float coords) + stable boolean
+                        smoothed, stable = stabilizer.update(moved)
+
+                        # draw using smoothed coords (round to int when drawing)
+                        for mr in smoothed:
+                            x = int(round(mr["x"])); y = int(round(mr["y"]))
+                            w = int(mr["w"]); h = int(mr["h"])
+                            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                            if mr.get("name"):
+                                cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+
+                        # optionally show stability on status bar / overlay
+                        if stable:
+                            status = "RUN MODE (stable)"
+                            if stable and (time.time() - last_snapshot_time) > SNAPSHOT_COOLDOWN:
+                                log_dir = os.path.join(DATA_DIR, "logs", "snapshots")
+                                # smoothed: list of smoothed roi dicts (int coords recommended)
+                                for mr in smoothed:
+                                    roi_for_save = {"id": mr["id"], "x": int(round(mr["x"])), "y": int(round(mr["y"])), "w": int(mr["w"]), "h": int(mr["h"])}
+                                    save_snapshot(log_dir, frame_gray8, roi_for_save, prefix="stable")
+                                if hasattr(inspector, "tracker") and getattr(inspector.tracker, "template", None) is not None:
+                                    save_template_copy(log_dir, inspector.tracker.template)
+                                last_snapshot_time = time.time()
+                        else:
+                            status = "RUN MODE (tracking...)"
+
+                        # auto commit if enabled and stable
+                        if auto_commit_on_stable and stable:
+                            # call the same commit routine we discussed earlier (best-effort write)
+                            # you can reuse the commit block from earlier: build moved_rois from smoothed (round ints), then write back.
+                            try:
+                                # build int list
+                                commit_rois = []
+                                for mr in smoothed:
+                                    commit_rois.append({"id": mr.get("id"), "name": mr.get("name",""), "x": int(round(mr["x"])), "y": int(round(mr["y"])), "w": int(mr["w"]), "h": int(mr["h"])})
+                                # write back (best-effort)
+                                import json
+                                with open(ROI_PATH, "w") as f:
+                                    json.dump({"rois": commit_rois}, f, indent=2)
+                                status = "Committed moved ROIs (auto)"
+                            except Exception as e:
+                                print("[STAB] auto-commit failed:", e)
+
+                    # draw moved ROIs (visible green)
+                    for mr in moved:
+                        x,y,w,h = int(mr["x"]), int(mr["y"]), int(mr["w"]), int(mr["h"])
+                        overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                        if mr.get("name"):
+                            cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+
+                    # --- ROI metric overlay (복원) ---
+                    try:
+                        if last_results:
+                            for mr in moved:
+                                rid = str(mr.get("id"))
+                                # last_results stores ROIResult or dict depending on flow
+                                lr = last_results.get(rid) or last_results.get(int(rid))
+                                if lr is None:
+                                    continue
+                                # extract metrics dict safely
+                                if hasattr(lr, "metrics"):
+                                    metrics = lr.metrics
+                                    ok_flag = lr.ok
+                                elif isinstance(lr, dict):
+                                    metrics = lr.get("metrics", {})
+                                    ok_flag = lr.get("ok", None)
+                                else:
+                                    metrics = {}
+                                    ok_flag = None
+
+                                # build text: mean and score (fall back to raw keys)
+                                mean_v = metrics.get("mean", metrics.get("mean_raw", None))
+                                score_v = metrics.get("score", None)
+                                status_txt = "OK" if ok_flag else ("NG" if ok_flag is not None else "")
+                                parts = []
+                                if mean_v is not None:
+                                    parts.append(f"m:{mean_v:.1f}")
+                                if score_v is not None:
+                                    parts.append(f"s:{score_v:.2f}")
+                                if status_txt:
+                                    parts.append(status_txt)
+                                if not parts:
+                                    continue
+
+                                txt = " ".join(parts)
+                                tx = int(mr["x"]) + 40
+                                ty = int(mr["y"]) - 6 if int(mr["y"]) - 6 > 12 else int(mr["y"]) + 14
+                                overlay.draw_text(vis, txt, (tx, ty -5), color=(255, 220, 20), scale=0.45, thickness=1)
+                    except Exception:
+                        # don't crash UI on overlay errors
+                        pass
+                    # --- end overlay ---
+                    
+                else:
+                    # no valid tracker/template -> draw original ROI widgets
+                    overlay.draw_rois(vis, rois=_roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=last_results)
+
+            except Exception as e:
+                # safe fallback: draw original roi UI and log
+                print("[DBG] run-mode tracker overlay exception:", e)
+                overlay.draw_rois(vis, rois=_roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=last_results)
+
+        # status line
+        overlay.draw_status_bar(vis, status)
+
+        # --- keyboard fallback: set pending_cmd, don't execute directly ---
+        key = cv2.waitKey(1) & 0xFF
+        if key != 255:
+            keymap = {
+                27: UICmd.QUIT, ord('q'): UICmd.QUIT,
+                ord('e'): UICmd.TOGGLE_MODE,
+                ord('s'): UICmd.SAVE,
+                ord('n'): UICmd.NEXT,
+                ord('r'): UICmd.CLEAR,
+                ord('p'): UICmd.RELOAD,
+                ord('c'): UICmd.AUTO,
+                32: UICmd.INSPECT,
+                ord('x'): UICmd.DELETE,
+            }
+            pending_cmd = keymap.get(key, pending_cmd)
+
+        # --- Execute pending command BEFORE drawing control bar so UI updates immediately ---
+        if pending_cmd is not None and pending_cmd != UICmd.NONE:
+            cmd_to_run = pending_cmd
+            pending_cmd = None
+            execute_command(cmd_to_run, frame)
+
+        # --- Build control buttons based on current mode and draw them (last so they reflect state) ---
+        if edit_mode:
+            control_buttons = [
+                {"id":"toggle_edit","label":"RUN","color":(70,130,180),"enabled":True},
+                {"id":"save","label":"SAVE","color":(120,0,120),"enabled":True},
+                {"id":"next","label":"NEXT","color":(80,80,80),"enabled":True},
+                {"id":"delete","label":"DELETE","color":(40,40,120),"enabled":True},
+                {"id":"clear","label":"CLEAR","color":(40,0,80),"enabled":True},
+                {"id":"quit","label":"QUIT","color":(120,0,0),"enabled":True},
+            ]
+        else:
+            control_buttons = [
+                {"id":"toggle_edit","label":"EDIT","color":(70,130,180),"enabled":True},
+                {"id":"inspect","label":"INSPECT","color":(0,120,0),"enabled":True},
+                {"id":"autotune","label":"AUTO","color":(0,120,120),"enabled":True},
+                {"id":"reload","label":"RELOAD","color":(120,120,0),"enabled":True},
+                {"id":"quit","label":"QUIT","color":(120,0,0),"enabled":True},
+            ]
+
+        # draw control bar and remember button rects for hit testing
+        last_buttons = draw_control_bar(vis, control_buttons)
+
+        # draw mode indicator + dev HUD if enabled
+        draw_mode_indicator(vis, edit_mode, DEV_MODE)
+        if DEV_MODE:
+            draw_dev_hud(vis, edit_mode)
+
+        cv2.imshow(win, vis)
+
+        if quit_requested:
+            break
+
+    cam.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()

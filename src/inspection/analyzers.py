@@ -1,0 +1,38 @@
+from typing import Any, Dict, Tuple
+import numpy as np
+import cv2
+
+def analyze_mean_threshold(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    mean = float(np.mean(crop)) if crop.size else 0.0
+    std  = float(np.std(crop)) if crop.size else 0.0
+
+    mn = float(cfg.get("min_mean", 0))
+    mx = float(cfg.get("max_mean", 255))
+
+    ok = (mn <= mean <= mx)
+    reason = "OK" if ok else ("LOW_MEAN" if mean < mn else "HIGH_MEAN")
+    metrics = {"mean": mean, "std": std, "min_mean": mn, "max_mean": mx}
+    return ok, metrics, reason
+
+def analyze_edge_energy(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    if crop.size == 0:
+        return False, {"edge_var": 0.0}, "EMPTY_CROP"
+
+    lap = cv2.Laplacian(crop, cv2.CV_64F)
+    edge_var = float(lap.var())
+
+    thr = float(cfg.get("min_edge", cfg.get("min_edge_var", 0.0)))
+    ok = edge_var >= thr
+    reason = "OK" if ok else "LOW_EDGE"
+    metrics = {"edge_var": edge_var, "min_edge": thr}
+    return ok, metrics, reason
+
+def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
+
+    if a_type in ("mean", "mean_threshold", "threshold"):
+        return analyze_mean_threshold(crop, cfg)
+    if a_type in ("edge", "edge_energy", "lap_var", "laplacian_var"):
+        return analyze_edge_energy(crop, cfg)
+
+    return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
