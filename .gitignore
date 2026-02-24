@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+
+# virtualenv
+venv/
+.env/
+.envrc
+
+# logs & runtime
+logs/
+*.log
+*.raw
+*.jpg
+*.png
+*.avi
+
+# vscode
+.vscode/
+
+# system
+.DS_Store
