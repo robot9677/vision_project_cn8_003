@@ -1,3 +1,4 @@
+@"
 # python
 __pycache__/
 *.pyc
@@ -5,7 +6,7 @@ __pycache__/
 
 # virtualenv
 venv/
-.env/
+.env
 .envrc
 
 # logs & runtime
@@ -21,3 +22,4 @@ logs/
 
 # system
 .DS_Store
+"@ | Out-File -Encoding UTF8 .gitignore
