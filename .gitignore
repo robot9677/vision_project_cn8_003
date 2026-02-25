@@ -1,25 +1,20 @@
-@"
 # python
 __pycache__/
 *.pyc
-*.pyo
 
-# virtualenv
-venv/
-.env
-.envrc
-
-# logs & runtime
+# runtime data
+data/
 logs/
 *.log
-*.raw
-*.jpg
 *.png
+*.jpg
+*.bmp
+*.raw
 *.avi
+*.mp4
 
-# vscode
+# IDE
 .vscode/
 
-# system
-.DS_Store
-"@ | Out-File -Encoding UTF8 .gitignore
+# 기타
+*.zip
