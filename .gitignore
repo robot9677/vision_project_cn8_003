@@ -1,30 +1,32 @@
-# python
+# ignore data contents by default
+data/*
+
+# but keep roi folder and its contents
+!data/roi/
+!data/roi/**
+
+# keep placeholders for images and logs
+!data/images/.gitkeep
+!data/logs/.gitkeep
+data/images/*
+data/logs/*
+!data/images/.gitkeep
+!data/logs/.gitkeep
+
+# python cache & compiled
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
 
-# IDE
-.vscode/
-.idea/
-
-# runtime / data / logs
-data/
-logs/
-*.log
-*.png
-*.jpg
-*.jpeg
-*.bmp
-*.tiff
-*.raw
-*.avi
-*.mp4
-
-# env
+# virtualenv and environment
 venv/
 .env
-*.egg-info/
 
-# others
+# editor / OS
+.vscode/
+.idea/
 .DS_Store
+
+# temp
+temp_clean_repo/
+clean_repo/
