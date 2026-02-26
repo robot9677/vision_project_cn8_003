@@ -1,20 +1,30 @@
 # python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# runtime data
+# IDE
+.vscode/
+.idea/
+
+# runtime / data / logs
 data/
 logs/
 *.log
 *.png
 *.jpg
+*.jpeg
 *.bmp
+*.tiff
 *.raw
 *.avi
 *.mp4
 
-# IDE
-.vscode/
+# env
+venv/
+.env
+*.egg-info/
 
-# 기타
-*.zip
+# others
+.DS_Store
