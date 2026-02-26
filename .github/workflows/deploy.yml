@@ -1,4 +1,4 @@
-name: Deploy to Jetson
+name: Deploy to Jetson (self-hosted)
 
 on:
   push:
@@ -6,28 +6,18 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-
-      - name: Add known hosts
+      - name: Update code
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          cd ~/vision_project
+          git fetch origin
+          git reset --hard origin/main
 
-      - name: Deploy on Jetson
+      - name: Restart vision service
         run: |
-          ssh robot96@192.168.0.14 '
-            cd ~/vision_project &&
-            git fetch origin &&
-            git reset --hard origin/main &&
-            sudo systemctl restart vision.service
-          '
+          sudo systemctl restart vision
