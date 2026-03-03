@@ -2,19 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Attach Jetson",
+      "name": "Launch Jetson",
       "type": "python",
-      "request": "attach",
-      "connect": {
-        "host": "127.0.0.1",
-        "port": 5678
+      "request": "launch",
+      "program": "/home/robot96/vision_project/src/main_vp.py",
+      "console": "integratedTerminal",
+      "env": {
+        "DISPLAY": ":1",
+        "XAUTHORITY": "/run/user/1000/gdm/Xauthority"
       },
-      "pathMappings": [
-        {
-          "localRoot": "${workspaceFolder}",
-          "remoteRoot": "/home/robot96/vision_project"
-        }
-      ]
+      "python": "/home/robot96/venv/bin/python"
     }
   ]
 }
