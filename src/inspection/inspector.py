@@ -130,12 +130,6 @@ class Inspector:
 
             # override stored ROIResult / metrics
             reason = "OK" if final_ok else ("MEAN_OUT_OF_RANGE" if not mean_ok else ("LOW_SCORE" if not score_ok else "FAIL"))
-            results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
-            
-            # # temporal smoothing
-            # if "mean" in metrics:
-            #     metrics["mean_raw"] = float(metrics["mean"])
-            #     metrics["mean"] = self.mean_filter.update(metrics["mean_raw"])
 
             # mean_threshold면 필터된 mean으로 판정 덮어쓰기
             if cfg.get("type") == "mean_threshold" and "mean" in metrics:
@@ -148,9 +142,8 @@ class Inspector:
             metrics["norm_gain"] = float(norm_gain)
             metrics["dx"] = dx
             metrics["dy"] = dy
-            
+
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
-           # results[key] = ROIResult(roi_id=roi_id, ok=ok, reason=reason, metrics=metrics)
 
         overall_ok = all(r.ok for r in results.values()) if results else False
         return overall_ok, results
