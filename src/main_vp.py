@@ -215,6 +215,7 @@ def main():
 
     editor = ROIEditor(roi_mgr)
     inspector = Inspector(roi_mgr, recipe_path=RECIPE_PATH, logs_root=LOGS_ROOT)
+    editor.on_select_changed = inspector.reset_tracker_template
 
     NORMALIZE_ENABLED = True
     NORMALIZE_TARGET_MEAN = 120.0

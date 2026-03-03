@@ -38,6 +38,8 @@ class ROIEditor:
         self._last_click_time = 0
         self._double_click_interval = 0.35
 
+        self.on_select_changed = lambda: None
+
     def _hit_test(self, x, y):
         """Return roi dict and hit region: 'inside', 'edge', 'corner', or None"""
         for r in reversed(self.roi_mgr.list()):
@@ -77,6 +79,7 @@ class ROIEditor:
                 # select and rename via terminal input
                 self.active_roi = r["id"]
                 self.roi_mgr.select(r["id"])
+                self.on_select_changed()
                 try:
                     newname = input(f"Enter new name for ROI#{r['id']} (current='{r.get('name','')}'): ").strip()
                     if newname:
@@ -100,6 +103,7 @@ class ROIEditor:
                 # clicked on existing ROI: decide move or resize
                 self.active_roi = r["id"]
                 self.roi_mgr.select(self.active_roi)
+                self.on_select_changed()
                 if typ in ("corner","edge"):
                     self.action = "resize"
                     self.resize_dir = sub if typ=="corner" else sub

@@ -221,4 +221,7 @@ class Inspector:
         save_recipe(self.recipe_path, recipe)
         self.recipe = recipe  # 즉시 반영
         return recipe
+    
+    def reset_tracker_template(self):
+        self.tracker.template = None
 
