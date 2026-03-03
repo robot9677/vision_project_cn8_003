@@ -389,6 +389,7 @@ def main():
             if cmd == UICmd.NEXT:
                 try:
                     roi_mgr.select_next()
+                    editor.on_select_changed()   # ← 이 1줄 추가 (또는 inspector.reset_tracker_template())
                     status = f"Selected ROI: {roi_mgr.selected_id}"
                 except Exception:
                     status = "Select next failed"
