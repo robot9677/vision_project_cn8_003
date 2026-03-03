@@ -596,6 +596,15 @@ def main():
     # =========================
     def mouse_router(event, x, y, flags, param):
         nonlocal last_buttons, edit_mode, pending_cmd
+        
+        if event == cv2.EVENT_MOUSEMOVE:
+            # 편집 중일 때만 editor에 전달, 버튼에는 절대 영향 주지 않음
+            if edit_mode:
+                try:
+                    editor._on_mouse(event, x, y, flags, None)
+                except Exception:
+                    pass
+            return
 
         # Only care about left-button down for button clicks
         if event != cv2.EVENT_LBUTTONDOWN:
