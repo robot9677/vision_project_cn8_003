@@ -27,7 +27,8 @@ class Inspector:
         self.roi_mgr = roi_mgr
         self.recipe_path = recipe_path
         self.logs_root = logs_root
-        self.recipe = load_recipe(recipe_path)
+        auto_path = os.path.join(os.path.dirname(recipe_path), "recipe_auto.json")
+        self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
         self.mean_filter = TemporalMeanFilter(win=5)
         self.tracker = ROITracker(search_margin=20, thr=0.6)
 
@@ -186,7 +187,8 @@ class Inspector:
     #     with open(path, "w", encoding="utf-8") as f:
     #         json.dump(recipe, f, ensure_ascii=False, indent=2)
 
-    def autotune_recipe_from_frame(self, frame_gray8: np.ndarray, margin: float = 15.0, target_mean: float = 70.0):
+    def autotune_recipe_from_frame(self, frame_gray8, save_path=None):
+        save_path = save_path or self.recipe_path
         """
         현재 프레임 기준으로 ROI별 mean을 읽고
         recipe_static.json(overrides)에 ROI별 min/max를 자동 생성해서 저장
@@ -220,7 +222,7 @@ class Inspector:
             "decision": {"mode": "any_fail_is_ng"},
         }
 
-        save_recipe(self.recipe_path, recipe)
+        save_recipe(save_path, recipe)
         self.recipe = recipe  # 즉시 반영
         return recipe
     

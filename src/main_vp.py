@@ -574,7 +574,8 @@ def main():
 
             if cmd == UICmd.AUTO:
                 try:
-                    inspector.autotune_recipe_from_frame(frame)
+                    auto_path = os.path.join(ROI_DIR, "recipe_auto.json")
+                    inspector.autotune_recipe_from_frame(frame, save_path=auto_path)
                     status = "Auto recipe saved"
                 except Exception as e:
                     status = f"Autotune failed: {e}"
