@@ -596,43 +596,32 @@ def main():
     # =========================
     def mouse_router(event, x, y, flags, param):
         nonlocal last_buttons, edit_mode, pending_cmd
-        
+
+        # 1) MOVE: 편집모드일 때만 editor에 전달
         if event == cv2.EVENT_MOUSEMOVE:
-            # 편집 중일 때만 editor에 전달, 버튼에는 절대 영향 주지 않음
             if edit_mode:
-                try:
-                    editor._on_mouse(event, x, y, flags, None)
-                except Exception:
-                    pass
+                editor._on_mouse(event, x, y, flags, None)
             return
 
-        # Only care about left-button down for button clicks
-        if event != cv2.EVENT_LBUTTONDOWN:
-            editor._on_mouse(event, x, y, flags, None)
-            # # still forward move/down/up to editor for editing interactions
-            # if edit_mode:
-            #     try:
-            #         editor._on_mouse(event, x, y, flags, None)
-            #     except Exception:
-            #         pass
-            # return
+        # 2) LEFT DOWN만 버튼 처리 + 편집 전달
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # 버튼 hit
+            for b in last_buttons:
+                x1, y1, x2, y2 = b.get("rect", (0,0,0,0))
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    if b.get("enabled", True):
+                        bid = b.get("id")
+                        pending_cmd = BUTTON_TO_CMD.get(bid, UICmd.NONE)
+                    return
 
-        # check button hit first
-        for b in last_buttons:
-            x1, y1, x2, y2 = b.get("rect", (0,0,0,0))
-            if x1 <= x <= x2 and y1 <= y <= y2:
-                if b.get("enabled", True):
-                    bid = b.get("id")
-                    pending_cmd = BUTTON_TO_CMD.get(bid, UICmd.NONE)
-                return
+            # 버튼 아니면 편집모드일 때만 editor
+            if edit_mode:
+                editor._on_mouse(event, x, y, flags, None)
+            return
 
-        # not on any button: forward to editor (for ROI create/move/resize)
+        # 3) 나머지 이벤트(UP, RBUTTON 등): 편집모드일 때만 editor
         if edit_mode:
             editor._on_mouse(event, x, y, flags, None)
-            # try:
-            #     editor._on_mouse(event, x, y, flags, None)
-            # except Exception:
-            #     pass
 
     cv2.setMouseCallback(win, mouse_router)
 
