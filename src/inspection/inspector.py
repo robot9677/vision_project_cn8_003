@@ -49,7 +49,9 @@ class Inspector:
 
             # template은 "정규화 전 원본"에서 확보
             ref_crop_raw = self.roi_mgr.crop(frame_gray8, ref_id)
-            self.tracker.set_template(ref_crop_raw)
+            
+            if self.tracker.template is None:
+                self.tracker.set_template(ref_crop_raw)
 
             # 정규화
             if ref_crop_raw is not None and ref_crop_raw.size > 0:
