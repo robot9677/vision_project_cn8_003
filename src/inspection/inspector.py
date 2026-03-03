@@ -224,4 +224,5 @@ class Inspector:
     
     def reset_tracker_template(self):
         self.tracker.template = None
+        print("[RESET] tracker template cleared")
 
