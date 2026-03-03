@@ -618,7 +618,7 @@ def main():
             if edit_mode:
                 editor._on_mouse(event, x, y, flags, None)
             return
-
+dsfasdf
         # 3) 나머지 이벤트(UP, RBUTTON 등): 편집모드일 때만 editor
         if edit_mode:
             editor._on_mouse(event, x, y, flags, None)
