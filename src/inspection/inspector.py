@@ -149,7 +149,7 @@ class Inspector:
             metrics["dx"] = dx
             metrics["dy"] = dy
 
-            results[key] = ROIResult(roi_id=roi_id, ok=ok, reason=reason, metrics=metrics)
+           # results[key] = ROIResult(roi_id=roi_id, ok=ok, reason=reason, metrics=metrics)
 
         overall_ok = all(r.ok for r in results.values()) if results else False
         return overall_ok, results
