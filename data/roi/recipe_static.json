@@ -7,8 +7,8 @@
   "overrides": {
     "ROI1": {
       "type": "mean_threshold",
-      "min_mean": 64.02067360350493,
-      "max_mean": 94.02067360350493
+      "min_mean": 200,
+      "max_mean": 2553
     },
     "ROI2": {
       "type": "mean_threshold",

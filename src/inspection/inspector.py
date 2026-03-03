@@ -127,19 +127,21 @@ class Inspector:
             mean_ok = (min_mean <= mean_val <= max_mean)
             score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
 
-            # final decision: require analyzer ok AND mean_ok AND score_ok
-            final_ok = bool(ok) and mean_ok and score_ok
+            roi_type = (cfg.get("type") or "").strip().lower()
 
-            # override stored ROIResult / metrics
-            reason = "OK" if final_ok else ("MEAN_OUT_OF_RANGE" if not mean_ok else ("LOW_SCORE" if not score_ok else "FAIL"))
+            # --- final decision by ROI type ---
+            if roi_type == "mean_threshold":
+                final_ok = bool(mean_ok)
+                reason = "OK" if final_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
 
-            # mean_threshold면 필터된 mean으로 판정 덮어쓰기
-            if cfg.get("type") == "mean_threshold" and "mean" in metrics:
-                mn = float(cfg.get("min_mean", min_mean))
-                mx = float(cfg.get("max_mean", max_mean))
-                m  = float(metrics["mean"])
-                final_ok  = (mn <= m <= mx)
-                reason = "OK" if final_ok else ("LOW_MEAN" if m < mn else "HIGH_MEAN")
+            elif roi_type == "score_threshold":
+                final_ok = bool(score_ok)
+                reason = "OK" if final_ok else "LOW_SCORE"
+
+            else:
+                # default: analyzer only
+                final_ok = bool(ok)
+                reason = "OK" if final_ok else (reason or "FAIL")
 
             metrics["norm_gain"] = float(norm_gain)
             metrics["dx"] = dx
@@ -224,5 +226,5 @@ class Inspector:
     
     def reset_tracker_template(self):
         self.tracker.template = None
-        print("[RESET] tracker template cleared")
+        # print("[RESET] tracker template cleared")
 
