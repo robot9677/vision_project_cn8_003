@@ -599,14 +599,13 @@ def main():
 
         # Only care about left-button down for button clicks
         if event != cv2.EVENT_LBUTTONDOWN:
-            editor._on_mouse(event, x, y, flags, None)
-            # # still forward move/down/up to editor for editing interactions
-            # if edit_mode:
-            #     try:
-            #         editor._on_mouse(event, x, y, flags, None)
-            #     except Exception:
-            #         pass
-            # return
+            # still forward move/down/up to editor for editing interactions
+            if edit_mode:
+                try:
+                    editor._on_mouse(event, x, y, flags, None)
+                except Exception:
+                    pass
+            return
 
         # check button hit first
         for b in last_buttons:
@@ -619,11 +618,10 @@ def main():
 
         # not on any button: forward to editor (for ROI create/move/resize)
         if edit_mode:
-            editor._on_mouse(event, x, y, flags, None)
-            # try:
-            #     editor._on_mouse(event, x, y, flags, None)
-            # except Exception:
-            #     pass
+            try:
+                editor._on_mouse(event, x, y, flags, None)
+            except Exception:
+                pass
 
     cv2.setMouseCallback(win, mouse_router)
 
