@@ -36,7 +36,6 @@ class Inspector:
         self.recipe = load_recipe(self.recipe_path)
 
     def inspect(self, frame_gray8: np.ndarray) -> Tuple[bool, Dict[str, ROIResult]]:
-        metrics_reset = getattr(self.tracker, "_reset_count", 0)
         results: Dict[str, ROIResult] = {}
 
         ref = self.roi_mgr.get_selected()
@@ -224,6 +223,5 @@ class Inspector:
         return recipe
     
     def reset_tracker_template(self):
-        self.tracker.template = None
-        self.tracker._reset_count = getattr(self.tracker, "_reset_count", 0) + 1
+        raise RuntimeError("RESET CALLED")
 
