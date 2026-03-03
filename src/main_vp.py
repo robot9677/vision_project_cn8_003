@@ -629,7 +629,7 @@ def main():
 
     # main loop
     while True:
-
+dddddddddddddddddddddddddddddddddddddddd
         frame = cam.read()
         if frame is None:
             if time.time() - last_ok_frame_time > 1.0:
