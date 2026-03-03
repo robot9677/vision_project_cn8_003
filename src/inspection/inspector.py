@@ -223,5 +223,5 @@ class Inspector:
         return recipe
     
     def reset_tracker_template(self):
-        raise RuntimeError("RESET CALLED")
+        self.tracker.template = None
 
