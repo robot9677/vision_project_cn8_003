@@ -84,6 +84,9 @@ class Inspector:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
 
+            print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
+            if crop is None or crop.size == 0:
+                print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
             # cfg = get_roi_cfg(self.recipe, roi_id)
             # ok, metrics, reason = run_analyzer(crop, cfg)
 
@@ -150,6 +153,8 @@ class Inspector:
             metrics["dy"] = dy
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
+
+            print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
 
             # --- overall decision by recipe ---
             decision = (self.recipe.get("decision") or {})
