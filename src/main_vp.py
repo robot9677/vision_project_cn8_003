@@ -782,6 +782,12 @@ def main():
                             # (1) default: just green box (no text) when no result
                             if lr is None:
                                 overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+
+                                # 라벨 1줄(ROI 번호만) 항상 표시
+                                line1 = f"ROI{rid}"
+                                tx = x + w + 6
+                                ty = y + 12
+                                overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
                                 continue
 
                             # (2) extract result
