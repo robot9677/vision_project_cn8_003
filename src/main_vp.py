@@ -562,20 +562,21 @@ def main():
 
                     # call inspect and log full results
                     overall_ok, results = inspector.inspect(frame_gray_for_inspect)
-                    #print("[DBG] INSPECT returned overall_ok:", overall_ok)
-                    # if results is None:
-                    #     print("[DBG] INSPECT results is None")
-                    # else:
-                    #     # results expected to be dict of ROIResult objects
-                    #     for k, v in results.items():
-                    #         # if ROIResult dataclass
-                    #         try:
-                    #             ok = getattr(v, "ok", None)
-                    #             reason = getattr(v, "reason", None)
-                    #             metrics = getattr(v, "metrics", None)
-                    #         except Exception:
-                    #             ok = None; reason = None; metrics = None
-                    #          print(f"[DBG] INSPECT ROI key={k} ok={ok} reason={reason} metrics={metrics}")
+                    frames = []
+                    for _ in range(5):
+                        f = cam.read()
+                        if f is None:
+                            continue
+                        if f.ndim == 3:
+                            f = f[:, :, 0]
+                        frames.append(f)
+
+                    if frames:
+                        avg = np.mean(frames, axis=0).astype("uint8")
+                    else:
+                        avg = frame_gray_for_inspect
+
+                    overall_ok, results = inspector.inspect(avg)
 
                     # save run artifacts
                     try:
