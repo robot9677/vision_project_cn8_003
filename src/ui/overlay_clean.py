@@ -176,7 +176,7 @@ def draw_overall_banner(img, overall_ok, info=None):
     h, w = img.shape[:2]
     text = "OVERALL: OK" if overall_ok else "OVERALL: NG"
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
-    draw_text(img, text, (10, h - 318), color=color, scale=0.9, thickness=2, align="lt")
+    draw_text(img, text, (410, h - 718), color=color, scale=0.9, thickness=2, align="lt")
     if info and isinstance(info, dict):
         parts = []
         if "norm_gain" in info:
