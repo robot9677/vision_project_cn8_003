@@ -731,9 +731,9 @@ def main():
                         for mr in smoothed:
                             x = int(round(mr["x"])); y = int(round(mr["y"]))
                             w = int(mr["w"]); h = int(mr["h"])
-                            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
-                            if mr.get("name"):
-                                cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+                            # overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                            # if mr.get("name"):
+                            #     cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
 
                         # optionally show stability on status bar / overlay
                         if stable:
@@ -769,57 +769,59 @@ def main():
 
                     # --- ROI overlay (single source of truth) ---
                     try:
-                        if last_results:
-                            for mr in moved:
-                                rid_obj = mr.get("id")
-                                rid = str(rid_obj)
+                        for mr in moved:
+                            rid_obj = mr.get("id")
+                            rid = str(rid_obj)
 
-                                lr = last_results.get(rid) or last_results.get(int(rid_obj)) if rid_obj is not None else last_results.get(rid)
-                                if lr is None:
-                                    continue
+                            lr = None
+                            if last_results:
+                                lr = last_results.get(rid) or (last_results.get(int(rid_obj)) if rid_obj is not None else None)
 
-                                if hasattr(lr, "metrics"):
-                                    metrics = lr.metrics or {}
-                                    ok_flag = bool(lr.ok)
-                                    reason = getattr(lr, "reason", "") or ""
-                                elif isinstance(lr, dict):
-                                    metrics = (lr.get("metrics") or {})
-                                    ok_flag = bool(lr.get("ok", False))
-                                    reason = lr.get("reason", "") or ""
-                                else:
-                                    metrics = {}
-                                    ok_flag = False
-                                    reason = ""
+                            x = int(mr["x"]); y = int(mr["y"]); w = int(mr["w"]); h = int(mr["h"])
 
-                                x = int(mr["x"]); y = int(mr["y"]); w = int(mr["w"]); h = int(mr["h"])
+                            # (1) default: just green box (no text) when no result
+                            if lr is None:
+                                overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                                continue
 
-                                # 1) box color
-                                box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
-                                overlay.draw_rect(vis, (x, y), (x + w, y + h), color=box_color, thickness=2)
+                            # (2) extract result
+                            if hasattr(lr, "metrics"):
+                                metrics = lr.metrics or {}
+                                ok_flag = bool(lr.ok)
+                                reason = getattr(lr, "reason", "") or ""
+                            elif isinstance(lr, dict):
+                                metrics = (lr.get("metrics") or {})
+                                ok_flag = bool(lr.get("ok", False))
+                                reason = lr.get("reason", "") or ""
+                            else:
+                                metrics = {}
+                                ok_flag = False
+                                reason = ""
 
-                                # 2) line1: ROI + OK/NG
-                                line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
+                            # (3) box color
+                            box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
+                            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=box_color, thickness=2)
 
-                                # 3) line2: NG면 reason, OK면 m/s
-                                if ok_flag:
-                                    mean_v = metrics.get("mean", metrics.get("mean_raw", None))
-                                    score_v = metrics.get("score", None)
-                                    parts = []
-                                    if mean_v is not None:
-                                        parts.append(f"m:{float(mean_v):.1f}")
-                                    if score_v is not None:
-                                        parts.append(f"s:{float(score_v):.2f}")
-                                    line2 = " ".join(parts) if parts else ""
-                                else:
-                                    line2 = str(reason)[:24] if reason else "FAIL"
+                            # (4) 2-line label
+                            line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
+                            if ok_flag:
+                                mean_v = metrics.get("mean", metrics.get("mean_raw", None))
+                                score_v = metrics.get("score", None)
+                                parts = []
+                                if mean_v is not None:
+                                    parts.append(f"m:{float(mean_v):.1f}")
+                                if score_v is not None:
+                                    parts.append(f"s:{float(score_v):.2f}")
+                                line2 = " ".join(parts) if parts else ""
+                            else:
+                                line2 = str(reason)[:24] if reason else "FAIL"
 
-                                # label position: ROI 바깥 오른쪽 위(겹침 최소)
-                                tx = x + w + 6
-                                ty = y + 12
+                            tx = x + w + 6
+                            ty = y + 12
+                            overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
+                            if line2:
+                                overlay.draw_text(vis, line2, (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1)
 
-                                overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
-                                if line2:
-                                    overlay.draw_text(vis, line2, (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1)
                     except Exception:
                         pass
                     # --- end overlay ---
