@@ -97,10 +97,10 @@ class Inspector:
             if metrics is None:
                 metrics = {}
 
-            # temporal smoothing (기존 코드 유지)
-            if "mean" in metrics:
-                metrics["mean_raw"] = float(metrics["mean"])
-                metrics["mean"] = self.mean_filter.update(metrics["mean_raw"])
+            # --- ensure mean exists for ALL ROIs ---
+            mean_raw = float(np.mean(crop))
+            metrics["mean_raw"] = mean_raw
+            metrics["mean"] = self.mean_filter.update(mean_raw)
 
             # compute score (texture/edge) and attach
             try:
