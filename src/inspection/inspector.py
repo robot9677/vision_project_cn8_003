@@ -73,13 +73,14 @@ class Inspector:
             x, y, w, h = int(roi["x"]), int(roi["y"]), int(roi["w"]), int(roi["h"])
             x, y = x + dx, y + dy
 
-            # clamp
-            x = max(0, min(x, W - 1))
-            y = max(0, min(y, H - 1))
-            x2 = max(1, min(W, x + w))
-            y2 = max(1, min(H, y + h))
+            # clamp (x1,y1,x2,y2)
+            x1 = max(0, min(x, W - 1))
+            y1 = max(0, min(y, H - 1))
+            x2 = max(x1 + 1, min(W, x1 + w))
+            y2 = max(y1 + 1, min(H, y1 + h))
 
-            crop = frame_gray8[y:y2, x:x2]
+            crop = frame_gray8[y1:y2, x1:x2]
+            
             if crop is None or crop.size == 0:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
