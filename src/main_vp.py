@@ -577,8 +577,10 @@ def main():
                     auto_path = os.path.join(ROI_DIR, "recipe_auto.json")
                     inspector.autotune_recipe_from_frame(frame, save_path=auto_path)
                     status = "Auto recipe saved"
+                    print("[DBG] auto recipe saved:")
                 except Exception as e:
                     status = f"Autotune failed: {e}"
+                    print("[DBG] Autotune failed:", e)
                 return
 
             if cmd == UICmd.RELOAD:
