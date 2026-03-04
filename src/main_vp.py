@@ -588,6 +588,7 @@ def main():
                     last_results = {str(k): v for k, v in results.items()} if results else {}
                     last_overall_ok = overall_ok
                     status = f"INSPECT {'OK' if overall_ok else 'NG'}"
+                    inspector.log_result(last_overall_ok, last_results)
                 except Exception as e:
                     # print detailed exception info but keep app alive
                     import traceback

@@ -276,3 +276,22 @@ class Inspector:
         self.tracker.template = None
         # print("[RESET] tracker template cleared")
 
+    def log_result(self, overall_ok, results):
+        os.makedirs(self.logs_root, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(self.logs_root, f"inspect_{ts}.json")
+
+        payload = {
+            "ts": ts,
+            "overall_ok": bool(overall_ok),
+            "results": {
+                str(k): {
+                    "ok": bool(v.ok) if hasattr(v, "ok") else bool(v.get("ok")),
+                    "reason": (v.reason if hasattr(v, "reason") else v.get("reason","")),
+                    "metrics": (v.metrics if hasattr(v, "metrics") else v.get("metrics", {})),
+                }
+                for k, v in (results or {}).items()
+            }
+        }
+        with open(path, "w") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
