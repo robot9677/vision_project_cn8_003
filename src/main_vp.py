@@ -816,6 +816,8 @@ def main():
 
         # status line
         overlay.draw_status_bar(vis, status)
+        if last_overall_ok is not None:
+            overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
