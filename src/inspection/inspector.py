@@ -295,3 +295,20 @@ class Inspector:
         }
         with open(path, "w") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
+        
+        self._prune_logs(max_keep=200)
+
+    def _prune_logs(self, max_keep=200):
+        try:
+            files = []
+            for fn in os.listdir(self.logs_root):
+                if fn.startswith("inspect_") and fn.endswith(".json"):
+                    files.append(os.path.join(self.logs_root, fn))
+            files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            for p in files[max_keep:]:
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        except Exception:
+            pass
