@@ -132,7 +132,7 @@ class Inspector:
             score_thresh = float(over.get("score_threshold", default_score_thresh))
 
             # after metrics updated with 'mean' and 'score' etc.
-            mean_val = float(metrics.get("mean", metrics.get("mean_raw", np.mean(crop))))
+            mean_val = float(metrics.get("mean", metrics.get("mean_raw", 0.0)))
             mean_ok = (min_mean <= mean_val <= max_mean)
             score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
 
