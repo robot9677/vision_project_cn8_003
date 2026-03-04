@@ -92,81 +92,77 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
     else:
         rois = list(roi_list)
 
-    # draw rectangles + compute labels
-    labels = []
+    fs = UI["font_scale"]
+    th = UI["thickness"]
+
     for r in rois:
         try:
-            rid = r.get("id"); x = int(r["x"]); y = int(r["y"]); w = int(r["w"]); h = int(r["h"])
+            rid = r.get("id")
+            x = int(r["x"]); y = int(r["y"]); w = int(r["w"]); h = int(r["h"])
         except Exception:
             continue
-        # color default
+
+        # default
         color = UI["roi_default_color"]
-        lines = [f"ROI{rid}"]
-        if roi_results:
-            entry = None
-            if isinstance(roi_results, dict):
-                entry = roi_results.get(str(rid)) or roi_results.get(int(rid))
+        line1 = f"ROI{rid}"
+        line2 = None
+
+        # result -> label content
+        ok = None
+        reason = ""
+        metrics = {}
+
+        if isinstance(roi_results, dict):
+            entry = roi_results.get(str(rid)) or roi_results.get(int(rid))
             if entry:
                 if hasattr(entry, "metrics"):
-                    metrics = entry.metrics
+                    metrics = entry.metrics or {}
                     ok = getattr(entry, "ok", None)
-                    reason = getattr(entry, "reason", "")
+                    reason = getattr(entry, "reason", "") or ""
                 elif isinstance(entry, dict):
-                    metrics = entry.get("metrics", {})
+                    metrics = entry.get("metrics", {}) or {}
                     ok = entry.get("ok", None)
-                    reason = entry.get("reason", "")
-                else:
-                    metrics = {}; ok = None; reason = ""
-                if ok is True:
-                    color = UI["roi_ok_color"]
-                    lines[0] = f"ROI{rid} OK"
-                elif ok is False:
-                    color = UI["roi_ng_color"]
-                    lines[0] = f"ROI{rid} NG"
-                    if reason:
-                        lines.insert(1, str(reason)[:24])  # reason 2번째 줄
+                    reason = entry.get("reason", "") or ""
 
-                meanv = metrics.get("mean", metrics.get("mean_raw", None))
-                scorev = metrics.get("score", None)
-                p = []
-                if meanv is not None:
-                    p.append(f"m:{meanv:.1f}")
-                if scorev is not None:
-                    p.append(f"s:{scorev:.2f}")
-                if p:
-                    lines.append(" ".join(p))
-        # highlight
+        if ok is True:
+            color = UI["roi_ok_color"]
+            line1 = f"ROI{rid} OK"
+            meanv = metrics.get("mean", metrics.get("mean_raw", None))
+            scorev = metrics.get("score", None)
+            parts = []
+            if meanv is not None:
+                try:
+                    parts.append(f"m:{float(meanv):.1f}")
+                except Exception:
+                    pass
+            if scorev is not None:
+                try:
+                    parts.append(f"s:{float(scorev):.2f}")
+                except Exception:
+                    pass
+            if parts:
+                line2 = " ".join(parts)
+
+        elif ok is False:
+            color = UI["roi_ng_color"]
+            line1 = f"ROI{rid} NG"
+            if reason:
+                line2 = str(reason)[:24]
+            else:
+                line2 = "FAIL"
+
+        # highlight overrides thickness/color
         thickness = 2
         if highlight_id is not None and rid == highlight_id:
             thickness = 3
             color = UI["roi_highlight_color"]
-        cv2.rectangle(img, (x,y), (x+w, y+h), color, thickness)
-        anchor = 'top' if (y - UI["overlay_margin"] - 40) > 0 else 'bottom'
-        labels.append({"rect":(x,y,w,h), "lines": lines, "anchor": anchor})
 
-    # draw labels top then bottom, sorted
-    def sort_key(l): return (l["rect"][1], l["rect"][0])
-    top = [L for L in labels if L["anchor"]=="top"]; top.sort(key=sort_key)
-    bottom = [L for L in labels if L["anchor"]=="bottom"]; bottom.sort(key=sort_key)
-    for L in top + bottom:
-        x,y,w,h = L["rect"]; lines = L["lines"]
-        fs = UI["font_scale"]; th = UI["thickness"]
-        sizes = [cv2.getTextSize(s, UI["font"], fs, th)[0] for s in lines]
-        max_w = max(sz[0] for sz in sizes) if sizes else 0
-        total_h = sum(sz[1] for sz in sizes) + (len(lines)-1)*UI["line_spacing"]
-        if L["anchor"] == "top":
-            tx = x; ty_base = y - UI["overlay_margin"]
-            start_y = ty_base - total_h + sizes[0][1]
-        else:
-            tx = x; start_y = y + h + UI["overlay_margin"] + sizes[0][1]
-        bx1 = tx - 4; by1 = int(start_y - sizes[0][1] - 4)
-        bx2 = tx + max_w + 8; by2 = int(start_y + total_h + 4)
-        ih, iw = img.shape[:2]
-        bx1 = max(2, bx1); by1 = max(2, by1); bx2 = min(iw-2, bx2); by2 = min(ih-2, by2)
-        overlay = img.copy()
-        cv2.rectangle(overlay, (bx1,by1), (bx2,by2), (0,0,0), -1)
-        cv2.addWeighted(overlay, UI["label_bg_alpha"], img, 1 - UI["label_bg_alpha"], 0, img)
-        cur_y = int(start_y)
-        for s in lines:
-            cv2.putText(img, s, (tx, cur_y), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
-            cur_y += cv2.getTextSize(s, UI["font"], fs, th)[0][1] + UI["line_spacing"]
+        # draw rect
+        cv2.rectangle(img, (x, y), (x + w, y + h), color, thickness)
+
+        # draw label INSIDE ROI (top-left), no bg, fixed 2 lines max
+        tx = x + 4
+        ty = y + 16
+        cv2.putText(img, line1, (tx, ty), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
+        if line2:
+            cv2.putText(img, line2, (tx, ty + 16), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
