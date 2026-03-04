@@ -220,9 +220,11 @@ class Inspector:
     #         json.dump(recipe, f, ensure_ascii=False, indent=2)
 
     def autotune_recipe_from_frame(self, frame_gray8, save_path=None):
+        import copy
         target_mean = 50.0
         margin = 10.0
         save_path = save_path or self.recipe_path
+        
         """
         현재 프레임 기준으로 ROI별 mean을 읽고
         recipe_static.json(overrides)에 ROI별 min/max를 자동 생성해서 저장
@@ -250,11 +252,18 @@ class Inspector:
                 "max_mean": float(mx),
             }
 
-        recipe = {
-            "default": {"type": "mean_threshold", "min_mean": 0.0, "max_mean": 255.0},
-            "overrides": overrides,
-            "decision": {"mode": "any_fail_is_ng"},
-        }
+        # 기존 recipe를 베이스로 복사해서, overrides만 교체
+        base = self.recipe if isinstance(self.recipe, dict) else {}
+        recipe = copy.deepcopy(base)
+
+        # default는 없으면 넣고, 있으면 유지(원하면 여기서만 type 보정)
+        recipe.setdefault("default", {"type": "mean_threshold", "min_mean": 0.0, "max_mean": 255.0})
+
+        # 핵심: AUTO는 overrides만 갱신
+        recipe["overrides"] = overrides
+
+        # decision은 절대 건드리지 않음(없으면 기본값만 세팅)
+        recipe.setdefault("decision", {"mode": "any_fail_is_ng"})
 
         save_recipe(save_path, recipe)
         self.recipe = recipe  # 즉시 반영
