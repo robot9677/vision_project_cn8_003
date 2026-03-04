@@ -29,6 +29,7 @@ class Inspector:
         self.logs_root = logs_root
         auto_path = os.path.join(os.path.dirname(recipe_path), "recipe_auto.json")
         self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
+        print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
         self.mean_filter = TemporalMeanFilter(win=5)
         self.tracker = ROITracker(search_margin=20, thr=0.6)
 
