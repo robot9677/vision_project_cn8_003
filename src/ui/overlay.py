@@ -76,6 +76,25 @@ def draw_control_bar(img, buttons: List[Dict[str,Any]]) -> List[Dict[str, Any]]:
         cv2.putText(img, label, (tx, ty), UI["font"], 0.7, (255,255,255), 2, cv2.LINE_AA)
     return buttons
 
+def roi_label_pos(x, y, w, h, img_w, img_h, where="top", margin=6):
+    """
+    where: "top" or "inside"
+    return: (tx, ty_line1, line_gap)
+    """
+    line_gap = 16
+    tx = x
+
+    if where == "inside":
+        ty = y + 16
+        return tx + 4, ty, line_gap
+
+    # where == "top": ROI 박스 위로
+    ty = y - margin
+    # 화면 위로 튀면 아래로 내림
+    if ty < 18:
+        ty = y + h + 18
+    return tx, ty, line_gap
+
 def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict[str,Any]] = None):
     """
     roi_list: list of dicts {'id','name','x','y','w','h'} or object with .rois attribute
@@ -160,9 +179,9 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
         # draw rect
         cv2.rectangle(img, (x, y), (x + w, y + h), color, thickness)
 
-        # draw label INSIDE ROI (top-left), no bg, fixed 2 lines max
-        tx = x + 4
-        ty = y + 16
+        # label position policy (one place to tweak)
+        tx, ty, gap = roi_label_pos(x, y, w, h, img.shape[1], img.shape[0], where="top", margin=6)
+
         cv2.putText(img, line1, (tx, ty), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
         if line2:
-            cv2.putText(img, line2, (tx, ty + 16), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
+            cv2.putText(img, line2, (tx, ty + gap), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
