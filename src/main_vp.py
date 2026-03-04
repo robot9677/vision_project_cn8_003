@@ -767,12 +767,12 @@ def main():
                             except Exception as e:
                                 print("[STAB] auto-commit failed:", e)
 
-                    # draw moved ROIs (visible green)
-                    for mr in moved:
-                        x,y,w,h = int(mr["x"]), int(mr["y"]), int(mr["w"]), int(mr["h"])
-                        overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
-                        if mr.get("name"):
-                            cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+                    # # draw moved ROIs (visible green)
+                    # for mr in moved:
+                    #     x,y,w,h = int(mr["x"]), int(mr["y"]), int(mr["w"]), int(mr["h"])
+                    #     overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                    #     if mr.get("name"):
+                    #         cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
 
                     # --- ROI metric overlay (복원) ---
                     try:
