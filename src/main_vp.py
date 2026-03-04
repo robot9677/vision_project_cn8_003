@@ -561,7 +561,6 @@ def main():
                     #      None if frame_gray_for_inspect is None else (frame_gray_for_inspect.shape, frame_gray_for_inspect.dtype))
 
                     # call inspect and log full results
-                    overall_ok, results = inspector.inspect(frame_gray_for_inspect)
                     frames = []
                     for _ in range(5):
                         f = cam.read()
