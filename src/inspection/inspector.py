@@ -302,17 +302,52 @@ class Inspector:
         
         self._prune_logs(max_keep=200)
 
-    def _prune_logs(self, max_keep=200):
+    def _prune_logs(self, max_keep=200, max_mb=300):
         try:
-            files = []
+            os.makedirs(self.logs_root, exist_ok=True)
+
+            # 1) inspect_*.json만 정리(최신 max_keep 유지)
+            jsons = []
             for fn in os.listdir(self.logs_root):
                 if fn.startswith("inspect_") and fn.endswith(".json"):
-                    files.append(os.path.join(self.logs_root, fn))
-            files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-            for p in files[max_keep:]:
+                    p = os.path.join(self.logs_root, fn)
+                    jsons.append(p)
+
+            jsons.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+
+            for p in jsons[max_keep:]:
                 try:
                     os.remove(p)
                 except Exception:
                     pass
+
+            # 2) 폴더 용량 제한 (오래된 것부터 삭제)
+            max_bytes = int(max_mb * 1024 * 1024)
+            files = []
+            total = 0
+
+            for root, _, fns in os.walk(self.logs_root):
+                for fn in fns:
+                    p = os.path.join(root, fn)
+                    try:
+                        st = os.stat(p)
+                    except Exception:
+                        continue
+                    files.append((st.st_mtime, p, st.st_size))
+                    total += st.st_size
+
+            if total <= max_bytes:
+                return
+
+            files.sort(key=lambda t: t[0])  # 오래된 순
+            for _mtime, p, sz in files:
+                try:
+                    os.remove(p)
+                    total -= sz
+                except Exception:
+                    pass
+                if total <= max_bytes:
+                    break
+
         except Exception:
             pass
