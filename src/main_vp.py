@@ -210,6 +210,7 @@ def main():
     # load ROI file if exists; load returns bool but ignore failures
     try:
         roi_mgr.load(ROI_PATH)
+        print("[DBG ROI COUNT]", len(getattr(roi_mgr, "rois", [])))
     except Exception:
         pass
 
@@ -428,6 +429,7 @@ def main():
                 try:
                     if os.path.exists(ROI_PATH):
                         roi_mgr.load(ROI_PATH)
+                        print("[DBG ROI COUNT]", len(getattr(roi_mgr, "rois", [])))
                         status = "ROI Reloaded"
                     else:
                         status = "No ROI file"
