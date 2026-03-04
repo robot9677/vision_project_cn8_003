@@ -122,7 +122,10 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
                     lines[0] = f"ROI{rid} OK"
                 elif ok is False:
                     color = UI["roi_ng_color"]
-                    lines[0] = f"ROI{rid} NG:{reason}"
+                    lines[0] = f"ROI{rid} NG"
+                    if reason:
+                        lines.insert(1, str(reason)[:24])  # reason은 24자까지만 (넘치면 잘림)
+                        
                 meanv = metrics.get("mean", metrics.get("mean_raw", None))
                 scorev = metrics.get("score", None)
                 p = []
