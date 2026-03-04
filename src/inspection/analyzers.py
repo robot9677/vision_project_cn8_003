@@ -1,6 +1,8 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Callable
 import numpy as np
 import cv2
+
+AnalyzerFn = Callable[[np.ndarray, Dict[str, Any]], Tuple[bool, Dict[str, Any], str]]
 
 def analyze_mean_threshold(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
     mean = float(np.mean(crop)) if crop.size else 0.0
@@ -27,12 +29,23 @@ def analyze_edge_energy(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Di
     metrics = {"edge_var": edge_var, "min_edge": thr}
     return ok, metrics, reason
 
+# 타입 등록 테이블 (주요)
+ANALYZERS: Dict[str, AnalyzerFn] = {
+    # mean threshold
+    "mean": analyze_mean_threshold,
+    "mean_threshold": analyze_mean_threshold,
+    "threshold": analyze_mean_threshold,
+
+    # edge energy
+    "edge": analyze_edge_energy,
+    "edge_energy": analyze_edge_energy,
+    "lap_var": analyze_edge_energy,
+    "laplacian_var": analyze_edge_energy,
+}
+
 def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
     a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
-
-    if a_type in ("mean", "mean_threshold", "threshold"):
-        return analyze_mean_threshold(crop, cfg)
-    if a_type in ("edge", "edge_energy", "lap_var", "laplacian_var"):
-        return analyze_edge_energy(crop, cfg)
-
-    return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
+    fn = ANALYZERS.get(a_type)
+    if fn is None:
+        return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
+    return fn(crop, cfg)
