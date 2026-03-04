@@ -172,52 +172,52 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                 cur_y += heights[i+1] + line_spacing
 
 
-def draw_overall_banner(img, overall_ok, info=None, anchor="rb", margin=(12, 88)):
-    """
-    anchor: "rb"(right-bottom), "rt", "lb", "lt", "ct"
-    margin: (mx, my)  # anchor 기준으로 안쪽 여백(px)
-    """
+def draw_overall_banner(img, overall_ok, info=None):
     h, w = img.shape[:2]
+
+    # ----- 위치 정책 (여기만 수정하면 전체 위치 변경됨) -----
+    POS = {
+        "overall": ("ct", (0, 25)),      # center-top
+        "debug":   ("rb", (12, 88)),     # right-bottom (버튼바 피해서)
+    }
+    # -------------------------------------------------------
+
     ng = int(info.get("ng", 0)) if isinstance(info, dict) else 0
     total = int(info.get("total", 0)) if isinstance(info, dict) else 0
 
-    text = f"OVERALL: {'OK' if overall_ok else 'NG'} ({ng}/{total} NG)"
+    text  = f"OVERALL: {'OK' if overall_ok else 'NG'} ({ng}/{total} NG)"
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
 
-    mx, my = margin
-
-    # --- anchor -> (x,y,align) ---
-    if anchor == "rb":
-        x, y, align = w - mx, h - my, "rb"   # 우측 하단
-    elif anchor == "rt":
-        x, y, align = w - mx, my, "rt"
-    elif anchor == "lb":
-        x, y, align = mx, h - my, "lb"
-    elif anchor == "lt":
-        x, y, align = mx, my, "lt"
-    else:  # "ct"
-        x, y, align = w // 2, my, "ct"
-
+    # ---- OVERALL (중앙 상단) ----
+    align, (mx, my) = POS["overall"]
+    x = w // 2 + mx
+    y = my
     draw_text(img, text, (x, y), color=color, scale=0.9, thickness=2, align=align)
 
-    # debug line: default는 overall 바로 위에 작게(우측 하단 기준)
+    # ---- debug (우측 하단) ----
     if isinstance(info, dict):
         parts = []
+
         if "norm_gain" in info:
             try:
                 parts.append(f"gain={float(info['norm_gain']):.2f}")
             except Exception:
                 parts.append(f"gain={info['norm_gain']}")
+
         if "dx" in info:
             parts.append(f"dx={int(info['dx'])}")
+
         if "dy" in info:
             parts.append(f"dy={int(info['dy'])}")
 
         if parts:
-            debug = "  ".join(parts)
-            # overall 바로 위로 1줄
-            dy_line = 18
-            draw_text(img, debug, (x, y - dy_line), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
+            dbg = "  ".join(parts)
+
+            align, (mx, my) = POS["debug"]
+            x = w - mx
+            y = h - my
+
+            draw_text(img, dbg, (x, y), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
 
 
 def draw_control_bar(img, buttons):
