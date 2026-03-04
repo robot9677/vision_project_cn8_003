@@ -35,7 +35,8 @@ ANALYZERS: Dict[str, AnalyzerFn] = {
     "mean": analyze_mean_threshold,
     "mean_threshold": analyze_mean_threshold,
     "threshold": analyze_mean_threshold,
-
+    "mean_score": analyze_mean_score,   
+    
     # edge energy
     "edge": analyze_edge_energy,
     "edge_energy": analyze_edge_energy,
@@ -49,3 +50,35 @@ def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str,
     if fn is None:
         return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
     return fn(crop, cfg)
+
+def analyze_mean_score(crop: np.ndarray, cfg: Dict[str, Any]):
+    mean = float(np.mean(crop)) if crop.size else 0.0
+    std  = float(np.std(crop)) if crop.size else 0.0
+
+    mn = float(cfg.get("min_mean", 0))
+    mx = float(cfg.get("max_mean", 255))
+    min_score = float(cfg.get("min_score", 0.0))
+
+    score = std
+
+    ok_mean = mn <= mean <= mx
+    ok_score = score >= min_score
+
+    ok = ok_mean and ok_score
+
+    if not ok_mean:
+        reason = "MEAN_OUT"
+    elif not ok_score:
+        reason = "LOW_SCORE"
+    else:
+        reason = "OK"
+
+    metrics = {
+        "mean": mean,
+        "score": score,
+        "min_mean": mn,
+        "max_mean": mx,
+        "min_score": min_score
+    }
+
+    return ok, metrics, reason
