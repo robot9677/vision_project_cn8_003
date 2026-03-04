@@ -161,22 +161,22 @@ class Inspector:
             else:
                 if mode == "any_fail_is_ng":
                     overall_ok = all(oks)
-                   # print("[DBG] overall decision by recipe : any_fail_is_ng")
+                    print("[DBG] overall decision by recipe : any_fail_is_ng")
 
                 elif mode == "majority_ok":
                     overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
-                   # print("[DBG] overall decision by recipe : majority_ok")
+                    print("[DBG] overall decision by recipe : majority_ok")
 
                 elif mode == "allow_fail_count":
                     max_fail = int(decision.get("max_fail", 0))
                     fail_cnt = sum(1 for v in oks if not v)
                     overall_ok = (fail_cnt <= max_fail)
-                   # print("[DBG] overall decision by recipe : allow_fail_count")
+                    print("[DBG] overall decision by recipe : allow_fail_count")
 
                 else:
                     # fallback
                     overall_ok = all(oks)
-                   # print("[DBG] overall decision by recipe : fallback")
+                    print("[DBG] overall decision by recipe : fallback")
 
             return overall_ok, results
 
