@@ -174,9 +174,15 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
 def draw_overall_banner(img, overall_ok, info=None):
     h, w = img.shape[:2]
-    text = "OVERALL: OK" if overall_ok else "OVERALL: NG"
+    text  = "OVERALL: OK" if overall_ok else "OVERALL: NG"
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
-    draw_text(img, text, (410, h - 718), color=color, scale=0.9, thickness=2, align="lt")
+
+    # --- anchor based placement ---
+    margin_top = 36
+    # center-top anchor (ct): x=w//2, y=margin_top
+    draw_text(img, text, (w // 2, margin_top), color=color, scale=0.9, thickness=2, align="ct")
+
+    # optional small debug line at bottom-left (kept small, doesn't fight buttons if you choose)
     if info and isinstance(info, dict):
         parts = []
         if "norm_gain" in info:
@@ -189,7 +195,7 @@ def draw_overall_banner(img, overall_ok, info=None):
         if "dy" in info:
             parts.append(f"dy={int(info['dy'])}")
         if parts:
-            draw_text(img, "  ".join(parts), (10, h - 36), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align="lt")
+            draw_text(img, "  ".join(parts), (10, h - 120), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align="lt")
 
 
 def draw_control_bar(img, buttons):
