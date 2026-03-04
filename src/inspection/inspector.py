@@ -160,32 +160,32 @@ class Inspector:
 
             print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
 
-            # --- overall decision by recipe ---
-            decision = (self.recipe.get("decision") or {})
-            mode = (decision.get("mode") or "any_fail_is_ng").strip().lower()
+        # --- overall decision by recipe ---
+        decision = (self.recipe.get("decision") or {})
+        mode = (decision.get("mode") or "any_fail_is_ng").strip().lower()
 
-            oks = [r.ok for r in results.values()]
-            if not oks:
-                overall_ok = False
+        oks = [r.ok for r in results.values()]
+        if not oks:
+            overall_ok = False
+        else:
+            if mode == "any_fail_is_ng":
+                overall_ok = all(oks)
+                print("[DBG] overall decision by recipe : any_fail_is_ng")
+
+            elif mode == "majority_ok":
+                overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
+                print("[DBG] overall decision by recipe : majority_ok")
+
+            elif mode == "allow_fail_count":
+                max_fail = int(decision.get("max_fail", 0))
+                fail_cnt = sum(1 for v in oks if not v)
+                overall_ok = (fail_cnt <= max_fail)
+                print("[DBG] overall decision by recipe : allow_fail_count")
+
             else:
-                if mode == "any_fail_is_ng":
-                    overall_ok = all(oks)
-                    print("[DBG] overall decision by recipe : any_fail_is_ng")
-
-                elif mode == "majority_ok":
-                    overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
-                    print("[DBG] overall decision by recipe : majority_ok")
-
-                elif mode == "allow_fail_count":
-                    max_fail = int(decision.get("max_fail", 0))
-                    fail_cnt = sum(1 for v in oks if not v)
-                    overall_ok = (fail_cnt <= max_fail)
-                    print("[DBG] overall decision by recipe : allow_fail_count")
-
-                else:
-                    # fallback
-                    overall_ok = all(oks)
-                    print("[DBG] overall decision by recipe : fallback")
+                # fallback
+                overall_ok = all(oks)
+                print("[DBG] overall decision by recipe : fallback")
 
         return overall_ok, results
 
