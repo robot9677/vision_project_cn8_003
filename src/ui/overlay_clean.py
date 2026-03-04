@@ -217,7 +217,7 @@ def draw_overall_banner(img, overall_ok, info=None):
             x = w - mx
             y = h - my
 
-            draw_text(img, dbg, (x-250, y+10), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
+            draw_text(img, dbg, (x-250, y+7), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
 
 
 def draw_control_bar(img, buttons):
