@@ -576,6 +576,20 @@ def main():
                     else:
                         avg = frame_gray_for_inspect
 
+                    # --- final ROI alignment before inspect ---
+                    if tracker is not None and frame_gray_for_inspect is not None:
+                        moved2 = []
+                        for r in moved:
+                            x = int(r["x"]); y = int(r["y"]); w = int(r["w"]); h = int(r["h"])
+                            try:
+                                nx, ny, nw, nh = tracker.track(frame_gray_for_inspect, x, y, w, h)
+                            except Exception:
+                                nx, ny, nw, nh = x, y, w, h
+
+                            moved2.append({"id": r["id"], "name": r.get("name",""), "x": nx, "y": ny, "w": nw, "h": nh})
+
+                        moved = moved2
+
                     overall_ok, results = inspector.inspect(avg)
 
                     # save run artifacts
