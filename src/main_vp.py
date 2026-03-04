@@ -539,74 +539,66 @@ def main():
             
             if cmd == UICmd.INSPECT and not space_lock:
                 try:
-                    # DEBUG wrapper for inspect
-                    #print("[DBG] INSPECT requested")
                     space_lock = True
 
-                    # ensure grayscale frame is passed
-                    frame_gray_for_inspect = None
+                    # 0) tracker 확보 (로컬 스코프)
+                    tracker = getattr(inspector, "tracker", None)
+
+                    # 1) grayscale frame
+                    frame_gray = None
                     try:
                         if frame is None:
-                            frame_gray_for_inspect = None
+                            frame_gray = None
                         elif hasattr(frame, "ndim") and frame.ndim == 2:
-                            frame_gray_for_inspect = frame
+                            frame_gray = frame
                         elif hasattr(frame, "shape") and frame.shape[2] == 3:
-                            frame_gray_for_inspect = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                         else:
-                            frame_gray_for_inspect = frame
-                    except Exception as _e:
-                        frame_gray_for_inspect = frame
+                            frame_gray = frame
+                    except Exception:
+                        frame_gray = frame
 
-                    #print("[DBG] INSPECT frame shape/dtype:",
-                    #      None if frame_gray_for_inspect is None else (frame_gray_for_inspect.shape, frame_gray_for_inspect.dtype))
-
-                    # call inspect and log full results
+                    # 2) 5프레임 평균
                     frames = []
                     for _ in range(5):
                         f = cam.read()
                         if f is None:
                             continue
-                        if f.ndim == 3:
+                        if getattr(f, "ndim", 0) == 3:
                             f = f[:, :, 0]
                         frames.append(f)
 
-                    if frames:
-                        avg = np.mean(frames, axis=0).astype("uint8")
-                    else:
-                        avg = frame_gray_for_inspect
+                    avg = np.mean(frames, axis=0).astype("uint8") if frames else frame_gray
 
-                    # --- final ROI alignment before inspect ---
-                    if tracker is not None and frame_gray_for_inspect is not None:
+                    # 3) (선택) INSPECT 직전 1회 더 트래킹 보정: moved가 있을 때만
+                    # moved 변수는 RUN loop에서 계산된 걸 쓰는 구조라면 여기서 존재할 수 있음
+                    if tracker is not None and avg is not None and "moved" in locals():
                         moved2 = []
                         for r in moved:
                             x = int(r["x"]); y = int(r["y"]); w = int(r["w"]); h = int(r["h"])
                             try:
-                                nx, ny, nw, nh = tracker.track(frame_gray_for_inspect, x, y, w, h)
+                                nx, ny, nw, nh = tracker.track(avg, x, y, w, h)
                             except Exception:
                                 nx, ny, nw, nh = x, y, w, h
-
-                            moved2.append({"id": r["id"], "name": r.get("name",""), "x": nx, "y": ny, "w": nw, "h": nh})
-
+                            moved2.append({"id": r.get("id"), "name": r.get("name",""), "x": nx, "y": ny, "w": nw, "h": nh})
                         moved = moved2
 
+                    # 4) inspect 딱 1번
                     overall_ok, results = inspector.inspect(avg)
 
-                    # save run artifacts
+                    # 5) save/log/ui
                     try:
-                        run_dir = inspector.save_run(frame_gray_for_inspect, vis.copy(), overall_ok, results)
-                        # print("[DBG] saved run to", run_dir)
+                        run_dir = inspector.save_run(avg, vis.copy(), overall_ok, results)
                     except Exception as e:
                         print("[DBG] save_run failed:", e)
 
-                    # store for UI overlay
                     last_results = {str(k): v for k, v in results.items()} if results else {}
                     last_overall_ok = overall_ok
                     status = f"INSPECT {'OK' if overall_ok else 'NG'}"
                     inspector.log_result(last_overall_ok, last_results)
+
                 except Exception as e:
-                    # print detailed exception info but keep app alive
                     import traceback
-                    #print("[DBG] inspect failed exception:", e)
                     traceback.print_exc()
                     status = f"Inspect failed: {e}"
                 finally:
