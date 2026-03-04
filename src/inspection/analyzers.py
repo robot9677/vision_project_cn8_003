@@ -29,28 +29,6 @@ def analyze_edge_energy(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Di
     metrics = {"edge_var": edge_var, "min_edge": thr}
     return ok, metrics, reason
 
-# 타입 등록 테이블 (주요)
-ANALYZERS: Dict[str, AnalyzerFn] = {
-    # mean threshold
-    "mean": analyze_mean_threshold,
-    "mean_threshold": analyze_mean_threshold,
-    "threshold": analyze_mean_threshold,
-    "mean_score": analyze_mean_score,   
-    
-    # edge energy
-    "edge": analyze_edge_energy,
-    "edge_energy": analyze_edge_energy,
-    "lap_var": analyze_edge_energy,
-    "laplacian_var": analyze_edge_energy,
-}
-
-def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
-    a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
-    fn = ANALYZERS.get(a_type)
-    if fn is None:
-        return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
-    return fn(crop, cfg)
-
 def analyze_mean_score(crop: np.ndarray, cfg: Dict[str, Any]):
     mean = float(np.mean(crop)) if crop.size else 0.0
     std  = float(np.std(crop)) if crop.size else 0.0
@@ -82,3 +60,25 @@ def analyze_mean_score(crop: np.ndarray, cfg: Dict[str, Any]):
     }
 
     return ok, metrics, reason
+
+# 타입 등록 테이블 (주요)
+ANALYZERS: Dict[str, AnalyzerFn] = {
+    # mean threshold
+    "mean": analyze_mean_threshold,
+    "mean_threshold": analyze_mean_threshold,
+    "threshold": analyze_mean_threshold,
+    "mean_score": analyze_mean_score,   
+
+    # edge energy
+    "edge": analyze_edge_energy,
+    "edge_energy": analyze_edge_energy,
+    "lap_var": analyze_edge_energy,
+    "laplacian_var": analyze_edge_energy,
+}
+
+def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
+    fn = ANALYZERS.get(a_type)
+    if fn is None:
+        return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
+    return fn(crop, cfg)
