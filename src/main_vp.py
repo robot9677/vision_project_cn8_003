@@ -115,18 +115,30 @@ def ensure_dirs():
     os.makedirs(os.path.join(DATA_DIR, "images", "ok"), exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "images", "ng"), exist_ok=True)
 
-def _extract_info_from_results(last_results):
-    if not last_results:
-        return None
-    for v in last_results.values():
-        metrics = getattr(v, "metrics", None) if not isinstance(v, dict) else v.get("metrics", None)
-        if isinstance(metrics, dict):
-            return {
-                "norm_gain": metrics.get("norm_gain", 1.0),
-                "dx": metrics.get("dx", 0),
-                "dy": metrics.get("dy", 0),
-            }
-    return None
+def _extract_info_from_results(results):
+    if not results:
+        return {}
+
+    total = len(results)
+    ng = sum(1 for r in results.values() if not r.ok)
+
+    info = {
+        "total": total,
+        "ng": ng,
+    }
+
+    # optional: 기존 정보 유지
+    for r in results.values():
+        m = r.metrics or {}
+        if "norm_gain" in m:
+            info["norm_gain"] = m["norm_gain"]
+        if "dx" in m:
+            info["dx"] = m["dx"]
+        if "dy" in m:
+            info["dy"] = m["dy"]
+        break
+
+    return info
 
 def draw_dev_hud(img, edit_mode):
     """Draw keyboard help when DEV_MODE is True."""

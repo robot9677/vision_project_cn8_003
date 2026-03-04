@@ -174,7 +174,9 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
 def draw_overall_banner(img, overall_ok, info=None):
     h, w = img.shape[:2]
-    text  = "OVERALL: OK" if overall_ok else "OVERALL: NG"
+    ng = info.get("ng",0) if info else 0
+    total = info.get("total",0) if info else 0
+    text  = f"OVERALL: { 'OK' if overall_ok else 'NG'} ({ng}/{total} NG)"
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
 
     # --- anchor based placement ---
