@@ -151,8 +151,30 @@ class Inspector:
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
-        overall_ok = all(r.ok for r in results.values()) if results else False
-        return overall_ok, results
+            # --- overall decision by recipe ---
+            decision = (self.recipe.get("decision") or {})
+            mode = (decision.get("mode") or "any_fail_is_ng").strip().lower()
+
+            oks = [r.ok for r in results.values()]
+            if not oks:
+                overall_ok = False
+            else:
+                if mode == "any_fail_is_ng":
+                    overall_ok = all(oks)
+
+                elif mode == "majority_ok":
+                    overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
+
+                elif mode == "allow_fail_count":
+                    max_fail = int(decision.get("max_fail", 0))
+                    fail_cnt = sum(1 for v in oks if not v)
+                    overall_ok = (fail_cnt <= max_fail)
+
+                else:
+                    # fallback
+                    overall_ok = all(oks)
+
+            return overall_ok, results
 
 
     def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
