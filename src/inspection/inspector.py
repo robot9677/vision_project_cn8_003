@@ -265,7 +265,10 @@ class Inspector:
         # decision은 절대 건드리지 않음(없으면 기본값만 세팅)
         recipe.setdefault("decision", {"mode": "any_fail_is_ng"})
 
+        print("[DBG AUTO] decision(before save) =", recipe.get("decision"))
         save_recipe(save_path, recipe)
+        print("[DBG AUTO] saved to", save_path)
+        print("[DBG AUTO] decision(after save read) =", load_recipe(save_path).get("decision"))
         self.recipe = recipe  # 즉시 반영
         return recipe
     
