@@ -180,7 +180,7 @@ def draw_overall_banner(img, overall_ok, info=None):
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
 
     # --- anchor based placement ---
-    margin_top = 36
+    margin_top = 25
     # center-top anchor (ct): x=w//2, y=margin_top
     draw_text(img, text, (w // 2, margin_top), color=color, scale=0.9, thickness=2, align="ct")
 
