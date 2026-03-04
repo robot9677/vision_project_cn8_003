@@ -188,6 +188,8 @@ class Inspector:
     #         json.dump(recipe, f, ensure_ascii=False, indent=2)
 
     def autotune_recipe_from_frame(self, frame_gray8, save_path=None):
+        target_mean = 50.0
+        margin = 10.0
         save_path = save_path or self.recipe_path
         """
         현재 프레임 기준으로 ROI별 mean을 읽고
