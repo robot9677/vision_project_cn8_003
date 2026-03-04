@@ -731,9 +731,9 @@ def main():
                         for mr in smoothed:
                             x = int(round(mr["x"])); y = int(round(mr["y"]))
                             w = int(mr["w"]); h = int(mr["h"])
-                            # overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
-                            # if mr.get("name"):
-                            #     cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+                            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                            if mr.get("name"):
+                                cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
 
                         # optionally show stability on status bar / overlay
                         if stable:
