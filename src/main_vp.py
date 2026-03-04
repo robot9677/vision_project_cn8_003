@@ -731,9 +731,9 @@ def main():
                         for mr in smoothed:
                             x = int(round(mr["x"])); y = int(round(mr["y"]))
                             w = int(mr["w"]); h = int(mr["h"])
-                            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
-                            if mr.get("name"):
-                                cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
+                            # overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+                            # if mr.get("name"):
+                            #     cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
 
                         # optionally show stability on status bar / overlay
                         if stable:
@@ -767,54 +767,60 @@ def main():
                             except Exception as e:
                                 print("[STAB] auto-commit failed:", e)
 
-                    # # draw moved ROIs (visible green)
-                    # for mr in moved:
-                    #     x,y,w,h = int(mr["x"]), int(mr["y"]), int(mr["w"]), int(mr["h"])
-                    #     overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
-                    #     if mr.get("name"):
-                    #         cv2.putText(vis, str(mr["name"]), (x, max(12, y-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,200,0), 1, cv2.LINE_AA)
-                        #print("[DBG] draw_rois_clean called, moved=", len(moved), "results=", 0 if last_results is None else len(last_results))
-                        draw_rois_clean(vis, moved, roi_results=last_results)
-                    # --- ROI metric overlay (복원) ---
+                    # --- ROI overlay (single source of truth) ---
                     try:
                         if last_results:
                             for mr in moved:
-                                rid = str(mr.get("id"))
-                                # last_results stores ROIResult or dict depending on flow
-                                lr = last_results.get(rid) or last_results.get(int(rid))
+                                rid_obj = mr.get("id")
+                                rid = str(rid_obj)
+
+                                lr = last_results.get(rid) or last_results.get(int(rid_obj)) if rid_obj is not None else last_results.get(rid)
                                 if lr is None:
                                     continue
-                                # extract metrics dict safely
+
                                 if hasattr(lr, "metrics"):
-                                    metrics = lr.metrics
-                                    ok_flag = lr.ok
+                                    metrics = lr.metrics or {}
+                                    ok_flag = bool(lr.ok)
+                                    reason = getattr(lr, "reason", "") or ""
                                 elif isinstance(lr, dict):
-                                    metrics = lr.get("metrics", {})
-                                    ok_flag = lr.get("ok", None)
+                                    metrics = (lr.get("metrics") or {})
+                                    ok_flag = bool(lr.get("ok", False))
+                                    reason = lr.get("reason", "") or ""
                                 else:
                                     metrics = {}
-                                    ok_flag = None
+                                    ok_flag = False
+                                    reason = ""
 
-                                # build text: mean and score (fall back to raw keys)
-                                mean_v = metrics.get("mean", metrics.get("mean_raw", None))
-                                score_v = metrics.get("score", None)
-                                status_txt = "OK" if ok_flag else ("NG" if ok_flag is not None else "")
-                                parts = []
-                                if mean_v is not None:
-                                    parts.append(f"m:{mean_v:.1f}")
-                                if score_v is not None:
-                                    parts.append(f"s:{score_v:.2f}")
-                                if status_txt:
-                                    parts.append(status_txt)
-                                if not parts:
-                                    continue
+                                x = int(mr["x"]); y = int(mr["y"]); w = int(mr["w"]); h = int(mr["h"])
 
-                                txt = " ".join(parts)
-                                tx = int(mr["x"]) + 40
-                                ty = int(mr["y"]) - 6 if int(mr["y"]) - 6 > 12 else int(mr["y"]) + 14
-                                overlay.draw_text(vis, txt, (tx, ty -5), color=(255, 220, 20), scale=0.45, thickness=1)
+                                # 1) box color
+                                box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
+                                overlay.draw_rect(vis, (x, y), (x + w, y + h), color=box_color, thickness=2)
+
+                                # 2) line1: ROI + OK/NG
+                                line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
+
+                                # 3) line2: NG면 reason, OK면 m/s
+                                if ok_flag:
+                                    mean_v = metrics.get("mean", metrics.get("mean_raw", None))
+                                    score_v = metrics.get("score", None)
+                                    parts = []
+                                    if mean_v is not None:
+                                        parts.append(f"m:{float(mean_v):.1f}")
+                                    if score_v is not None:
+                                        parts.append(f"s:{float(score_v):.2f}")
+                                    line2 = " ".join(parts) if parts else ""
+                                else:
+                                    line2 = str(reason)[:24] if reason else "FAIL"
+
+                                # label position: ROI 바깥 오른쪽 위(겹침 최소)
+                                tx = x + w + 6
+                                ty = y + 12
+
+                                overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
+                                if line2:
+                                    overlay.draw_text(vis, line2, (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1)
                     except Exception:
-                        # don't crash UI on overlay errors
                         pass
                     # --- end overlay ---
                     
