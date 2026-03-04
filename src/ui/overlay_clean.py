@@ -192,7 +192,7 @@ def draw_overall_banner(img, overall_ok, info=None):
     align, (mx, my) = POS["overall"]
     x = w // 2 + mx
     y = my
-    draw_text(img, text, (x, y), color=color, scale=0.9, thickness=2, align=align)
+    draw_text(img, text, (x, y-10), color=color, scale=0.5, thickness=2, align=align)
 
     # ---- debug (우측 하단) ----
     if isinstance(info, dict):
@@ -217,7 +217,7 @@ def draw_overall_banner(img, overall_ok, info=None):
             x = w - mx
             y = h - my
 
-            draw_text(img, dbg, (x-100, y), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
+            draw_text(img, dbg, (x-300, y-10), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
 
 
 def draw_control_bar(img, buttons):
