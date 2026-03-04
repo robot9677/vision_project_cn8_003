@@ -183,7 +183,7 @@ class Inspector:
                     overall_ok = all(oks)
                     print("[DBG] overall decision by recipe : fallback")
 
-            return overall_ok, results
+        return overall_ok, results
 
 
     def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
