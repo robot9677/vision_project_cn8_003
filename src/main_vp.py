@@ -79,6 +79,25 @@ GST_PIPELINE = (
 # alignment template (파일 경로)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "roi", "align_template.png")
 
+def prune_snapshots(path, max_keep=200):
+    try:
+        files = []
+
+        for fn in os.listdir(path):
+            if fn.endswith(".png") or fn.endswith(".jpg"):
+                p = os.path.join(path, fn)
+                files.append((os.path.getmtime(p), p))
+
+        files.sort(reverse=True)
+
+        for _, p in files[max_keep:]:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 def roi_label_pos(x, y, w, h, margin=25):
     """
     ROI 라벨 위치 정책(한 군데만 수정)
@@ -194,6 +213,7 @@ def draw_mode_indicator(img, edit_mode, dev_mode=False):
 def _roi_mgr_to_list(roi_mgr):
     if roi_mgr is None: return []
     return [ {"id": r.get("id"), "label": r.get("name"), "rect": (int(r.get("x",0)), int(r.get("y",0)), int(r.get("w",0)), int(r.get("h",0)))} for r in roi_mgr.rois ]
+
 def main():
     ensure_dirs()
 
@@ -763,6 +783,7 @@ def main():
                                 for mr in smoothed:
                                     roi_for_save = {"id": mr["id"], "x": int(round(mr["x"])), "y": int(round(mr["y"])), "w": int(mr["w"]), "h": int(mr["h"])}
                                     save_snapshot(log_dir, frame_gray8, roi_for_save, prefix="stable")
+                                    prune_snapshots(log_dir)
                                 if hasattr(inspector, "tracker") and getattr(inspector.tracker, "template", None) is not None:
                                     save_template_copy(log_dir, inspector.tracker.template)
                                 last_snapshot_time = time.time()
