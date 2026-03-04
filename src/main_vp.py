@@ -79,6 +79,18 @@ GST_PIPELINE = (
 # alignment template (파일 경로)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "roi", "align_template.png")
 
+def roi_label_pos(x, y, w, h, margin=6):
+    """
+    ROI 라벨 위치 정책(한 군데만 수정)
+    기본: ROI 박스 '위쪽' 좌측
+    """
+    tx = x
+    ty = y - margin
+    # 화면 위로 튀면 박스 아래로 내림
+    if ty < 18:
+        ty = y + h + 18
+    return int(tx), int(ty)
+
 def clahe_equalize(gray8, clip_limit=2.0, tile_grid_size=(8,8)):
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
     return clahe.apply(gray8)
@@ -785,8 +797,7 @@ def main():
 
                                 # 라벨 1줄(ROI 번호만) 항상 표시
                                 line1 = f"ROI{rid}"
-                                tx = x + w + 6
-                                ty = y + 12
+                                tx, ty = roi_label_pos(x, y, w, h)
                                 overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
                                 continue
 
@@ -822,8 +833,7 @@ def main():
                             else:
                                 line2 = str(reason)[:24] if reason else "FAIL"
 
-                            tx = x + w + 6
-                            ty = y + 12
+                            tx, ty = roi_label_pos(x, y, w, h)
                             overlay.draw_text(vis, line1, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1)
                             if line2:
                                 overlay.draw_text(vis, line2, (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1)
