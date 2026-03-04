@@ -79,7 +79,7 @@ GST_PIPELINE = (
 # alignment template (파일 경로)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "roi", "align_template.png")
 
-def roi_label_pos(x, y, w, h, margin=16):
+def roi_label_pos(x, y, w, h, margin=20):
     """
     ROI 라벨 위치 정책(한 군데만 수정)
     기본: ROI 박스 '위쪽' 좌측
