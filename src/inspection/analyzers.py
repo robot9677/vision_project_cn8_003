@@ -76,9 +76,15 @@ ANALYZERS: Dict[str, AnalyzerFn] = {
     "laplacian_var": analyze_edge_energy,
 }
 
-def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
-    a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
-    fn = ANALYZERS.get(a_type)
-    if fn is None:
-        return False, {"error": f"unknown analyzer type: {a_type}"}, "UNKNOWN_ANALYZER"
-    return fn(crop, cfg)
+def run_analyzer(crop: np.ndarray, cfg: Dict[str, Any]):
+    try:
+        a_type = str(cfg.get("type", "mean_threshold")).strip().lower()
+        fn = ANALYZERS.get(a_type)
+
+        if fn is None:
+            return False, {"error": f"unknown analyzer: {a_type}"}, "UNKNOWN_ANALYZER"
+
+        return fn(crop, cfg)
+
+    except Exception as e:
+        return False, {"error": str(e)}, "ANALYZER_EXCEPTION"

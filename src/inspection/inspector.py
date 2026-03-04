@@ -105,12 +105,15 @@ class Inspector:
             metrics["mean_raw"] = mean_raw
             metrics["mean"] = self.mean_filter.update(mean_raw)
 
-            # compute score (texture/edge) and attach
-            try:
-                score = combined_score(crop)
-            except Exception:
-                score = 0.0
-            metrics["score"] = float(score)
+            # compute score only if analyzer needs it
+            need_score = str(cfg.get("type","")).lower() in ("mean_score", "score_threshold", "texture_score")
+
+            if need_score:
+                try:
+                    score = combined_score(crop)
+                except Exception:
+                    score = 0.0
+                metrics["score"] = float(score)
 
             # recipe thresholds (default 및 ROI override)
             default_min = float(self.recipe.get("default", {}).get("min_mean", 0.0))
