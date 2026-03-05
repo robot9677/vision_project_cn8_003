@@ -98,13 +98,8 @@ class Inspector:
             cfg = get_roi_cfg(self.recipe, roi_id)
 
             if "tools" in cfg and cfg.get("tools"):
-                ok, metrics2, reason = run_toolchain(crop, cfg)
-                # 기존 metrics와 합치기(겹치면 toolchain 우선)
-                if metrics is None:
-                    metrics = metrics or {}
-                metrics.update(metrics2 or {})
-            else: 
-                # 기존 analyzer 호출 (유지하되 metrics를 확장)
+                ok, metrics, reason = run_toolchain(crop, cfg)
+            else:
                 ok, metrics, reason = run_analyzer(crop, cfg)
 
             # ensure metrics is a dict
