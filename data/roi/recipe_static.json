@@ -6,9 +6,9 @@
   },
   "overrides": {
     "ROI1": {
-      "type": "mean_threshold",
-      "min_mean": 200,
-      "max_mean": 2553
+      "tools": [
+        {"tool":"enhance.threshold","params":{"mode":"otsu"}}
+      ]
     },
     "ROI2": {
       "type": "mean_threshold",
