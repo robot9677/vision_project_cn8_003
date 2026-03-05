@@ -144,23 +144,33 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
                     reason = entry.get("reason", "") or ""
 
         if ok is True:
-            color = UI["roi_ok_color"]
-            line1 = f"ROI{rid} OK"
             meanv = metrics.get("mean", metrics.get("mean_raw", None))
             scorev = metrics.get("score", None)
+            wr = metrics.get("white_ratio", None)
+            edge = metrics.get("edge_energy", metrics.get("lap_var", metrics.get("laplacian_var", None)))
+            qr = metrics.get("qr_data", None)
+
             parts = []
+
+            def _add_num(label, v, fmt):
+                try:
+                    parts.append(f"{label}:{float(v):{fmt}}")
+                except Exception:
+                    pass
+
             if meanv is not None:
-                try:
-                    parts.append(f"m:{float(meanv):.1f}")
-                except Exception:
-                    pass
+                _add_num("m", meanv, ".1f")
             if scorev is not None:
-                try:
-                    parts.append(f"s:{float(scorev):.2f}")
-                except Exception:
-                    pass
+                _add_num("s", scorev, ".2f")
+            if wr is not None:
+                _add_num("wr", wr, ".2f")
+            if edge is not None:
+                _add_num("e", edge, ".1f")
+            if qr:
+                parts.append(f"qr:{str(qr)[:12]}")
+
             if parts:
-                line2 = " ".join(parts)
+                line2 = " ".join(parts[:2])   # 화면 2개까지만
 
         elif ok is False:
             color = UI["roi_ng_color"]
