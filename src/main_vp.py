@@ -594,7 +594,6 @@ def main():
                             written = True
                         elif hasattr(roi_mgr, "save"):  # fallback: overwrite by saving file directly
                             # overwrite ROI file with moved_rois (as list)
-                            import json
                             with open(ROI_PATH, "w") as f:
                                 json.dump({"rois": moved_rois}, f, indent=2)
                             written = True
@@ -853,7 +852,6 @@ def main():
                                 for mr in smoothed:
                                     commit_rois.append({"id": mr.get("id"), "name": mr.get("name",""), "x": int(round(mr["x"])), "y": int(round(mr["y"])), "w": int(mr["w"]), "h": int(mr["h"])})
                                 # write back (best-effort)
-                                import json
                                 with open(ROI_PATH, "w") as f:
                                     json.dump({"rois": commit_rois}, f, indent=2)
                                 status = "Committed moved ROIs (auto)"
