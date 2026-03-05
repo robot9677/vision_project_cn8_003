@@ -976,7 +976,7 @@ def main():
 
         if show_pose_msg:
             h, w = vis.shape[:2]
-            msg = "Align front (±10~15 deg)"
+            msg = "정면으로 맞춰주세요 (±10~15°)"
             (tw, th), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
             x = (w - tw)//2
             y = 80   # 상단 중앙
@@ -985,7 +985,7 @@ def main():
             overlay.draw_rect(ovl, (x-14, y-26), (x+tw+14, y+10), color=(0,0,0), fill=True)
             cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
 
-            overlay.draw_text(vis, msg, (x, y), color=(255,255,255), scale=0.8, thickness=2, align="lt")
+            overlay.draw_text_kr(vis, msg, (x, y), color=(255,255,255), scale=0.8, thickness=2, align="lt")
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF

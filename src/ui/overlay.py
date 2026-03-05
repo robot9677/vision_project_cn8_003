@@ -1,6 +1,9 @@
 # src/ui/overlay.py
 import cv2
+import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
+from PIL import ImageFont, ImageDraw, Image
+
 
 # Central UI config used by main_vp; these may be overridden by UI_CONFIG in main if desired.
 UI = {
@@ -195,3 +198,15 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
         cv2.putText(img, line1, (tx, ty), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
         if line2:
             cv2.putText(img, line2, (tx, ty + gap), UI["font"], fs, UI["label_text_color"], th, cv2.LINE_AA)
+
+
+def draw_text_kr(img, text, pos, size=28, color=(255,255,255)):
+    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+
+    img_pil = Image.fromarray(img)
+    draw = ImageDraw.Draw(img_pil)
+    font = ImageFont.truetype(font_path, size)
+
+    draw.text(pos, text, font=font, fill=color)
+
+    return np.array(img_pil)
