@@ -1062,9 +1062,9 @@ def main():
                 x = (w - tw)//2
                 y = h - 22
                 ovl = vis.copy()
-                overlay.draw_rect(ovl, (x-10, y-18), (x+tw+10, y+8), color=(0,0,0), fill=True)
+                overlay.draw_rect(ovl, (x-5, y-5), (x+tw+10, y+8), color=(0,0,0), fill=True)
                 cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
-                overlay.draw_text(vis, hint, (x, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
+                overlay.draw_text(vis, hint, (x+50, y+30), color=(220,220,220), scale=0.55, thickness=1, align="lt")
 
         cv2.imshow(win, vis)
 
