@@ -29,8 +29,26 @@ def _threshold(crop, params, ctx):
 
     return th, meta, True, "OK"
 
+def _clahe(crop, params, ctx):
+    import cv2
+    if crop is None or crop.size == 0:
+        return crop, {}, False, "EMPTY"
+
+    if crop.ndim == 3:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = crop
+
+    clip = float(params.get("clip", 2.0))
+    grid = int(params.get("grid", 8))
+    clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(grid, grid))
+    out = clahe.apply(gray)
+    return out, {"clahe": 1}, True, "OK"
+
 def register_enhance_tools() -> None:
 
     register_tool("enhance.noop", _noop)
-    
-    register_tool("enhance.threshold", _threshold)   # ← 여기
+
+    register_tool("enhance.threshold", _threshold)   
+
+    register_tool("enhance.clahe", _clahe)
