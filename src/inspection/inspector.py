@@ -16,6 +16,7 @@ from .roi_tracker import ROITracker
 from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
+from inspection.tools_measure import register_measure_tools
 
 @dataclass
 class ROIResult:
@@ -35,6 +36,7 @@ class Inspector:
         self.mean_filter = TemporalMeanFilter(win=5)
         self.tracker = ROITracker(search_margin=20, thr=0.6)
         register_enhance_tools()
+        register_measure_tools()
 
 
     def reload_recipe(self):

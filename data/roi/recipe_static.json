@@ -7,7 +7,7 @@
   "overrides": {
     "ROI1": {
       "tools": [
-        {"tool":"enhance.threshold","params":{"mode":"otsu"}}
+        {"tool":"measure.edge_energy","params":{"thresh_min":"5.0"}}
       ]
     },
     "ROI2": {
