@@ -970,9 +970,13 @@ def main():
 
 
         # --- pose assist message ---
-        if pose_bad_cnt >= POSE_BAD_N:
+        show_pose_msg = (pose_bad_cnt >= POSE_BAD_N) and (bc != 4)
+        if bc is None:
+            show_pose_msg = False
+
+        if show_pose_msg:
             h, w = vis.shape[:2]
-            msg = "정면으로 맞춰주세요 (±10~15도)"
+            msg = "Align front (±10~15 deg)"
             (tw, th), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
             x = (w - tw)//2
             y = 80   # 상단 중앙
