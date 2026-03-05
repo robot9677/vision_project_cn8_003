@@ -123,14 +123,40 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                 rv = roi_results.get(roi_id)
             if rv:
                 metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
-                mean_v = None
-                if isinstance(metrics, dict):
-                    mean_v = metrics.get("mean", metrics.get("mean_gray", None))
-                if mean_v is not None:
+
+                def _fmt(k, v):
                     try:
-                        line2 = f"m:{float(mean_v):.1f}"
+                        fv = float(v)
+                        # key별 기본 포맷
+                        if k in ("score",):
+                            return f"s:{fv:.2f}"
+                        if k in ("white_ratio",):
+                            return f"wr:{fv:.2f}"
+                        if k in ("edge_energy", "lap_var", "laplacian_var"):
+                            return f"e:{fv:.1f}"
+                        if k in ("mean", "mean_gray", "mean_raw"):
+                            return f"m:{fv:.1f}"
+                        return f"{k}:{fv:.2f}"
                     except Exception:
-                        line2 = f"m:{mean_v}"
+                        # 문자열류(예: qr_data)
+                        sv = str(v)
+                        if k in ("qr_data", "barcode", "text"):
+                            sv = sv[:12]  # 너무 길면 잘라서
+                            return f"qr:{sv}"
+                        return f"{k}:{sv[:12]}"
+
+                parts = []
+                if isinstance(metrics, dict):
+                    # 표시 우선순위
+                    order = ["mean", "score", "white_ratio", "edge_energy", "qr_data"]
+                    for k in order:
+                        if k in metrics and metrics[k] is not None:
+                            parts.append(_fmt(k, metrics[k]))
+                        if len(parts) >= 2:   # line2는 2개까지만
+                            break
+
+                if parts:
+                    line2 = " ".join(parts)
 
         lines = [line1] + ([line2] if line2 else [])
 
