@@ -950,7 +950,7 @@ def main():
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
 
-                # --- RUN mode sample capture (T/K/N) ---
+        # --- RUN mode sample capture (T/K/N) ---
         if (not edit_mode) and key in (ord('t'), ord('T'), ord('k'), ord('K'), ord('n'), ord('N')):
             # 선택 ROI 없으면 ROI1로
             sel = None
@@ -962,47 +962,57 @@ def main():
 
             # 저장 폴더
             base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "dataset"))
-            tag = "OK" if key in (ord('k'), ord('K')) else ("NG" if key in (ord('n'), ord('N')) else "TEMPLATE")
-            out_dir = os.path.join(base, tag)
-            os.makedirs(out_dir, exist_ok=True)
+            is_t = key in (ord('t'), ord('T'))
+            is_k = key in (ord('k'), ord('K'))
+            is_n = key in (ord('n'), ord('N'))
 
-            ts = time.strftime("%Y%m%d_%H%M%S")
-            stem = f"cap_{ts}_ROI{roi_id}"
+            tag = "OK" if is_k else ("NG" if is_n else "TEMPLATE")
 
-            # raw(그레이) / overlay(BGR) / crop 저장
-            raw_path = os.path.join(out_dir, f"{stem}_raw.png")
-            ov_path  = os.path.join(out_dir, f"{stem}_overlay.png")
-            crop_path = os.path.join(out_dir, f"{stem}_crop.png")
+            # T는 dataset에 저장 안 함
+            if not is_t:
+                out_dir = os.path.join(base, tag)
+                os.makedirs(out_dir, exist_ok=True)
 
-            frame_gray8 = frame  # RUN loop에서 frame은 GRAY8로 유지 중 :contentReference[oaicite:2]{index=2}
-            cv2.imwrite(raw_path, frame_gray8)
-            cv2.imwrite(ov_path, vis)
-
-            crop = _crop_roi(frame_gray8, roi_mgr, roi_id)
-            if crop is not None:
-                cv2.imwrite(crop_path, crop)
-            else:
-                crop_path = ""
-
-            meta = {"ts": ts, "tag": tag, "roi_id": roi_id, "raw": raw_path, "overlay": ov_path, "crop": crop_path}
-            jpath = os.path.join(out_dir, f"{stem}.json")
-            with open(jpath, "w", encoding="utf-8") as f:
-                json.dump(meta, f, ensure_ascii=False, indent=2)
-
-            # TEMPLATE은 templates 폴더에 1장 저장 (덮어쓰기)
-            if tag == "TEMPLATE" and crop is not None:
+            if is_t:
+                # 템플릿 1장 덮어쓰기
                 tdir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "templates"))
                 os.makedirs(tdir, exist_ok=True)
-                tpath = os.path.join(tdir, f"tape_ok_ROI{roi_id}.png")
-                cv2.imwrite(tpath, crop)
-                print("[TEMPLATE SAVED]", tpath)
+                crop = _crop_roi(frame_gray8, roi_mgr, roi_id)
+                if crop is not None:
+                    tpath = os.path.join(tdir, f"tape_ok_ROI{roi_id}.png")
+                    cv2.imwrite(tpath, crop)
+                    print("[TEMPLATE SAVED]", tpath)
+            else:
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                stem = f"cap_{ts}_ROI{roi_id}"
 
-            # OK/NG는 200개 유지
-            if tag in ("OK", "NG"):
-                prune_manifests(out_dir, keep=200)
+                # raw(그레이) / overlay(BGR) / crop 저장
+                raw_path = os.path.join(out_dir, f"{stem}_raw.png")
+                ov_path  = os.path.join(out_dir, f"{stem}_overlay.png")
+                crop_path = os.path.join(out_dir, f"{stem}_crop.png")
 
-            print("[SAVED]", meta)
-            key = 255  # 아래 keymap 처리가 이 키를 다시 먹지 않게
+                cv2.imwrite(raw_path, frame_gray8)
+                cv2.imwrite(ov_path, vis)
+
+                crop = _crop_roi(frame_gray8, roi_mgr, roi_id)
+                if crop is not None:
+                    cv2.imwrite(crop_path, crop)
+                else:
+                    crop_path = ""
+
+                meta = {"ts": ts, "tag": tag, "roi_id": roi_id, "raw": raw_path, "overlay": ov_path, "crop": crop_path}
+                jpath = os.path.join(out_dir, f"{stem}.json")
+                with open(jpath, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, ensure_ascii=False, indent=2)
+
+                tag = "OK" if is_k else "NG"
+
+                # OK/NG는 200개 유지
+                if tag in ("OK", "NG"):
+                    prune_manifests(out_dir, keep=200)
+
+                print("[SAVED]", meta)
+                key = 255  # 아래 keymap 처리가 이 키를 다시 먹지 않게
 
 
 
