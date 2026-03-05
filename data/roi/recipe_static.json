@@ -8,13 +8,13 @@
     "ROI1": {
       "type": "toolchain",
       "tools": [
-        {
-          "tool": "locate.pattern_match",
-          "params": {
-            "template": "/home/robot96/vision_project/data/templates/tape_ok.png",
-            "score_min": 0.85
-          }
-        }
+        {"tool":"locate.pattern_match","params":{
+          "template":"/home/robot96/vision_project/data/templates/tape_ok.png",
+          "score_min":0.80,
+          "scale_min":0.85,
+          "scale_max":1.15,
+          "scale_step":0.05
+        }}
       ]
     },
     "ROI2": {
