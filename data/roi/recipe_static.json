@@ -5,7 +5,7 @@
     "max_mean": 255.0
   },
   "overrides": {
-    "ROI_TAPE": {
+    "ROI1": {
       "tools": [
         {
           "tool":"locate.pattern_match",
