@@ -388,6 +388,7 @@ def main():
     # =========================
     def execute_command(cmd, frame):
         nonlocal edit_mode, status, last_results, last_overall_ok, quit_requested, space_lock
+        nonlocal pose_bad_cnt
 
         if cmd is None or cmd == UICmd.NONE:
             return
@@ -670,7 +671,7 @@ def main():
                     inspector.log_result(last_overall_ok, last_results)
 
                     # ------[START] ROI내에서 제품 정면 아닌 각도가 틀어진 경우 안내문구 표시를 위한 작업
-                    r = (last_results or {}).get("ROI1") or (last_results or {}).get(1)
+                    r = (last_results or {}).get("1") or (last_results or {}).get("ROI1")
                     bc = None
                     if isinstance(r, dict):
                         bc = (r.get("metrics") or {}).get("blob_count", None)
@@ -981,9 +982,6 @@ def main():
             cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
 
             overlay.draw_text(vis, msg, (x, y), color=(255,255,255), scale=0.8, thickness=2, align="lt")
-
-        if last_overall_ok is not None:
-            overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
