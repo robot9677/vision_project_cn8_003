@@ -18,6 +18,7 @@ from inspection.logger import save_snapshot, save_template_copy
 
 from ui.overlay import draw_control_bar
 from ui import overlay_clean as overlay  # production overlay
+from typing import Optional, Dict, Any
 # NOTE: overlay_clean.py 에 draw_text_kr() 있어야 함
 
 
@@ -196,7 +197,7 @@ class AppState:
     quit_requested: bool = False
     space_lock: bool = False
 
-    last_results: dict | None = None   # {"1": Result, ...}
+    last_results: Optional[Dict[str, Any]] = None   # {"1": Result, ...}
     last_overall_ok: bool | None = None
 
     pending_cmd: UICmd = UICmd.NONE
