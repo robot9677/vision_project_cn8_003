@@ -968,10 +968,17 @@ def main():
         if last_overall_ok is not None:
             overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
 
+        # --- pose bc read (always from last_results) ---
+        bc_pose = None
+        r = (last_results or {}).get("1")  # ROI1 id가 문자열 "1"로 저장됨
+        if r is not None and hasattr(r, "metrics"):
+            bc_pose = (r.metrics or {}).get("blob_count", None)
+        elif isinstance(r, dict):
+            bc_pose = (r.get("metrics") or {}).get("blob_count", None)
+
+        show_pose_msg = (bc_pose is not None) and (pose_bad_cnt >= POSE_BAD_N) and (int(bc_pose) != 4)
 
         # --- pose assist message ---
-        show_pose_msg = (pose_bad_cnt >= POSE_BAD_N) and (bc != 4)
-
         if show_pose_msg:
             h, w = vis.shape[:2]
             msg = "정면으로 맞춰주세요 (±10~15°)"
@@ -983,7 +990,7 @@ def main():
             overlay.draw_rect(ovl, (x-14, y-26), (x+tw+14, y+10), color=(0,0,0), fill=True)
             cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
 
-            overlay.draw_text_kr(vis, msg, (x, y), color=(255,255,255), scale=0.8, thickness=2, align="lt")
+            vis = overlay.draw_text_kr(vis, msg, (x, y))
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
