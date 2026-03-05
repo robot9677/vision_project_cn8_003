@@ -148,7 +148,11 @@ class Inspector:
             roi_type = (cfg.get("type") or "").strip().lower()
 
             # --- final decision by ROI type ---
-            if roi_type == "mean_threshold":
+            if roi_type == "toolchain":
+                final_ok = bool(ok)
+                reason = "OK" if final_ok else (reason or "FAIL")
+
+            elif roi_type == "mean_threshold":
                 final_ok = bool(mean_ok)
                 reason = "OK" if final_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
 
