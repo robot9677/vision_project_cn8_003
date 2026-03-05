@@ -269,7 +269,6 @@ def _roi_mgr_to_list(roi_mgr):
 
 def main():
     ensure_dirs()
-    bc = None
 
     cam = CameraGST(GST_PIPELINE)
 
@@ -673,7 +672,7 @@ def main():
 
                     # ------[START] ROI내에서 제품 정면 아닌 각도가 틀어진 경우 안내문구 표시를 위한 작업
                     r = (last_results or {}).get("1") or (last_results or {}).get("ROI1")
-                    
+                    bc = None
                     if isinstance(r, dict):
                         bc = (r.get("metrics") or {}).get("blob_count", None)
 
@@ -972,8 +971,6 @@ def main():
 
         # --- pose assist message ---
         show_pose_msg = (pose_bad_cnt >= POSE_BAD_N) and (bc != 4)
-        if bc is None:
-            show_pose_msg = False
 
         if show_pose_msg:
             h, w = vis.shape[:2]
