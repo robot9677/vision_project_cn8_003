@@ -852,12 +852,23 @@ def main():
                             if ok_flag:
                                 mean_v = metrics.get("mean", metrics.get("mean_raw", None))
                                 score_v = metrics.get("score", None)
+                                wr = metrics.get("white_ratio", None)
+                                edge = metrics.get("edge_energy", metrics.get("lap_var", metrics.get("laplacian_var", None)))
+                                qr = metrics.get("qr_data", None)
+
                                 parts = []
                                 if mean_v is not None:
                                     parts.append(f"m:{float(mean_v):.1f}")
                                 if score_v is not None:
                                     parts.append(f"s:{float(score_v):.2f}")
-                                line2 = " ".join(parts) if parts else ""
+                                if wr is not None:
+                                    parts.append(f"wr:{float(wr):.2f}")
+                                if edge is not None:
+                                    parts.append(f"e:{float(edge):.1f}")
+                                if qr:
+                                    parts.append(f"qr:{str(qr)[:12]}")
+
+                                line2 = " ".join(parts[:2]) if parts else ""
                             else:
                                 line2 = str(reason)[:24] if reason else "FAIL"
 
