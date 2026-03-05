@@ -19,6 +19,7 @@ from inspection.logger import save_snapshot, save_template_copy
 
 # 개발자 모드: True 이면 화면에 키보드 도움말(개발자 HUD)을 표시
 DEV_MODE = True
+pose_tick = 0
 
 NORMALIZE_ENABLED = True
 NORMALIZE_TARGET_MEAN = 120.0
@@ -676,6 +677,8 @@ def main():
                     if isinstance(r, dict):
                         bc = (r.get("metrics") or {}).get("blob_count", None)
 
+                    pose_tick += 1
+
                     if bc == 4:
                         pose_bad_cnt = 0
                     else:
@@ -969,6 +972,7 @@ def main():
             overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
 
         # --- pose bc read (always from last_results) ---
+        
         bc_pose = None
         r = (last_results or {}).get("1")  # ROI1 id가 문자열 "1"로 저장됨
         if r is not None and hasattr(r, "metrics"):
@@ -976,7 +980,11 @@ def main():
         elif isinstance(r, dict):
             bc_pose = (r.get("metrics") or {}).get("blob_count", None)
 
-        show_pose_msg = (bc_pose is not None) and (pose_bad_cnt >= POSE_BAD_N) and (int(bc_pose) != 4)
+        # INSPECT가 발생했을 때만 평가되도록 게이트
+        if (last_results is None) or (pose_tick == 0):
+            show_pose_msg = False
+        else:
+            show_pose_msg = (bc_pose is not None) and (pose_bad_cnt >= POSE_BAD_N) and (int(bc_pose) != 4)
 
         # --- pose assist message ---
         if show_pose_msg:
@@ -991,6 +999,7 @@ def main():
             cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
 
             vis = overlay.draw_text_kr(vis, msg, (x, y))
+            pose_tick = 0
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
