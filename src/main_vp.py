@@ -669,6 +669,18 @@ def main():
                     status = f"INSPECT {'OK' if overall_ok else 'NG'}"
                     inspector.log_result(last_overall_ok, last_results)
 
+                    # ------[START] ROI내에서 제품 정면 아닌 각도가 틀어진 경우 안내문구 표시를 위한 작업
+                    r = (last_results or {}).get("ROI1") or (last_results or {}).get(1)
+                    bc = None
+                    if isinstance(r, dict):
+                        bc = (r.get("metrics") or {}).get("blob_count", None)
+
+                    if bc == 4:
+                        pose_bad_cnt = 0
+                    else:
+                        pose_bad_cnt += 1
+                    # ------[END] ROI내에서 제품 정면 아닌 각도가 틀어진 경우 안내문구 표시를 위한 작업
+
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
@@ -735,6 +747,9 @@ def main():
     cv2.setMouseCallback(win, mouse_router)
 
     cam.open()
+
+    pose_bad_cnt = 0
+    POSE_BAD_N = 5   # 연속 5프레임이면 안내 표시
 
     # main loop
     while True:
@@ -948,6 +963,25 @@ def main():
 
         # status line
         overlay.draw_status_bar(vis, status)
+
+        if last_overall_ok is not None:
+            overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
+
+
+        # --- pose assist message ---
+        if pose_bad_cnt >= POSE_BAD_N:
+            h, w = vis.shape[:2]
+            msg = "정면으로 맞춰주세요 (±10~15도)"
+            (tw, th), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+            x = (w - tw)//2
+            y = 80   # 상단 중앙
+
+            ovl = vis.copy()
+            overlay.draw_rect(ovl, (x-14, y-26), (x+tw+14, y+10), color=(0,0,0), fill=True)
+            cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
+
+            overlay.draw_text(vis, msg, (x, y), color=(255,255,255), scale=0.8, thickness=2, align="lt")
+
         if last_overall_ok is not None:
             overlay.draw_overall_banner(vis, last_overall_ok, info=_extract_info_from_results(last_results))
 
@@ -1061,7 +1095,7 @@ def main():
         draw_mode_indicator(vis, edit_mode, DEV_MODE)
         if DEV_MODE:
             draw_dev_hud(vis, edit_mode)
-                    # RUN mode key hint (bottom-center)
+            # RUN mode key hint (bottom-center)
             if not edit_mode:
                 h, w = vis.shape[:2]
                 hint = "sample img [ T=temp  K:OK_S  N:NG_S ]"
