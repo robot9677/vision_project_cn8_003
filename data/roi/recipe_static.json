@@ -8,12 +8,13 @@
     "ROI1": {
       "type": "toolchain",
       "tools": [
-        {"tool":"locate.pattern_match","params":{
-          "template":"/home/robot96/vision_project/data/templates/tape_ok.png",
-          "score_min":0.82,
-          "scale_min":0.85,
-          "scale_max":1.15,
-          "scale_step":0.05
+        {"tool":"enhance.threshold","params":{"mode":"otsu"}},
+        {"tool":"measure.blob_count","params":{
+          "polarity":"black",
+          "expected":4,
+          "area_min":80,
+          "area_max":5000,
+          "open":3
         }}
       ]
     },
