@@ -198,7 +198,7 @@ class AppState:
     space_lock: bool = False
 
     last_results: Optional[Dict[str, Any]] = None   # {"1": Result, ...}
-    last_overall_ok: bool | None = None
+    last_overall_ok: Optional[bool[str, Any]] = None
 
     pending_cmd: UICmd = UICmd.NONE
 
