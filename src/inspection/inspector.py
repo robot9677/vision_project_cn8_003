@@ -14,6 +14,8 @@ from .temporal import TemporalMeanFilter
 from .roi_tracker import ROITracker
 # add near top of file
 from inspection.score import combined_score
+from inspection.toolchain import run_toolchain
+from inspection.tools_enhance import register_enhance_tools
 
 @dataclass
 class ROIResult:
@@ -32,6 +34,7 @@ class Inspector:
         print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
         self.mean_filter = TemporalMeanFilter(win=5)
         self.tracker = ROITracker(search_margin=20, thr=0.6)
+        register_enhance_tools()
 
 
     def reload_recipe(self):
@@ -94,8 +97,15 @@ class Inspector:
             # === 분석 및 mean+score 기반 판정 통합 ===
             cfg = get_roi_cfg(self.recipe, roi_id)
 
-            # 기존 analyzer 호출 (유지하되 metrics를 확장)
-            ok, metrics, reason = run_analyzer(crop, cfg)
+            if "tools" in cfg and cfg.get("tools"):
+                ok, metrics2, reason = run_toolchain(crop, cfg)
+                # 기존 metrics와 합치기(겹치면 toolchain 우선)
+                if metrics is None:
+                    metrics = metrics or {}
+                metrics.update(metrics2 or {})
+            else: 
+                # 기존 analyzer 호출 (유지하되 metrics를 확장)
+                ok, metrics, reason = run_analyzer(crop, cfg)
 
             # ensure metrics is a dict
             if metrics is None:
