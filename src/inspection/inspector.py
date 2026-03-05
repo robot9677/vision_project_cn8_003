@@ -17,6 +17,7 @@ from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
+from inspection.tools_locate import register_locate_tools
 
 @dataclass
 class ROIResult:
@@ -37,6 +38,7 @@ class Inspector:
         self.tracker = ROITracker(search_margin=20, thr=0.6)
         register_enhance_tools()
         register_measure_tools()
+        register_locate_tools()
 
 
     def reload_recipe(self):
