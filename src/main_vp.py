@@ -950,7 +950,7 @@ def main():
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
 
-        # --- RUN mode sample capture (T/K/N) ---
+        # ---[START] RUN mode sample capture (T/K/N) ---
         if (not edit_mode) and key in (ord('t'), ord('T'), ord('k'), ord('K'), ord('n'), ord('N')):
             # 선택 ROI 없으면 ROI1로
             sel = None
@@ -1005,15 +1005,10 @@ def main():
                 with open(jpath, "w", encoding="utf-8") as f:
                     json.dump(meta, f, ensure_ascii=False, indent=2)
 
-                tag = "OK" if is_k else "NG"
-
-                # OK/NG는 200개 유지
-                if tag in ("OK", "NG"):
-                    prune_manifests(out_dir, keep=200)
-
+                prune_manifests(out_dir, keep=200)
                 print("[SAVED]", meta)
                 key = 255  # 아래 keymap 처리가 이 키를 다시 먹지 않게
-
+        # ---[END] RUN mode sample capture (T/K/N) ---
 
 
         if key != 255:
