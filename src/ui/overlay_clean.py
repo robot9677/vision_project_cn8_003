@@ -1,6 +1,8 @@
 # src/ui/overlay.py
 import cv2
+import numpy as np
 from ui import ui_config as cfg
+from PIL import ImageFont, ImageDraw, Image
 
 # --- basic drawing helpers ---
 def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"):
@@ -23,6 +25,16 @@ def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"
     y_draw = int(y + th / 2)
     cv2.putText(img, str(text), (x, y_draw), cfg.FONT, scale, color, int(thickness), cfg.LINE_TYPE)
 
+def draw_text_kr(img, text, pos, size=28, color=(255,255,255)):
+    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+
+    img_pil = Image.fromarray(img)
+    draw = ImageDraw.Draw(img_pil)
+    font = ImageFont.truetype(font_path, size)
+
+    draw.text(pos, text, font=font, fill=color)
+
+    return np.array(img_pil)
 
 def draw_rect(img, pt1, pt2, color=None, thickness=1, fill=False):
     if color is None:
