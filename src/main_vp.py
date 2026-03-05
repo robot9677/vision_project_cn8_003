@@ -4,6 +4,7 @@ import time
 import cv2
 import numpy as np
 import time
+import json
 
 from enum import Enum
 from capture.camera_gst import CameraGST
@@ -145,6 +146,58 @@ def ensure_dirs():
     os.makedirs(os.path.join(DATA_DIR, "logs"), exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "images", "ok"), exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "images", "ng"), exist_ok=True)
+
+#  --- [start] sample image 수집 및 images 관리 ---
+def _get_roi_by_id(roi_mgr, roi_id: int):
+    try:
+        for r in getattr(roi_mgr, "rois", []):
+            if int(r.get("id", -1)) == int(roi_id):
+                return r
+    except Exception:
+        pass
+    return None
+
+def _crop_roi(gray8, roi_mgr, roi_id: int):
+    r = _get_roi_by_id(roi_mgr, roi_id)
+    if r is None or gray8 is None:
+        return None
+    x = int(r.get("x", 0)); y = int(r.get("y", 0)); w = int(r.get("w", 0)); h = int(r.get("h", 0))
+    if w <= 0 or h <= 0:
+        return None
+    H, W = gray8.shape[:2]
+    x = max(0, min(W-1, x)); y = max(0, min(H-1, y))
+    x2 = max(0, min(W, x+w)); y2 = max(0, min(H, y+h))
+    if x2 <= x or y2 <= y:
+        return None
+    return gray8[y:y2, x:x2].copy()
+
+def prune_manifests(dir_path, keep=200):
+    try:
+        items = []
+        for fn in os.listdir(dir_path):
+            if fn.endswith(".json"):
+                p = os.path.join(dir_path, fn)
+                items.append((os.path.getmtime(p), p))
+        items.sort(reverse=True)
+
+        for _, jpath in items[keep:]:
+            try:
+                with open(jpath, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                # manifest에 기록된 파일들 삭제
+                for k in ("raw", "overlay", "crop"):
+                    p = meta.get(k)
+                    if p and os.path.exists(p):
+                        try: os.remove(p)
+                        except Exception: pass
+                os.remove(jpath)
+            except Exception:
+                # 실패해도 json은 지우기 시도
+                try: os.remove(jpath)
+                except Exception: pass
+    except Exception:
+        pass
+#  --- [end] sample image 수집 및 images 관리 ---
 
 def _extract_info_from_results(results):
     if not results:
@@ -898,6 +951,63 @@ def main():
 
         # --- keyboard fallback: set pending_cmd, don't execute directly ---
         key = cv2.waitKey(1) & 0xFF
+
+                # --- RUN mode sample capture (T/K/N) ---
+        if (not edit_mode) and key in (ord('t'), ord('T'), ord('k'), ord('K'), ord('n'), ord('N')):
+            # 선택 ROI 없으면 ROI1로
+            sel = None
+            try:
+                sel = roi_mgr.get_selected()
+            except Exception:
+                sel = None
+            roi_id = int(sel["id"]) if (isinstance(sel, dict) and sel.get("id") is not None) else 1
+
+            # 저장 폴더
+            base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "dataset"))
+            tag = "OK" if key in (ord('k'), ord('K')) else ("NG" if key in (ord('n'), ord('N')) else "TEMPLATE")
+            out_dir = os.path.join(base, tag)
+            os.makedirs(out_dir, exist_ok=True)
+
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            stem = f"cap_{ts}_ROI{roi_id}"
+
+            # raw(그레이) / overlay(BGR) / crop 저장
+            raw_path = os.path.join(out_dir, f"{stem}_raw.png")
+            ov_path  = os.path.join(out_dir, f"{stem}_overlay.png")
+            crop_path = os.path.join(out_dir, f"{stem}_crop.png")
+
+            frame_gray8 = frame  # RUN loop에서 frame은 GRAY8로 유지 중 :contentReference[oaicite:2]{index=2}
+            cv2.imwrite(raw_path, frame_gray8)
+            cv2.imwrite(ov_path, vis)
+
+            crop = _crop_roi(frame_gray8, roi_mgr, roi_id)
+            if crop is not None:
+                cv2.imwrite(crop_path, crop)
+            else:
+                crop_path = ""
+
+            meta = {"ts": ts, "tag": tag, "roi_id": roi_id, "raw": raw_path, "overlay": ov_path, "crop": crop_path}
+            jpath = os.path.join(out_dir, f"{stem}.json")
+            with open(jpath, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+
+            # TEMPLATE은 templates 폴더에 1장 저장 (덮어쓰기)
+            if tag == "TEMPLATE" and crop is not None:
+                tdir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "templates"))
+                os.makedirs(tdir, exist_ok=True)
+                tpath = os.path.join(tdir, f"tape_ok_ROI{roi_id}.png")
+                cv2.imwrite(tpath, crop)
+                print("[TEMPLATE SAVED]", tpath)
+
+            # OK/NG는 200개 유지
+            if tag in ("OK", "NG"):
+                prune_manifests(out_dir, keep=200)
+
+            print("[SAVED]", meta)
+            key = 255  # 아래 keymap 처리가 이 키를 다시 먹지 않게
+
+
+
         if key != 255:
             keymap = {
                 27: UICmd.QUIT, ord('q'): UICmd.QUIT,
@@ -944,6 +1054,17 @@ def main():
         draw_mode_indicator(vis, edit_mode, DEV_MODE)
         if DEV_MODE:
             draw_dev_hud(vis, edit_mode)
+                    # RUN mode key hint (bottom-center)
+            if not edit_mode:
+                h, w = vis.shape[:2]
+                hint = "sample img [ T=temp  K:OK_S  N:NG_S ]"
+                (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+                x = (w - tw)//2
+                y = h - 22
+                ovl = vis.copy()
+                overlay.draw_rect(ovl, (x-10, y-18), (x+tw+10, y+8), color=(0,0,0), fill=True)
+                cv2.addWeighted(ovl, 0.45, vis, 0.55, 0, vis)
+                overlay.draw_text(vis, hint, (x, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
 
         cv2.imshow(win, vis)
 
