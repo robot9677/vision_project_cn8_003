@@ -157,7 +157,7 @@ def draw_rois_clean(img, roi_list, highlight_id=None, roi_results: Optional[Dict
                     parts.append(f"{label}:{float(v):{fmt}}")
                 except Exception:
                     pass
-afdghkkjl;jk;jk;gj;k
+
             if meanv is not None:
                 _add_num("m", meanv, ".1f")
             if scorev is not None:
