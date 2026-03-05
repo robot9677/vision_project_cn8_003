@@ -919,7 +919,11 @@ def main():
                                 if qr:
                                     parts.append(f"qr:{str(qr)[:12]}")
 
-                                line2 = " ".join(parts[:2]) if parts else ""
+                                bc = metrics.get("blob_count", None)
+                                if bc is not None:
+                                    parts.append(f"bc:{int(bc)}")
+
+                                line2 = " ".join(parts[:3]) if parts else ""
                             else:
                                 line2 = str(reason)[:24] if reason else "FAIL"
 
