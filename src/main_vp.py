@@ -328,24 +328,49 @@ class VisionApp:
             if st.edit_mode:
                 self.editor.update(vis)
             else:
-                draw_run_tracking(
-                    vis,
-                    frame_gray8,
-                    runtime_cfg=self.runtime_cfg,
-                    product_profile=self.product_profile,
-                    state=st,
-                    roi_mgr=self.roi_mgr,
-                    inspector=self.inspector,
-                    stabilizer=self.stabilizer,
-                    data_dir=DATA_DIR,
-                    snapshot_cooldown=SNAPSHOT_COOLDOWN,
-                    snapshot_keep=SNAPSHOT_KEEP,
-                    prune_snapshots=prune_snapshots,
-                    roi_label_pos=roi_label_pos,
-                )
+                run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
 
+                if run_mode == "static":
+                    overlay.draw_rois(
+                        vis,
+                        rois=[
+                            {
+                                "id": r.get("id"),
+                                "label": r.get("name"),
+                                "rect": (
+                                    int(r.get("x", 0)),
+                                    int(r.get("y", 0)),
+                                    int(r.get("w", 0)),
+                                    int(r.get("h", 0)),
+                                ),
+                            }
+                            for r in getattr(self.roi_mgr, "rois", [])
+                        ],
+                        active_id=self.roi_mgr.selected_id,
+                        roi_results=st.last_results,
+                    )
+                    st.tracking_stable = True
+                    st.stable_frame_count = 999
+                else:
+                    draw_run_tracking(
+                        vis,
+                        frame_gray8,
+                        runtime_cfg=self.runtime_cfg,
+                        product_profile=self.product_profile,
+                        state=st,
+                        roi_mgr=self.roi_mgr,
+                        inspector=self.inspector,
+                        stabilizer=self.stabilizer,
+                        data_dir=DATA_DIR,
+                        snapshot_cooldown=SNAPSHOT_COOLDOWN,
+                        snapshot_keep=SNAPSHOT_KEEP,
+                        prune_snapshots=prune_snapshots,
+                        roi_label_pos=roi_label_pos,
+                    )
+        
                 # Auto inspect tick
                 cfg = self.runtime_cfg
+                run_mode = str(cfg.get("run_mode", "held")).lower()
 
                 if st.auto_inspect and self.product_profile["modules"].get("auto_inspect", True):
                     now = time.time()
@@ -353,18 +378,24 @@ class VisionApp:
                     avg5 = bool(cfg.get("auto_inspect_avg5", False))
                     stable_required = int(cfg.get("auto_inspect_stable_frames", 3))
 
-                    if st.tracking_stable and st.stable_frame_count >= stable_required:
-                        if (now - st.last_auto_inspect_ts) >= interval:
-                            st.last_auto_inspect_ts = now
-                            run_inspect_once(
-                                cam=self.cam,
-                                inspector=self.inspector,
-                                runtime_cfg=self.runtime_cfg,
-                                state=st,
-                                frame_gray8=frame_gray8,
-                                vis_bgr=vis,
-                                avg5=avg5,
-                            )
+                    allow_inspect = False
+
+                    if run_mode == "static":
+                        allow_inspect = True
+                    else:
+                        allow_inspect = st.tracking_stable and st.stable_frame_count >= stable_required
+
+                    if allow_inspect and (now - st.last_auto_inspect_ts) >= interval:
+                        st.last_auto_inspect_ts = now
+                        run_inspect_once(
+                            cam=self.cam,
+                            inspector=self.inspector,
+                            runtime_cfg=self.runtime_cfg,
+                            state=st,
+                            frame_gray8=frame_gray8,
+                            vis_bgr=vis,
+                            avg5=avg5,
+                        )
 
             # status + banner
             overlay.draw_status_bar(vis, st.status)
