@@ -366,10 +366,6 @@ class VisionApp:
             if st.last_overall_ok is not None:
                 overlay.draw_overall_banner(vis, st.last_overall_ok, info=_extract_info_from_results(st.last_results))
 
-            # pose message
-            if not st.edit_mode :
-                draw_pose_message(vis, st.pose_bad_cnt, 5)
-
             # control bar (buttons)
             st.last_buttons = render_control_bar(vis, st.edit_mode)
 
