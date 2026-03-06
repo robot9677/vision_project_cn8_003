@@ -109,9 +109,6 @@ class ROITracker:
         )
 
         if pos1 is not None and score1 is not None and score1 >= self.thr:
-            nx, ny, _, _ = pos1
-            crop_now = frame_gray8[ny:ny+h, nx:nx+w]
-            self.update_template(crop_now, score1)
             return pos1
 
         # 2차: 재획득 탐색
@@ -124,7 +121,7 @@ class ROITracker:
         if pos2 is not None and score2 is not None and score2 >= self.thr:
             rx, ry, _, _ = pos2
 
-            # reacquire 후보 주변에서 한번 더 정밀 검증
+            # 재획득 후보 정밀 검증
             pos3, score3 = self._match_window(
                 frame_gray8, rx, ry, w, h,
                 margin=self.search_margin,
@@ -139,3 +136,5 @@ class ROITracker:
                 return pos3
 
             return x, y, w, h
+
+        return x, y, w, h
