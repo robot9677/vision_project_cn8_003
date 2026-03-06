@@ -44,7 +44,7 @@ class Inspector:
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
 
-    def inspect(self, frame_gray8: np.ndarray) -> Tuple[bool, Dict[str, ROIResult], auto_mode=False]:
+    def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
         results: Dict[str, ROIResult] = {}
 
         ref = self.roi_mgr.get_selected()
