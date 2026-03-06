@@ -1,3 +1,5 @@
+from inspection.inspect_service import run_inspect_once
+
 def execute_command(app, cmd, frame_gray8, vis_bgr):
     st = app.state
 
@@ -69,12 +71,20 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
     st = app.state
 
     if cmd == app.UICmd.INSPECT:
-        app._inspect_once(frame_gray8, vis_bgr)
+        run_inspect_once(
+            cam=app.cam,
+            inspector=app.inspector,
+            runtime_cfg=app.runtime_cfg,
+            state=app.state,
+            frame_gray8=frame_gray8,
+            vis_bgr=vis_bgr,
+            avg5=True,
+        )
         return
 
     if cmd == app.UICmd.AUTOTUNE:
         try:
-            app.inspector.autotune_recipe_from_frame(frame_gray8, save_path=app.recipe_path)
+            app.inspector.autotune_recipe_from_frame(frame_gray8)
             st.status = "Autotune done"
         except Exception:
             st.status = "Autotune failed"
