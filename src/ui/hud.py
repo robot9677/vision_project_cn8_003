@@ -15,7 +15,10 @@ def draw_dev_hud(img, st, product_profile=None):
     if st.edit_mode:
         text1 = "EDIT: n=next  x=delete  r=clear  s=save  e=run"
     else:
-        text1 = "RUN: SPACE=inspect  a=autoInspect  c=autotune  p=reload  e=edit"
+        auto_text = "AUTO:ON" if getattr(st, "auto_inspect", False) else "AUTO:OFF"
+        mode_text = getattr(st, "run_mode_text", "HELD")
+        track_text = "STABLE" if getattr(st, "tracking_stable", False) else "TRACKING"
+        text1 = f"RUN({mode_text}/{track_text}): SPACE=inspect  a=autoInspect  c=autotune  p=reload  e=edit  {auto_text}"
 
     ovl = img.copy()
     overlay.draw_rect(ovl, (8, h - 64), (w - 8, h - 8), color=(0, 0, 0), fill=True)

@@ -174,6 +174,7 @@ class AppState:
 
     tracking_stable: bool = False
     stable_frame_count: int = 0
+    run_mode_text: str = "HELD"
 
 
 class VisionApp:
@@ -273,6 +274,7 @@ class VisionApp:
         else:
             run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
             st.status = "RUN MODE / STATIC" if run_mode == "static" else "RUN MODE / HELD"
+            st.run_mode_text = "STATIC" if run_mode == "static" else "HELD"
 
     def _save_roi_and_template(self, frame_gray8):
         st = self.state
@@ -334,6 +336,7 @@ class VisionApp:
                 self.editor.update(vis)
             else:
                 run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
+                st.run_mode_text = "STATIC" if run_mode == "static" else "HELD"
 
                 if run_mode == "static":
                     overlay.draw_rois(
