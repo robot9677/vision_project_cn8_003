@@ -106,8 +106,8 @@ def ensure_dirs():
 
 def load_runtime_config(path):
     cfg = {
-        "enable_auto_inspect": True,
-        "auto_inspect_interval": 0.5,
+        "enable_auto_inspect": False,
+        "auto_inspect_interval": 1.0,
         "auto_inspect_avg5": False,
         "pose_roi_id": "1",
         "pose_metric_key": "blob_count",
