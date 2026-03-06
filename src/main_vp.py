@@ -417,7 +417,7 @@ class VisionApp:
             y = h - 100
             ovl2 = img.copy()
             cv2.addWeighted(ovl2, 0.45, img, 0.55, 0, img)
-            overlay.draw_text(img, hint, (x+100, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
+            overlay.draw_text(img, hint, (x+10, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
 
     def _draw_mode_indicator(self, img):
         h, w = img.shape[:2]
