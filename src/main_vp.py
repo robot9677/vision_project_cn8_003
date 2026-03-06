@@ -337,23 +337,26 @@ class VisionApp:
         except Exception as e:
             st.status = f"Save failed: {e}"
 
-    def _inspect_once(self, frame_gray8, vis_bgr):
+    def _inspect_once(self, frame_gray8, vis_bgr, avg5=True):
         """
         Single inspect execution.
         Updates: last_results, last_overall_ok, pose_bad_cnt
         """
         st = self.state
-
+        
         # 5-frame avg (same as your current behavior)
-        frames = []
-        for _ in range(5):
-            f = self.cam.read()
-            if f is None:
-                continue
-            if getattr(f, "ndim", 0) == 3:
-                f = f[:, :, 0]
-            frames.append(f)
-        avg = np.mean(frames, axis=0).astype("uint8") if frames else frame_gray8
+        if avg5:
+            frames = []
+            for _ in range(5):
+                f = self.cam.read()
+                if f is None:
+                    continue
+                if getattr(f, "ndim", 0) == 3:
+                    f = f[:, :, 0]
+                frames.append(f)
+            avg = np.mean(frames, axis=0).astype("uint8") if frames else frame_gray8
+        else:
+            avg =frame_gray8
 
         overall_ok, results = self.inspector.inspect(avg)
 
@@ -417,7 +420,7 @@ class VisionApp:
             y = h - 100
             ovl2 = img.copy()
             cv2.addWeighted(ovl2, 0.45, img, 0.55, 0, img)
-            overlay.draw_text(img, hint, (x+10, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
+            overlay.draw_text(img, hint, (x, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
 
     def _draw_mode_indicator(self, img):
         h, w = img.shape[:2]
@@ -558,7 +561,7 @@ class VisionApp:
                     now = time.time()
                     if (now - st.last_auto_inspect_ts) >= AUTO_INSPECT_INTERVAL:
                         st.last_auto_inspect_ts = now
-                        self._inspect_once(frame_gray8, vis)
+                        self._inspect_once(frame_gray8, vis, avg5=False)
 
             # status + banner
             overlay.draw_status_bar(vis, st.status)
