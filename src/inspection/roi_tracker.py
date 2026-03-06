@@ -1,17 +1,24 @@
+import time
 import cv2
 import numpy as np
-import time
+
 
 class ROITracker:
-    def __init__(self, search_margin=20, method=cv2.TM_CCOEFF_NORMED, thr=0.6,
-                 reacquire_margin=None, reacquire_scale=0.5):
+    def __init__(
+        self,
+        search_margin=20,
+        method=cv2.TM_CCOEFF_NORMED,
+        thr=0.6,
+        reacquire_margin=None,
+        reacquire_scale=0.5,
+    ):
         self.search_margin = int(search_margin)
-        self.reacquire_margin = int(reacquire_margin) if reacquire_margin is not None else int(self.search_margin * 4)
+        self.reacquire_margin = int(reacquire_margin) if reacquire_margin is not None else int(self.search_margin * 3)
         self.reacquire_scale = float(reacquire_scale)
         self.method = method
         self.thr = float(thr)
         self.template = None
-        self._dbg_ts = 0
+        self._dbg_ts = 0.0
 
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
@@ -19,77 +26,74 @@ class ROITracker:
         else:
             self.template = tmpl_gray8.copy()
 
+    def _match_window(self, frame_gray8: np.ndarray, x, y, w, h, margin, scale=1.0):
+        if self.template is None:
+            return None, None
+
+        H, W = frame_gray8.shape[:2]
+        sx = max(0, int(x - margin))
+        sy = max(0, int(y - margin))
+        ex = min(W, int(x + w + margin))
+        ey = min(H, int(y + h + margin))
+
+        search = frame_gray8[sy:ey, sx:ex]
+        th, tw = self.template.shape[:2]
+
+        if search.shape[0] < th or search.shape[1] < tw:
+            return None, None
+
+        if 0.2 < scale < 1.0:
+            sw = max(1, int(search.shape[1] * scale))
+            sh = max(1, int(search.shape[0] * scale))
+            tw2 = max(1, int(tw * scale))
+            th2 = max(1, int(th * scale))
+
+            search_s = cv2.resize(search, (sw, sh), interpolation=cv2.INTER_AREA)
+            tmpl_s = cv2.resize(self.template, (tw2, th2), interpolation=cv2.INTER_AREA)
+
+            if search_s.shape[0] < tmpl_s.shape[0] or search_s.shape[1] < tmpl_s.shape[1]:
+                return None, None
+
+            res = cv2.matchTemplate(search_s, tmpl_s, self.method)
+            _, maxv, _, maxloc = cv2.minMaxLoc(res)
+
+            nx = sx + int(round(maxloc[0] / scale))
+            ny = sy + int(round(maxloc[1] / scale))
+            return (nx, ny, w, h), float(maxv)
+
+        res = cv2.matchTemplate(search, self.template, self.method)
+        _, maxv, _, maxloc = cv2.minMaxLoc(res)
+
+        nx = sx + maxloc[0]
+        ny = sy + maxloc[1]
+        return (nx, ny, w, h), float(maxv)
+
     def track(self, frame_gray8: np.ndarray, x, y, w, h):
         if self.template is None:
             return x, y, w, h
 
-        H, W = frame_gray8.shape[:2]
-        m = self.search_margin
+        # 1차: 근거리 탐색
+        pos1, score1 = self._match_window(
+            frame_gray8, x, y, w, h,
+            margin=self.search_margin,
+            scale=1.0,
+        )
 
-        sx = max(0, x - m)
-        sy = max(0, y - m)
-        ex = min(W, x + w + m)
-        ey = min(H, y + h + m)
+        if pos1 is not None and score1 is not None and score1 >= self.thr:
+            return pos1
 
-        search = frame_gray8[sy:ey, sx:ex]
-        th, tw = self.template.shape[:2]
-        if search.shape[0] < th or search.shape[1] < tw:
-            return x, y, w, h
+        # 2차: 재획득 탐색
+        pos2, score2 = self._match_window(
+            frame_gray8, x, y, w, h,
+            margin=self.reacquire_margin,
+            scale=self.reacquire_scale,
+        )
 
-        res = cv2.matchTemplate(search, self.template, self.method)
-        _, maxv, _, maxloc = cv2.minMaxLoc(res)
-        res = cv2.matchTemplate(search, self.template, self.method)
-        _, maxv, _, maxloc = cv2.minMaxLoc(res)
+        if pos2 is not None and score2 is not None and score2 >= self.thr:
+            now = time.time()
+            if now - self._dbg_ts > 1.0:
+                print(f"[TRK] reacquired score={score2:.3f}")
+                self._dbg_ts = now
+            return pos2
 
-        if maxv < self.thr:
-            # ---- reacquire 1-shot (bigger window + optional downsample) ----
-            m2 = self.reacquire_margin
-            sx2 = max(0, x - m2)
-            sy2 = max(0, y - m2)
-            ex2 = min(W, x + w + m2)
-            ey2 = min(H, y + h + m2)
-
-            search2 = frame_gray8[sy2:ey2, sx2:ex2]
-            th, tw = self.template.shape[:2]
-            if search2.shape[0] < th or search2.shape[1] < tw:
-                return x, y, w, h
-
-            sc = self.reacquire_scale
-            if 0.2 < sc < 1.0:
-                # downsample both for speed
-                sw = max(1, int(search2.shape[1] * sc))
-                sh = max(1, int(search2.shape[0] * sc))
-                tw2 = max(1, int(tw * sc))
-                th2 = max(1, int(th * sc))
-
-                search2s = cv2.resize(search2, (sw, sh), interpolation=cv2.INTER_AREA)
-                tmpls = cv2.resize(self.template, (tw2, th2), interpolation=cv2.INTER_AREA)
-
-                if search2s.shape[0] < tmpls.shape[0] or search2s.shape[1] < tmpls.shape[1]:
-                    return x, y, w, h
-
-                res2 = cv2.matchTemplate(search2s, tmpls, self.method)
-                _, maxv2, _, maxloc2 = cv2.minMaxLoc(res2)
-
-                if maxv2 < self.thr:
-                    return x, y, w, h
-
-                nx = sx2 + int(round(maxloc2[0] / sc))
-                ny = sy2 + int(round(maxloc2[1] / sc))
-                return nx, ny, w, h
-
-            else:
-                # full-res reacquire
-                res2 = cv2.matchTemplate(search2, self.template, self.method)
-                _, maxv2, _, maxloc2 = cv2.minMaxLoc(res2)
-
-                if maxv2 < self.thr:
-                    return x, y, w, h
-
-                nx = sx2 + maxloc2[0]
-                ny = sy2 + maxloc2[1]
-                return nx, ny, w, h
-
-        nx = sx + maxloc[0]
-        ny = sy + maxloc[1]
-        return nx, ny, w, h
+        return x, y, w, h
