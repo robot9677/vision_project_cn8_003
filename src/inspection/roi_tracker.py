@@ -122,10 +122,20 @@ class ROITracker:
         )
 
         if pos2 is not None and score2 is not None and score2 >= self.thr:
-            now = time.time()
-            if now - self._dbg_ts > 1.0:
-                print(f"[TRK] reacquired score={score2:.3f}")
-                self._dbg_ts = now
-            return pos2
+            rx, ry, _, _ = pos2
 
-        return x, y, w, h
+            # reacquire 후보 주변에서 한번 더 정밀 검증
+            pos3, score3 = self._match_window(
+                frame_gray8, rx, ry, w, h,
+                margin=self.search_margin,
+                scale=1.0,
+            )
+
+            if pos3 is not None and score3 is not None and score3 >= max(self.thr, 0.72):
+                now = time.time()
+                if now - self._dbg_ts > 1.0:
+                    print(f"[TRK] reacquired score={score2:.3f} verify={score3:.3f}")
+                    self._dbg_ts = now
+                return pos3
+
+            return x, y, w, h
