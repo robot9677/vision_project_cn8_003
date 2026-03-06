@@ -13,7 +13,7 @@ def scale_to_target_mean(gray8, target_mean=120.0, max_scale=2.5, min_scale=0.5)
     out = cv2.convertScaleAbs(gray8, alpha=scale, beta=0)
     return out, scale
 
-def normalize_frame(gray8, target_mean=120.0, do_clahe=True):
+def normalize_frame(gray8, target_mean, do_clahe=True):
     """
     Returns (normalized_gray8, info_dict)
     info_dict: {"scale":float, "method":"scale|scale+clahe"}

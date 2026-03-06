@@ -81,7 +81,7 @@ GST_PIPELINE = (
 TEMPLATE_PATH = os.path.join(PROJECT_ROOT, "data", "roi", "align_template.png")
 
 NORMALIZE_ENABLED = True
-NORMALIZE_TARGET_MEAN = 120.0
+NORMALIZE_TARGET_MEAN = 80.0
 
 SNAPSHOT_COOLDOWN = 5.0
 SNAPSHOT_KEEP = 200
@@ -413,11 +413,11 @@ class VisionApp:
         if not self.state.edit_mode:
             hint = "sample img [ T=temp  K:OK_S  N:NG_S ]"
             (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
-            x = (w - tw)//2
-            y = h - 22
+            x = 16
+            y = h - 100
             ovl2 = img.copy()
             cv2.addWeighted(ovl2, 0.45, img, 0.55, 0, img)
-            overlay.draw_text(img, hint, (x, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
+            overlay.draw_text(img, hint, (x+100, y), color=(220,220,220), scale=0.55, thickness=1, align="lt")
 
     def _draw_mode_indicator(self, img):
         h, w = img.shape[:2]
