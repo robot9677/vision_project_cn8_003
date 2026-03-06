@@ -69,7 +69,9 @@ class Inspector:
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
             nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
             dx, dy = int(nrx - rx), int(nry - ry)
-            print("[TRK] reacquired")
+            
+            if auto_mode == False:
+                print("[TRK] reacquired")
 
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
@@ -174,7 +176,8 @@ class Inspector:
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
-            print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
+            if auto_mode == False:
+                print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
 
         # --- overall decision by recipe ---
         decision = (self.recipe.get("decision") or {})
