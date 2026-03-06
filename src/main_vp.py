@@ -642,8 +642,10 @@ class VisionApp:
         if cmd == UICmd.TOGGLE_AUTO_INSPECT:
             if st.edit_mode:
                 st.status = "AUTO INSPECT only in RUN"
+                print("[DBG] Auto Inspect OFF")
             else:
                 self._toggle_auto_inspect()
+                print("[DBG] Auto Inspect ON")
             return
 
         if st.edit_mode:
