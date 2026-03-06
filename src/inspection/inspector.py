@@ -44,7 +44,7 @@ class Inspector:
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
 
-    def inspect(self, frame_gray8: np.ndarray) -> Tuple[bool, Dict[str, ROIResult]]:
+    def inspect(self, frame_gray8: np.ndarray) -> Tuple[bool, Dict[str, ROIResult], auto_mode=False]:
         results: Dict[str, ROIResult] = {}
 
         ref = self.roi_mgr.get_selected()
@@ -93,9 +93,11 @@ class Inspector:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
 
-            print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
+            if auto_mode:
+                print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
             if crop is None or crop.size == 0:
-                print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
+                if auto_mode:
+                    print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
             # cfg = get_roi_cfg(self.recipe, roi_id)
             # ok, metrics, reason = run_analyzer(crop, cfg)
 

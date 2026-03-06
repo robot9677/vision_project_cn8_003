@@ -358,7 +358,7 @@ class VisionApp:
         else:
             avg =frame_gray8
 
-        overall_ok, results = self.inspector.inspect(avg)
+        overall_ok, results = self.inspector.inspect(avg,auto_mode=st.auto_inspect)
 
         # persist
         try:
