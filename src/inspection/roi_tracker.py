@@ -19,12 +19,41 @@ class ROITracker:
         self.thr = float(thr)
         self.template = None
         self._dbg_ts = 0.0
+        self.template_alpha = 0.10
+        self.update_thr = max(self.thr, 0.75)
+        self.enable_template_update = True
 
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
             self.template = None
         else:
             self.template = tmpl_gray8.copy()
+            
+    def update_template(self, new_crop: np.ndarray, score: float):
+        if not self.enable_template_update:
+            return
+        if self.template is None:
+            return
+        if new_crop is None or new_crop.size == 0:
+            return
+        if score < self.update_thr:
+            return
+
+        if new_crop.shape[:2] != self.template.shape[:2]:
+            try:
+                new_crop = cv2.resize(
+                    new_crop,
+                    (self.template.shape[1], self.template.shape[0]),
+                    interpolation=cv2.INTER_AREA
+                )
+            except Exception:
+                return
+
+        oldf = self.template.astype(np.float32)
+        newf = new_crop.astype(np.float32)
+
+        blended = (1.0 - self.template_alpha) * oldf + self.template_alpha * newf
+        self.template = np.clip(blended, 0, 255).astype(np.uint8)
 
     def _match_window(self, frame_gray8: np.ndarray, x, y, w, h, margin, scale=1.0):
         if self.template is None:
@@ -80,6 +109,9 @@ class ROITracker:
         )
 
         if pos1 is not None and score1 is not None and score1 >= self.thr:
+            nx, ny, _, _ = pos1
+            crop_now = frame_gray8[ny:ny+h, nx:nx+w]
+            self.update_template(crop_now, score1)
             return pos1
 
         # 2차: 재획득 탐색
@@ -90,6 +122,10 @@ class ROITracker:
         )
 
         if pos2 is not None and score2 is not None and score2 >= self.thr:
+            nx, ny, _, _ = pos2
+            crop_now = frame_gray8[ny:ny+h, nx:nx+w]
+            self.update_template(crop_now, score2)
+
             now = time.time()
             if now - self._dbg_ts > 1.0:
                 print(f"[TRK] reacquired score={score2:.3f}")
