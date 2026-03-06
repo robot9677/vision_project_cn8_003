@@ -562,7 +562,7 @@ class VisionApp:
                     if (now - st.last_auto_inspect_ts) >= AUTO_INSPECT_INTERVAL:
                         st.last_auto_inspect_ts = now
                         self._inspect_once(frame_gray8, vis, avg5=False)
-                else
+                else:
                     print("[DBG] Auto Inspect OFF")
 
             # status + banner
