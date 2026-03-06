@@ -16,5 +16,6 @@
   "auto_inspect_avg5": false,
 
   "snapshot_cooldown": 5.0,
-  "snapshot_keep": 200
+  "snapshot_keep": 200,
+  "auto_inspect_stable_frames": 3
 }

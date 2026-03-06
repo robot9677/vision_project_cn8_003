@@ -18,6 +18,7 @@ from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
+from inspection.tools_identify import register_identify_tools
 
 @dataclass
 class ROIResult:

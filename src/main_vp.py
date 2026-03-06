@@ -89,7 +89,7 @@ POSE_ROI_ID_STR = "1"          # pose 판단 ROI (문자열 키)
 POSE_METRIC_KEY = "blob_count" # pose 판단 metric
 POSE_EXPECT = 4                # blob_count == 4
 
-AUTO_INSPECT_INTERVAL = 0.5    # seconds (2Hz)
+AUTO_INSPECT_INTERVAL = 1.0    # seconds (2Hz)
 
 
 # =========================
@@ -171,6 +171,9 @@ class AppState:
 
     # snapshot cooldown
     last_snapshot_time: float = 0.0
+
+    tracking_stable: bool = False
+    stable_frame_count: int = 0
 
 
 class VisionApp:
@@ -348,18 +351,20 @@ class VisionApp:
                     now = time.time()
                     interval = float(cfg.get("auto_inspect_interval", 0.5))
                     avg5 = bool(cfg.get("auto_inspect_avg5", False))
+                    stable_required = int(cfg.get("auto_inspect_stable_frames", 3))
 
-                    if (now - st.last_auto_inspect_ts) >= interval:
-                        st.last_auto_inspect_ts = now
-                        run_inspect_once(
-                            cam=self.cam,
-                            inspector=self.inspector,
-                            runtime_cfg=self.runtime_cfg,
-                            state=st,
-                            frame_gray8=frame_gray8,
-                            vis_bgr=vis,
-                            avg5=avg5,
-                        )
+                    if st.tracking_stable and st.stable_frame_count >= stable_required:
+                        if (now - st.last_auto_inspect_ts) >= interval:
+                            st.last_auto_inspect_ts = now
+                            run_inspect_once(
+                                cam=self.cam,
+                                inspector=self.inspector,
+                                runtime_cfg=self.runtime_cfg,
+                                state=st,
+                                frame_gray8=frame_gray8,
+                                vis_bgr=vis,
+                                avg5=avg5,
+                            )
 
             # status + banner
             overlay.draw_status_bar(vis, st.status)

@@ -141,6 +141,13 @@ def draw_run_tracking(
                 moved.append({"id": r.get("id"), "name": r.get("name", ""), "x": nx, "y": ny, "w": nw, "h": nh})
 
             smoothed, stable = stabilizer.update(moved)
+
+            state.tracking_stable = bool(stable)
+            if stable:
+                state.stable_frame_count += 1
+            else:
+                state.stable_frame_count = 0
+
             state.status = "RUN MODE (stable)" if stable else "RUN MODE (tracking...)"
 
             if stable and (time.time() - state.last_snapshot_time) > snapshot_cooldown:
@@ -171,6 +178,8 @@ def draw_run_tracking(
                 active_id=roi_mgr.selected_id,
                 roi_results=state.last_results,
             )
+            state.tracking_stable = False
+            state.stable_frame_count = 0
 
     except Exception as e:
         print("[DBG] run-mode tracker overlay exception:", e)
@@ -180,3 +189,5 @@ def draw_run_tracking(
             active_id=roi_mgr.selected_id,
             roi_results=state.last_results,
         )
+        state.tracking_stable = False
+        state.stable_frame_count = 0
