@@ -93,10 +93,10 @@ class Inspector:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
 
-            if auto_mode:
+            if auto_mode == False:
                 print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
             if crop is None or crop.size == 0:
-                if auto_mode:
+                if auto_mode == False:
                     print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
             # cfg = get_roi_cfg(self.recipe, roi_id)
             # ok, metrics, reason = run_analyzer(crop, cfg)
@@ -186,23 +186,18 @@ class Inspector:
         else:
             if mode == "any_fail_is_ng":
                 overall_ok = all(oks)
-                print("[DBG] overall decision by recipe : any_fail_is_ng")
-
             elif mode == "majority_ok":
                 overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
-                print("[DBG] overall decision by recipe : majority_ok")
-
             elif mode == "allow_fail_count":
                 max_fail = int(decision.get("max_fail", 0))
                 fail_cnt = sum(1 for v in oks if not v)
                 overall_ok = (fail_cnt <= max_fail)
-                print("[DBG] overall decision by recipe : allow_fail_count")
-
             else:
                 # fallback
                 overall_ok = all(oks)
-                print("[DBG] overall decision by recipe : fallback")
 
+        if auto_mode == False:
+            print(f"[DBG] overall decision by recipe : {mode}")
         return overall_ok, results
 
 
