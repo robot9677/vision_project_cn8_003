@@ -268,7 +268,11 @@ class VisionApp:
         except Exception:
             pass
 
-        st.status = "EDIT MODE" if st.edit_mode else "RUN MODE"
+        if st.edit_mode:
+            st.status = "EDIT MODE"
+        else:
+            run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
+            st.status = "RUN MODE / STATIC" if run_mode == "static" else "RUN MODE / HELD"
 
     def _save_roi_and_template(self, frame_gray8):
         st = self.state
@@ -290,8 +294,9 @@ class VisionApp:
         st = self.state
         st.auto_inspect = not st.auto_inspect
         st.last_auto_inspect_ts = 0.0
-        st.status = "AUTO INSPECT ON" if st.auto_inspect else "AUTO INSPECT OFF"
-
+        run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
+        mode_text = "STATIC" if run_mode == "static" else "HELD"
+        st.status = f"AUTO INSPECT ON / {mode_text}" if st.auto_inspect else f"AUTO INSPECT OFF / {mode_text}"
 
     # -------------------------
     # Main loop
@@ -351,6 +356,8 @@ class VisionApp:
                     )
                     st.tracking_stable = True
                     st.stable_frame_count = 999
+                    if st.status in ("RUN MODE", "RUN MODE (stable)", "RUN MODE (tracking...)"):
+                        st.status = "RUN MODE / STATIC"
                 else:
                     draw_run_tracking(
                         vis,
@@ -367,6 +374,12 @@ class VisionApp:
                         prune_snapshots=prune_snapshots,
                         roi_label_pos=roi_label_pos,
                     )
+                    if st.status == "RUN MODE (stable)":
+                        st.status = "RUN MODE / HELD (stable)"
+                    elif st.status == "RUN MODE (tracking...)":
+                        st.status = "RUN MODE / HELD (tracking...)"
+                    elif st.status == "RUN MODE":
+                        st.status = "RUN MODE / HELD"
         
                 # Auto inspect tick
                 cfg = self.runtime_cfg
