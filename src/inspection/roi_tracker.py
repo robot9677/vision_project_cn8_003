@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import time
 
 class ROITracker:
     def __init__(self, search_margin=20, method=cv2.TM_CCOEFF_NORMED, thr=0.6,
@@ -10,6 +11,7 @@ class ROITracker:
         self.method = method
         self.thr = float(thr)
         self.template = None
+        self._dbg_ts = 0
 
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
@@ -40,7 +42,6 @@ class ROITracker:
         _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
         if maxv < self.thr:
-            print("[TRK] local fail -> reacquire")
             # ---- reacquire 1-shot (bigger window + optional downsample) ----
             m2 = self.reacquire_margin
             sx2 = max(0, x - m2)
