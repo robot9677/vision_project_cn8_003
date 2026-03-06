@@ -569,7 +569,8 @@ class VisionApp:
                 overlay.draw_overall_banner(vis, st.last_overall_ok, info=_extract_info_from_results(st.last_results))
 
             # pose message
-            vis = self._draw_pose_message(vis)
+            if not st.edit_mode :
+                vis = self._draw_pose_message(vis)
 
             # control bar (buttons)
             st.last_buttons = self._draw_control_bar(vis)
@@ -642,7 +643,6 @@ class VisionApp:
         if cmd == UICmd.TOGGLE_AUTO_INSPECT:
             if st.edit_mode:
                 st.status = "AUTO INSPECT only in RUN"
-                print("[DBG] Auto Inspect OFF")
             else:
                 self._toggle_auto_inspect()
                 print("[DBG] Auto Inspect ON")

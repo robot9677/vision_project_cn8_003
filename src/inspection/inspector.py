@@ -69,7 +69,7 @@ class Inspector:
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
             nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
             dx, dy = int(nrx - rx), int(nry - ry)
-            
+
             if auto_mode == False:
                 print("[TRK] reacquired")
 
@@ -95,10 +95,10 @@ class Inspector:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
 
-            if auto_mode == False:
+            if not auto_mode:
                 print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
             if crop is None or crop.size == 0:
-                if auto_mode == False:
+                if not auto_mode:
                     print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
             # cfg = get_roi_cfg(self.recipe, roi_id)
             # ok, metrics, reason = run_analyzer(crop, cfg)
@@ -176,7 +176,7 @@ class Inspector:
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
-            if auto_mode == False:
+            if not auto_mode:
                 print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
 
         # --- overall decision by recipe ---
@@ -199,7 +199,7 @@ class Inspector:
                 # fallback
                 overall_ok = all(oks)
 
-        if auto_mode == False:
+        if not auto_mode:
             print(f"[DBG] overall decision by recipe : {mode}")
         return overall_ok, results
 
