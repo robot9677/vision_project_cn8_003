@@ -1,4 +1,5 @@
 import cv2
+import os
 from ui import overlay_clean as overlay
 
 DEV_MODE = True
@@ -26,7 +27,25 @@ def draw_dev_hud(img, st, product_profile=None):
     overlay.draw_text(img, text1, (16, h - 80), color=(220, 220, 220), scale=0.6, thickness=1, align="lt")
 
     if not st.edit_mode:
-        hint = "sample img [ T=temp  K:OK_S  N:NG_S ]"
+        roi_id = getattr(st, "active_roi_id", None)
+        roi_text = f"ROI:{roi_id}" if roi_id is not None else "ROI:-"
+
+        hint = f"{roi_text}  T: template  K: save OK  N: save NG"
+        ok_dir = os.path.join("data", "dataset", "OK")
+        ng_dir = os.path.join("data", "dataset", "NG")
+
+        try:
+            ok_cnt = len(os.listdir(ok_dir))
+        except Exception:
+            ok_cnt = 0
+
+        try:
+            ng_cnt = len(os.listdir(ng_dir))
+        except Exception:
+            ng_cnt = 0
+
+        hint = f"{hint}   OK:{ok_cnt} NG:{ng_cnt}"
+        
         x = 16
         y = h - 100
         ovl2 = img.copy()
