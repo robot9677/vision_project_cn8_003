@@ -562,8 +562,6 @@ class VisionApp:
                     if (now - st.last_auto_inspect_ts) >= AUTO_INSPECT_INTERVAL:
                         st.last_auto_inspect_ts = now
                         self._inspect_once(frame_gray8, vis, avg5=False)
-                else:
-                    print("[DBG] Auto Inspect OFF")
 
             # status + banner
             overlay.draw_status_bar(vis, st.status)
@@ -647,7 +645,10 @@ class VisionApp:
                 st.status = "AUTO INSPECT only in RUN"
             else:
                 self._toggle_auto_inspect()
-                print("[DBG] Auto Inspect ON")
+                if st.auto_inspect:
+                    print("[DBG] Auto Inspect ON")
+                else:
+                    print("[DBG] Auto Inspect OFF")
             return
 
         if st.edit_mode:
