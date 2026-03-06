@@ -19,9 +19,9 @@ class ROITracker:
         self.thr = float(thr)
         self.template = None
         self._dbg_ts = 0.0
-        self.template_alpha = 0.10
-        self.update_thr = max(self.thr, 0.75)
-        self.enable_template_update = True
+        self.template_alpha = 0.03
+        self.update_thr = max(self.thr, 0.90)
+        self.enable_template_update = False
 
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
@@ -122,10 +122,6 @@ class ROITracker:
         )
 
         if pos2 is not None and score2 is not None and score2 >= self.thr:
-            nx, ny, _, _ = pos2
-            crop_now = frame_gray8[ny:ny+h, nx:nx+w]
-            self.update_template(crop_now, score2)
-
             now = time.time()
             if now - self._dbg_ts > 1.0:
                 print(f"[TRK] reacquired score={score2:.3f}")
