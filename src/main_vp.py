@@ -374,8 +374,8 @@ class VisionApp:
             st.last_buttons = render_control_bar(vis, st.edit_mode)
 
             # HUD
-            draw_mode_indicator(vis, st.edit_mode)
-            draw_dev_hud(vis, st)
+            vis = draw_pose_message(vis, st.pose_bad_cnt, int(self.runtime_cfg.get("pose_bad_n", 5)))
+            draw_dev_hud(vis, st, self.product_profile)
 
             # show
             cv2.imshow(self.win, vis)
