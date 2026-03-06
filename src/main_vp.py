@@ -64,6 +64,8 @@ DATA_DIR     = os.path.join(PROJECT_ROOT, "data")
 ROI_DIR      = os.path.join(DATA_DIR, "roi")
 ROI_PATH     = os.path.join(ROI_DIR, "roi.json")
 RECIPE_PATH  = os.path.join(ROI_DIR, "recipe_static.json")
+RUNTIME_CFG_PATH = os.path.join(DATA_DIR, "runtime_config.json")
+# STATIC_CFG_PATH = os.path.join(DATA_DIR, "static_config.json")
 LOGS_ROOT    = os.path.join(DATA_DIR, "logs")
 
 DEV    = "/dev/video0"
@@ -105,6 +107,38 @@ def ensure_dirs():
     os.makedirs(os.path.join(DATA_DIR, "templates"), exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "dataset", "OK"), exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "dataset", "NG"), exist_ok=True)
+
+def load_runtime_config(path):
+    cfg = {
+        "run_mode": "held",
+        "normalize_enabled": False,
+        "normalize_target_mean": 120.0,
+
+        "enable_tracker": True,
+        "enable_pose_guide": True,
+        "pose_bad_n": 5,
+        "pose_roi_id": "1",
+        "pose_metric_key": "blob_count",
+        "pose_expect": 4,
+
+        "enable_auto_inspect": True,
+        "auto_inspect_interval": 0.5,
+        "auto_inspect_avg5": False,
+
+        "snapshot_cooldown": 5.0,
+        "snapshot_keep": 200
+    }
+
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                user_cfg = json.load(f)
+            if isinstance(user_cfg, dict):
+                cfg.update(user_cfg)
+    except Exception as e:
+        print("[WARN] runtime config load failed:", e)
+
+    return cfg
 
 def roi_label_pos(x, y, w, h, margin=25):
     tx = x
@@ -220,6 +254,7 @@ class VisionApp:
     def __init__(self):
         ensure_dirs()
 
+        self.runtime_cfg = load_runtime_config(RUNTIME_CFG_PATH)
         self.cam = CameraGST(GST_PIPELINE)
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
         try:
@@ -235,6 +270,7 @@ class VisionApp:
         self.stabilizer = Stabilizer(window=5, move_thresh_px=3, alpha=0.7)
 
         self.state = AppState(last_buttons=[])
+        self.state.auto_inspect = bool(self.runtime_cfg.get("enable_auto_inspect", True))
 
         # load saved tracker template if exists
         self._load_alignment_template()
@@ -344,6 +380,11 @@ class VisionApp:
         """
         st = self.state
         
+        cfg = self.runtime_cfg
+        pose_roi_id = str(cfg.get("pose_roi_id", "1"))
+        pose_metric_key = str(cfg.get("pose_metric_key", "blob_count"))
+        pose_expect = int(cfg.get("pose_expect", 4))
+        
         # 5-frame avg (same as your current behavior)
         if avg5:
             frames = []
@@ -375,18 +416,18 @@ class VisionApp:
             pass
 
         # pose counter update (always from last_results)
-        r = (st.last_results or {}).get(POSE_ROI_ID_STR)
+        r = (st.last_results or {}).get(pose_roi_id)
         bc = None
         if r is not None and hasattr(r, "metrics"):
-            bc = (r.metrics or {}).get(POSE_METRIC_KEY, None)
+            bc = (r.metrics or {}).get(pose_metric_key, None)
         elif isinstance(r, dict):
-            bc = (r.get("metrics") or {}).get(POSE_METRIC_KEY, None)
+            bc = (r.get("metrics") or {}).get(pose_metric_key, None)
 
         if bc is None:
             # metric 없으면 카운트 유지(혹은 리셋)
             st.pose_bad_cnt = 0
         else:
-            if int(bc) == int(POSE_EXPECT):
+            if int(bc) == pose_expect:
                 st.pose_bad_cnt = 0
             else:
                 st.pose_bad_cnt += 1
@@ -438,6 +479,15 @@ class VisionApp:
 
     def _draw_pose_message(self, img):
         st = self.state
+
+        cfg = self.runtime_cfg
+        if not cfg.get("enable_pose_guide", True):
+            return img
+
+        pose_bad_n = int(cfg.get("pose_bad_n", 5))
+        if st.pose_bad_cnt < pose_bad_n:
+            return img
+
         # 조건: pose_bad_cnt >= N 이면 안내
         if st.pose_bad_cnt < POSE_BAD_N:
             return img
@@ -557,11 +607,16 @@ class VisionApp:
                 self._draw_run_tracking(vis, frame_gray8)
 
                 # Auto inspect tick
-                if st.auto_inspect:
+                cfg = self.runtime_cfg
+
+                if st.auto_inspect and cfg.get("enable_auto_inspect", True):
                     now = time.time()
-                    if (now - st.last_auto_inspect_ts) >= AUTO_INSPECT_INTERVAL:
+                    interval = float(cfg.get("auto_inspect_interval", 0.5))
+                    avg5 = bool(cfg.get("auto_inspect_avg5", False))
+
+                    if (now - st.last_auto_inspect_ts) >= interval:
                         st.last_auto_inspect_ts = now
-                        self._inspect_once(frame_gray8, vis, avg5=False)
+                        self._inspect_once(frame_gray8, vis, avg5=avg5)
 
             # status + banner
             overlay.draw_status_bar(vis, st.status)
@@ -737,6 +792,11 @@ class VisionApp:
         """
         tracker + stabilizer overlay + snapshot keeping
         """
+        cfg = self.runtime_cfg
+        if not cfg.get("enable_tracker", True):
+            overlay.draw_rois(vis, rois=self._roi_mgr_to_list(), active_id=self.roi_mgr.selected_id, roi_results=self.state.last_results)
+            return
+        
         st = self.state
         tracker = getattr(self.inspector, "tracker", None)
 
