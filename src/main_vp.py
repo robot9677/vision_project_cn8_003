@@ -21,7 +21,7 @@ from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
 from ui.pose_guide import draw_pose_message
 from runtime.product_profile_loader import load_product_profile
-from io.sample_capture import handle_sample_keys, prune_snapshots
+from data_io.sample_capture import handle_sample_keys, prune_snapshots
 from ui.control_bar import render_control_bar, key_to_cmd, button_id_to_cmd
 from app.command_executor import execute_command
 from inspection.inspect_service import run_inspect_once
