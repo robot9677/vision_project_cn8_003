@@ -11,8 +11,8 @@
   "pose_metric_key": "blob_count",
   "pose_expect": 4,
 
-  "enable_auto_inspect": true,
-  "auto_inspect_interval": 0.5,
+  "enable_auto_inspect": false,
+  "auto_inspect_interval": 1.0,
   "auto_inspect_avg5": false,
 
   "snapshot_cooldown": 5.0,

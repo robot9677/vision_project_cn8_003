@@ -78,19 +78,9 @@ GST_PIPELINE = (
 
 TEMPLATE_PATH = os.path.join(PROJECT_ROOT, "data", "roi", "align_template.png")
 
-NORMALIZE_ENABLED = False
-NORMALIZE_TARGET_MEAN = 120.0
-
-SNAPSHOT_COOLDOWN = 5.0
-SNAPSHOT_KEEP = 200
-
-POSE_BAD_N = 5
 POSE_ROI_ID_STR = "1"          # pose 판단 ROI (문자열 키)
 POSE_METRIC_KEY = "blob_count" # pose 판단 metric
 POSE_EXPECT = 4                # blob_count == 4
-
-AUTO_INSPECT_INTERVAL = 1.0    # seconds (2Hz)
-
 
 # =========================
 # Small utils
@@ -300,6 +290,37 @@ class VisionApp:
         mode_text = "STATIC" if run_mode == "static" else "HELD"
         st.status = f"AUTO INSPECT ON / {mode_text}" if st.auto_inspect else f"AUTO INSPECT OFF / {mode_text}"
 
+    def _run_auto_inspect_tick(self, frame_gray8, vis_bgr):
+        st = self.state
+        cfg = self.runtime_cfg
+
+        if not (st.auto_inspect and self.product_profile["modules"].get("auto_inspect", True)):
+            return
+
+        now = time.time()
+        interval = float(cfg.get("auto_inspect_interval", 0.5))
+        avg5 = bool(cfg.get("auto_inspect_avg5", False))
+        stable_required = int(cfg.get("auto_inspect_stable_frames", 3))
+        run_mode = str(cfg.get("run_mode", "held")).lower()
+
+        allow_inspect = False
+        if run_mode == "static":
+            allow_inspect = True
+        else:
+            allow_inspect = st.tracking_stable and st.stable_frame_count >= stable_required
+
+        if allow_inspect and (now - st.last_auto_inspect_ts) >= interval:
+            st.last_auto_inspect_ts = now
+            run_inspect_once(
+                cam=self.cam,
+                inspector=self.inspector,
+                runtime_cfg=self.runtime_cfg,
+                state=st,
+                frame_gray8=frame_gray8,
+                vis_bgr=vis_bgr,
+                avg5=avg5,
+            )
+
     # -------------------------
     # Main loop
     # -------------------------
@@ -326,8 +347,11 @@ class VisionApp:
             frame_gray8 = frame
 
             # optional normalize (RUN only)
-            if (not st.edit_mode) and NORMALIZE_ENABLED and frame_gray8 is not None:
-                frame_gray8, _ = normalize_frame(frame_gray8, target_mean=NORMALIZE_TARGET_MEAN, do_clahe=True)
+            if (not st.edit_mode) and frame_gray8 is not None:
+                norm_enabled = bool(self.runtime_cfg.get("normalize_enabled", False))
+                norm_target = float(self.runtime_cfg.get("normalize_target_mean", 120.0))
+                if norm_enabled:
+                    frame_gray8, _ = normalize_frame(frame_gray8, target_mean=norm_target, do_clahe=True)
 
             vis = cv2.cvtColor(frame_gray8, cv2.COLOR_GRAY2BGR)
 
@@ -372,8 +396,8 @@ class VisionApp:
                         inspector=self.inspector,
                         stabilizer=self.stabilizer,
                         data_dir=DATA_DIR,
-                        snapshot_cooldown=SNAPSHOT_COOLDOWN,
-                        snapshot_keep=SNAPSHOT_KEEP,
+                        snapshot_cooldown=float(self.runtime_cfg.get("snapshot_cooldown", 5.0)),
+                        snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
                         prune_snapshots=prune_snapshots,
                         roi_label_pos=roi_label_pos,
                     )
@@ -384,35 +408,6 @@ class VisionApp:
                     elif st.status == "RUN MODE":
                         st.status = "RUN MODE / HELD"
         
-                # Auto inspect tick
-                cfg = self.runtime_cfg
-                run_mode = str(cfg.get("run_mode", "held")).lower()
-
-                if st.auto_inspect and self.product_profile["modules"].get("auto_inspect", True):
-                    now = time.time()
-                    interval = float(cfg.get("auto_inspect_interval", 0.5))
-                    avg5 = bool(cfg.get("auto_inspect_avg5", False))
-                    stable_required = int(cfg.get("auto_inspect_stable_frames", 3))
-
-                    allow_inspect = False
-
-                    if run_mode == "static":
-                        allow_inspect = True
-                    else:
-                        allow_inspect = st.tracking_stable and st.stable_frame_count >= stable_required
-
-                    if allow_inspect and (now - st.last_auto_inspect_ts) >= interval:
-                        st.last_auto_inspect_ts = now
-                        run_inspect_once(
-                            cam=self.cam,
-                            inspector=self.inspector,
-                            runtime_cfg=self.runtime_cfg,
-                            state=st,
-                            frame_gray8=frame_gray8,
-                            vis_bgr=vis,
-                            avg5=avg5,
-                        )
-
             # status + banner
             overlay.draw_status_bar(vis, st.status)
             if st.last_overall_ok is not None:
@@ -422,7 +417,8 @@ class VisionApp:
             st.last_buttons = render_control_bar(vis, st.edit_mode)
 
             # HUD
-            vis = draw_pose_message(vis, st.pose_bad_cnt, int(self.runtime_cfg.get("pose_bad_n", 5)))
+            if bool(self.runtime_cfg.get("enable_pose_guide", True)):
+                vis = draw_pose_message(vis, st.pose_bad_cnt, int(self.runtime_cfg.get("pose_bad_n", 5)))
             draw_dev_hud(vis, st, self.product_profile)
 
             # show
@@ -439,7 +435,7 @@ class VisionApp:
                 edit_mode=st.edit_mode,
                 roi_mgr=self.roi_mgr,
                 data_dir=DATA_DIR,
-                snapshot_keep=SNAPSHOT_KEEP,
+                snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200))
             )
             if consumed:
                 if sample_msg:
