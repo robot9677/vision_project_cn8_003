@@ -107,6 +107,7 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
         "blob_count": int(cnt),
         "blob_areas_all": areas_all,
         "blob_areas_kept": areas_kept,
+        "num_labels": int(num - 1),
     }
 
     expected = params.get("expected", None)
