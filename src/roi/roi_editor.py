@@ -51,17 +51,37 @@ class ROIEditor:
             top_extra = 24  # rotate handle 포함
             if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - top_extra <= y <= ry + rh + self.EDGE_MARGIN:
                 # inside outer margin: determine type
-                cx = rx + rw // 2
-                cy = ry + rh // 2
+                angle = float(r.get("angle", 0.0))
 
-                handle_x = cx
-                handle_y = ry - 18
+                cx = rx + rw / 2.0
+                cy = ry + rh / 2.0
+
+                box = cv2.boxPoints(((cx, cy), (rw, rh), angle))
+                box = box.astype(float)
+
+                # rotation handle: top edge midpoint -> outward
+                p0 = box[0]
+                p1 = box[1]
+                top_mid = (p0 + p1) / 2.0
+
+                vx = top_mid[0] - cx
+                vy = top_mid[1] - cy
+                norm = (vx * vx + vy * vy) ** 0.5
+                if norm > 1e-6:
+                    ux = vx / norm
+                    uy = vy / norm
+                else:
+                    ux, uy = 0.0, -1.0
+
+                handle_x = top_mid[0] + ux * 18
+                handle_y = top_mid[1] + uy * 18
+
                 if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
                     return r, "rotate", None
 
                 if abs(x - cx) <= 8 and abs(y - cy) <= 8:
                     return r, "center", None
-                
+                                
                 inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
                 # corners
                 corners = {
