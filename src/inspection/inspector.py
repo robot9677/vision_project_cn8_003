@@ -36,7 +36,7 @@ class Inspector:
         auto_path = os.path.join(os.path.dirname(recipe_path), "recipe_auto.json")
         self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
         print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
-        self.mean_filter = TemporalMeanFilter(win=5)
+        self.mean_filters = {}
         self.runtime_cfg = runtime_cfg or {}
         self.tracker = ROITracker(
             search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
@@ -50,6 +50,11 @@ class Inspector:
         register_locate_tools()
         register_identify_tools()
 
+    def _get_mean_filter(self, roi_id):
+        key = str(roi_id)
+        if key not in self.mean_filters:
+            self.mean_filters[key] = TemporalMeanFilter(win=5)
+        return self.mean_filters[key]
 
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
@@ -73,15 +78,21 @@ class Inspector:
                 self.tracker.set_template(ref_crop_raw)
 
             # 정규화
-            if ref_crop_raw is not None and ref_crop_raw.size > 0:
-                frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=50.0)
+            if (
+                bool(self.runtime_cfg.get("normalize_enabled", False))
+                and ref_crop_raw is not None
+                and ref_crop_raw.size > 0
+            ):
+                target_mean = float(self.runtime_cfg.get("normalize_target_mean", 50.0))
+                frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=target_mean)
 
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
-            nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
-            dx, dy = int(nrx - rx), int(nry - ry)
+            if bool(self.runtime_cfg.get("enable_tracker", True)):
+                nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
+                dx, dy = int(nrx - rx), int(nry - ry)
 
-            if auto_mode == False:
-                print("[TRK] reacquired")
+                if auto_mode == False:
+                    print("[TRK] reacquired")
 
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
@@ -128,7 +139,7 @@ class Inspector:
             # --- ensure mean exists for ALL ROIs ---
             mean_raw = float(np.mean(crop))
             metrics["mean_raw"] = mean_raw
-            metrics["mean"] = self.mean_filter.update(mean_raw)
+            metrics["mean"] = self._get_mean_filter(roi_id).update(mean_raw)
 
             # compute score only if analyzer needs it
             need_score = str(cfg.get("type","")).lower() in ("mean_score", "score_threshold", "texture_score")
