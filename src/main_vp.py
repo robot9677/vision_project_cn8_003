@@ -29,6 +29,7 @@ from modes.run_renderer import draw_run_tracking
 from runtime.runtime_config_loader import load_runtime_config
 from app.app_setup import ensure_dirs
 from app.app_paths import (
+    PROJECT_ROOT,
     DATA_DIR,
     ROI_DIR,
     ROI_PATH,
