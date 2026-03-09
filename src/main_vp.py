@@ -466,7 +466,7 @@ class VisionApp:
             cv2.imshow(self.win, vis)
 
             # key
-            key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKeyEx(1)
             self._handle_key_input(key, frame_gray8, vis)
 
         self.cam.release()
