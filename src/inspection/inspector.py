@@ -36,13 +36,14 @@ class Inspector:
         self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
         print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
         self.mean_filter = TemporalMeanFilter(win=5)
+        self.runtime_cfg = runtime_cfg or {}
         self.tracker = ROITracker(
             search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
             thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
             reacquire_margin=int(self.runtime_cfg.get("tracker_reacquire_margin", 220)),
             reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
         )
-        self.runtime_cfg = runtime_cfg or {}
+
         register_enhance_tools()
         register_measure_tools()
         register_locate_tools()
