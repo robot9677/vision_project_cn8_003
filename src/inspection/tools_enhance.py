@@ -16,15 +16,16 @@ def _threshold(crop, params, ctx):
         gray = crop
 
     if mode == "otsu":
-        _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        th_val, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     else:
-        t = params.get("th", 128)
-        _, th = cv2.threshold(gray, t, 255, cv2.THRESH_BINARY)
+        th_val = float(params.get("th", 128))
+        _, th = cv2.threshold(gray, th_val, 255, cv2.THRESH_BINARY)
 
     white_ratio = float((th > 0).sum()) / th.size
 
     meta = {
-        "white_ratio": white_ratio
+        "white_ratio": white_ratio,
+        "th_value": float(th_val),
     }
 
     return th, meta, True, "OK"

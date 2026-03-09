@@ -129,6 +129,12 @@ class Inspector:
 
             if "tools" in cfg and cfg.get("tools"):
                 ok, metrics, reason = run_toolchain(crop, cfg)
+                if not auto_mode and roi_id == 1:
+                    dbg_dir = os.path.join(self.logs_root, "_dbg")
+                    os.makedirs(dbg_dir, exist_ok=True)
+                    tool_img = metrics.get("_last_image")
+                    if isinstance(tool_img, np.ndarray) and tool_img.size > 0:
+                        cv2.imwrite(os.path.join(dbg_dir, f"roi1_{int(time.time()*1000)}_{'OK' if ok else 'NG'}.png"), tool_img)
             else:
                 ok, metrics, reason = run_analyzer(crop, cfg)
 
@@ -203,6 +209,7 @@ class Inspector:
                     f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
                     f"blob={metrics.get('blob_count')} "
                     f"areas={metrics.get('blob_areas_kept')} "
+                    f"th={metrics.get('th_value')} "
                     f"white_ratio={metrics.get('white_ratio')} "
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "
