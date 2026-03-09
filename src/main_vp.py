@@ -467,9 +467,11 @@ class VisionApp:
             cv2.imshow(self.win, vis)
 
             # key
-            key = cv2.waitKeyEx(1)
-
+            key = cv2.waitKey(1) & 0xFF
             self._handle_key_input(key, frame_gray8, vis)
+
+            if st.quit_requested:
+                break
 
         self.cam.release()
         cv2.destroyAllWindows()
