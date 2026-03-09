@@ -356,8 +356,9 @@ class VisionApp:
                 st.status = sample_msg
             return
 
-        if key != 255:
+        if key != -1:
             cmd = key_to_cmd(key, UICmd)
+            print(f"[DBG CMD] key={key}, cmd={cmd}")
             if cmd != UICmd.NONE:
                 st.pending_cmd = cmd
 
@@ -467,6 +468,9 @@ class VisionApp:
 
             # key
             key = cv2.waitKeyEx(1)
+            if key != -1:
+                print(f"[DBG KEY] raw={key}")
+
             self._handle_key_input(key, frame_gray8, vis)
 
         self.cam.release()
