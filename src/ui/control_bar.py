@@ -1,4 +1,4 @@
-from ui.overlay import draw_control_bar
+from ui.overlay_clean import draw_control_bar
 
 
 def build_control_buttons(edit_mode: bool):
