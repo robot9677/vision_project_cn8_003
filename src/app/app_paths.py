@@ -9,5 +9,6 @@ ROI_DIR = os.path.join(DATA_DIR, "roi")
 ROI_PATH = os.path.join(ROI_DIR, "roi.json")
 RECIPE_PATH = os.path.join(ROI_DIR, "recipe_static.json")
 RUNTIME_CONFIG_PATH = os.path.join(ROI_DIR, "runtime_config.json")
+PRODUCT_PROFILE_PATH = os.path.join(DATA_DIR, "roi", "product_profile.json")
 
 LOGS_ROOT = os.path.join(DATA_DIR, "logs")
