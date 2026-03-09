@@ -473,6 +473,9 @@ class VisionApp:
             if key_raw != -1:
                 print(f"[DBG KEY] raw={key_raw}, norm={key}")
 
+                if key_raw in (27, 49, 65367, 65360, 65535, 65365, 65366, 65379, 65361, 65362, 65363, 65364):
+                    print(f"[DBG SPECIAL] raw={key_raw}, norm={key}")
+
             self._handle_key_input(key, frame_gray8, vis)
 
         self.cam.release()
