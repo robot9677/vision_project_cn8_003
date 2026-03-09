@@ -394,6 +394,30 @@ class VisionApp:
             st.pending_cmd = UICmd.NONE
             execute_command(self, cmd_to_run, frame_gray8, vis_bgr)
 
+    def _draw_ui(self, vis):
+        st = self.state
+
+        overlay.draw_status_bar(vis, st.status)
+
+        if st.last_overall_ok is not None:
+            overlay.draw_overall_banner(
+                vis,
+                st.last_overall_ok,
+                info=_extract_info_from_results(st.last_results),
+            )
+
+        st.last_buttons = render_control_bar(vis, st.edit_mode)
+
+        if bool(self.runtime_cfg.get("enable_pose_guide", True)):
+            vis = draw_pose_message(
+                vis,
+                st.pose_bad_cnt,
+                int(self.runtime_cfg.get("pose_bad_n", 5)),
+            )
+
+        draw_dev_hud(vis, st, self.product_profile)
+        return vis
+
     # -------------------------
     # Main loop
     # -------------------------
@@ -434,18 +458,8 @@ class VisionApp:
             else:
                 self._render_run_frame(vis, frame_gray8)
         
-            # status + banner
-            overlay.draw_status_bar(vis, st.status)
-            if st.last_overall_ok is not None:
-                overlay.draw_overall_banner(vis, st.last_overall_ok, info=_extract_info_from_results(st.last_results))
-
-            # control bar (buttons)
-            st.last_buttons = render_control_bar(vis, st.edit_mode)
-
-            # HUD
-            if bool(self.runtime_cfg.get("enable_pose_guide", True)):
-                vis = draw_pose_message(vis, st.pose_bad_cnt, int(self.runtime_cfg.get("pose_bad_n", 5)))
-            draw_dev_hud(vis, st, self.product_profile)
+            # Status + banner + control Bar(button) + HUD  Draw
+            vis = self._draw_ui(vis)
 
             # show
             cv2.imshow(self.win, vis)
