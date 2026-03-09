@@ -128,6 +128,8 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
         # prepare label lines
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
         line2 = f"x:{x} y:{y} w:{w} h:{h}"
+        line3 = "SELECTED" if roi_id == active_id else ""
+
         # metric summary (optional)
         if roi_results is not None:
             rv = roi_results.get(rid_str) if isinstance(roi_results, dict) else None
@@ -170,7 +172,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                 if parts:
                     line2 = " ".join(parts)
 
-        lines = [line1] + ([line2] if line2 else [])
+        lines = [line1, line2] + ([line3] if line3 else [])
 
         # text sizing
         sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
@@ -274,6 +276,20 @@ def draw_origin_axes(img, origin=(40, 60), axis_len=80):
 
     # origin label
     draw_text(img, f"(0,0)", (ox + 6, oy - 10), color=(0, 255, 255), scale=0.5, thickness=1, align="lt")
+
+def draw_selected_roi_info(img, roi):
+    if not roi:
+        return
+
+    x = int(roi.get("x", 0))
+    y = int(roi.get("y", 0))
+    w = int(roi.get("w", 0))
+    h = int(roi.get("h", 0))
+    rid = roi.get("id", "")
+    name = roi.get("name", f"ROI{rid}")
+
+    text = f"{name}#{rid}  x:{x} y:{y} w:{w} h:{h}"
+    draw_text(img, text, (140, 32), color=(0, 255, 255), scale=0.55, thickness=1, align="lt")
     
 def draw_control_bar(img, buttons):
     h, w = img.shape[:2]

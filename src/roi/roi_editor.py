@@ -209,6 +209,7 @@ class ROIEditor:
         Himg, Wimg = vis_bgr.shape[:2]
 
         overlay.draw_origin_axes(vis_bgr, origin=(40, 60), axis_len=80)
+        overlay.draw_selected_roi_info(vis_bgr, self.roi_mgr.get_selected())
 
         # 1) optional: darken whole image a bit to make ROIs pop
         alpha = 0.1   # 0 = no darken, 0.35 = mild darken (조절 가능)
