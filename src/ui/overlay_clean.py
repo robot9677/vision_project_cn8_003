@@ -288,9 +288,9 @@ def draw_selected_roi_info(img, roi):
     rid = roi.get("id", "")
     name = roi.get("name", f"ROI{rid}")
 
-    text = f"{name}#{rid}  x:{x} y:{y} w:{w} h:{h}"
-    draw_text(img, text, (140, 32), color=(0, 255, 255), scale=0.55, thickness=1, align="lt")
-    
+    text = f"{name}  x:{x} y:{y} w:{w} h:{h}"
+    draw_text(img, text, (140, 40), color=(0, 255, 255), scale=0.55, thickness=1, align="lt")
+
 def draw_control_bar(img, buttons):
     h, w = img.shape[:2]
     bar_h = 72
