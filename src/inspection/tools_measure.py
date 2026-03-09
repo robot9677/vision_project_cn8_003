@@ -77,9 +77,14 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
     if polarity == "black":
         bw = cv2.bitwise_not(bw)
 
-    k = int(params.get("open", 0))
-    if k >= 3:
-        ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    k_close = int(params.get("close", 0))
+    if k_close >= 3:
+        ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_close, k_close))
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, ker)
+
+    k_open = int(params.get("open", 0))
+    if k_open >= 3:
+        ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_open, k_open))
         bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, ker)
 
     num, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
