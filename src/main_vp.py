@@ -16,7 +16,6 @@ from inspection.stabilizer import Stabilizer
 from inspection.normalize import normalize_frame
 from inspection.logger import save_snapshot, save_template_copy
 
-from ui import overlay_clean as overlay  # production overlay
 from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
 from ui.pose_guide import draw_pose_message
@@ -143,8 +142,9 @@ class VisionApp:
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
         try:
             self.roi_mgr.load(ROI_PATH)
-            print("[DBG ROI COUNT]", len(getattr(self.roi_mgr, "rois", [])))
-        except Exception:
+            if DEV_MODE == True:
+                print("[DBG ROI COUNT]", len(getattr(self.roi_mgr, "rois", [])))
+        except Exception as e:
             pass
 
         self.editor = ROIEditor(self.roi_mgr)
@@ -216,7 +216,7 @@ class VisionApp:
         st.edit_mode = not st.edit_mode
         try:
             self.inspector.mean_filter.reset()
-        except Exception:
+        except Exception as e:
             pass
 
         # switching into edit: clear runtime template (optional)
@@ -227,7 +227,7 @@ class VisionApp:
                     trk.set_template(None)
             else:
                 self._load_alignment_template()
-        except Exception:
+        except Exception as e:
             pass
 
         if st.edit_mode:
@@ -248,7 +248,7 @@ class VisionApp:
                     st.status = "Saved ROI + Template"
                 else:
                     st.status = "Saved ROI"
-            except Exception:
+            except Exception as e:
                 st.status = "Saved ROI"
         except Exception as e:
             st.status = f"Save failed: {e}"
