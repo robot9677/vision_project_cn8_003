@@ -1,5 +1,6 @@
 import cv2
 import time
+import math
 from ui import ui_config as cfg
 from ui import overlay_clean as overlay
 
@@ -33,6 +34,8 @@ class ROIEditor:
         self.active_roi = None
         self.resize_dir = None  # ('l','r','t','b') combinations
         self.last_mouse = (0,0)
+        self.rotate_start_angle = 0.0
+        self.rotate_base_angle = 0.0
 
         # double-click detection
         self._last_click_time = 0
@@ -52,6 +55,11 @@ class ROIEditor:
 
                 if abs(x - cx) <= 8 and abs(y - cy) <= 8:
                     return r, "center", None
+                
+                handle_x = cx
+                handle_y = ry - 18
+                if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
+                    return r, "rotate", None
                 
                 inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
                 # corners
@@ -111,10 +119,17 @@ class ROIEditor:
                 self.active_roi = r["id"]
                 self.roi_mgr.select(self.active_roi)
                 self.on_select_changed()
-                
+
                 if typ in ("corner","edge"):
                     self.action = "resize"
                     self.resize_dir = sub
+                elif typ == "rotate":
+                    self.action = "rotate"
+                    r_angle = float(r.get("angle", 0.0))
+                    cx = r["x"] + r["w"] / 2.0
+                    cy = r["y"] + r["h"] / 2.0
+                    self.rotate_start_angle = math.degrees(math.atan2(y - cy, x - cx))
+                    self.rotate_base_angle = r_angle
                 elif typ == "center":
                     self.action = "move"
                 else:
@@ -170,6 +185,14 @@ class ROIEditor:
                     nh = max(self.min_size, int(nh))
                     nx, ny, nw, nh = self.roi_mgr._clamp_rect(nx, ny, nw, nh)
                     self.roi_mgr.update(self.active_roi, x=nx, y=ny, w=nw, h=nh)
+            elif self.action == "rotate" and self.active_roi is not None:
+                r = self.roi_mgr.get(self.active_roi)
+                if r:
+                    cx = r["x"] + r["w"] / 2.0
+                    cy = r["y"] + r["h"] / 2.0
+                    cur_angle = math.degrees(math.atan2(y - cy, x - cx))
+                    new_angle = self.rotate_base_angle + (cur_angle - self.rotate_start_angle)
+                    self.roi_mgr.update(self.active_roi, angle=float(new_angle))
             return
 
         if event == cv2.EVENT_LBUTTONUP:
@@ -188,6 +211,8 @@ class ROIEditor:
             self.action = None
             self.active_roi = None
             self.resize_dir = None
+            self.rotate_start_angle = 0.0
+            self.rotate_base_angle = 0.0
             return
 
         if event == cv2.EVENT_RBUTTONDOWN:
@@ -287,6 +312,11 @@ class ROIEditor:
                 cy = int(y + h / 2)
                 cv2.line(vis_bgr, (cx - 6, cy), (cx + 6, cy), (0, 255, 255), 1, lineType=cv2.LINE_AA)
                 cv2.line(vis_bgr, (cx, cy - 6), (cx, cy + 6), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+
+                handle_x = cx
+                handle_y = y - 18
+                cv2.line(vis_bgr, (cx, y), (handle_x, handle_y), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                cv2.circle(vis_bgr, (handle_x, handle_y), 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
 
                 overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=2)
                 cv2.rectangle(vis_bgr, (x+1, y+1), (x + w-1, y + h-1), color, 1, lineType=cv2.LINE_AA)
