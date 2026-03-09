@@ -217,7 +217,7 @@ def draw_overall_banner(img, overall_ok, info=None):
 
     # ----- 위치 정책 (여기만 수정하면 전체 위치 변경됨) -----
     POS = {
-        "overall": ("ct", (50, 25)),      # center-top
+        "overall": ("ct", (0, 25)),      # center-top
         "debug":   ("rb", (12, 88)),     # right-bottom (버튼바 피해서)
     }
     # -------------------------------------------------------
@@ -287,7 +287,10 @@ def draw_selected_roi_info(img, roi, parent_roi=None):
     h = int(roi.get("h", 0))
     rid = roi.get("id", "")
 
-    text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}"
+    cx = int(x + w / 2)
+    cy = int(y + h / 2)
+
+    text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}  cx:{cx} cy:{cy}"
 
     if parent_roi and parent_roi.get("id") != rid:
         px = int(parent_roi.get("x", 0))
@@ -295,7 +298,7 @@ def draw_selected_roi_info(img, roi, parent_roi=None):
         dx = x - px
         dy = y - py
         text += f"  rel:{dx},{dy}"
-
+        
     draw_text(img, text, (140, 20), color=(0, 255, 255), scale=0.6, thickness=1, align="lt")
 
 def draw_control_bar(img, buttons):

@@ -273,6 +273,11 @@ class ROIEditor:
                 cv2.rectangle(vis_bgr, (x, y), (x + w, y + h), color, 1, lineType=cv2.LINE_AA)
             else:
                 # selected: white outer + colored inner for emphasis
+                cx = int(x + w / 2)
+                cy = int(y + h / 2)
+                cv2.line(vis_bgr, (cx - 6, cy), (cx + 6, cy), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                cv2.line(vis_bgr, (cx, cy - 6), (cx, cy + 6), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                
                 overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=2)
                 cv2.rectangle(vis_bgr, (x+1, y+1), (x + w-1, y + h-1), color, 1, lineType=cv2.LINE_AA)
                 for hx, hy in [(x,y),(x+w,y),(x,y+h),(x+w,y+h)]:
