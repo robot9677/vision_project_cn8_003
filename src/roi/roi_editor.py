@@ -305,24 +305,58 @@ class ROIEditor:
             # pick bright color
             color = palette[idx % len(palette)]
             # non-selected: colored thick rect
+            angle = float(r.get("angle", 0.0))
+            cx = x + w / 2.0
+            cy = y + h / 2.0
+            box = cv2.boxPoints(((cx, cy), (w, h), angle))
+            box = box.astype(int)
+
             if r["id"] != sel_id:
-                cv2.rectangle(vis_bgr, (x, y), (x + w, y + h), color, 1, lineType=cv2.LINE_AA)
+                cv2.polylines(vis_bgr, [box], True, color, 1, lineType=cv2.LINE_AA)
             else:
-                # selected: white outer + colored inner for emphasis
-                cx = int(x + w / 2)
-                cy = int(y + h / 2)
-                cv2.line(vis_bgr, (cx - 6, cy), (cx + 6, cy), (0, 255, 255), 1, lineType=cv2.LINE_AA)
-                cv2.line(vis_bgr, (cx, cy - 6), (cx, cy + 6), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                # selected: rotated outer/inner box
+                box_outer = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(int)
+                box_inner = cv2.boxPoints(((cx, cy), (max(1, w - 2), max(1, h - 2)), angle)).astype(int)
 
-                handle_x = cx
-                handle_y = y - 18
-                cv2.line(vis_bgr, (cx, y), (handle_x, handle_y), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                cv2.polylines(vis_bgr, [box_outer], True, (255, 255, 255), 2, lineType=cv2.LINE_AA)
+                cv2.polylines(vis_bgr, [box_inner], True, color, 1, lineType=cv2.LINE_AA)
+
+                # center cross
+                cxi = int(cx)
+                cyi = int(cy)
+                cv2.line(vis_bgr, (cxi - 6, cyi), (cxi + 6, cyi), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+                cv2.line(vis_bgr, (cxi, cyi - 6), (cxi, cyi + 6), (0, 255, 255), 1, lineType=cv2.LINE_AA)
+
+                # rotated corner handles
+                for hx, hy in box_outer:
+                    cv2.circle(vis_bgr, (int(hx), int(hy)), self.HANDLE_RADIUS, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+
+                # rotation handle: top edge midpoint -> outward
+                p0 = box_outer[0]
+                p1 = box_outer[1]
+                top_mid = ((p0 + p1) / 2.0)
+
+                vx = top_mid[0] - cx
+                vy = top_mid[1] - cy
+                norm = (vx * vx + vy * vy) ** 0.5
+                if norm > 1e-6:
+                    ux = vx / norm
+                    uy = vy / norm
+                else:
+                    ux, uy = 0.0, -1.0
+
+                handle_x = int(top_mid[0] + ux * 18)
+                handle_y = int(top_mid[1] + uy * 18)
+
+                cv2.line(
+                    vis_bgr,
+                    (int(top_mid[0]), int(top_mid[1])),
+                    (handle_x, handle_y),
+                    (0, 255, 255),
+                    1,
+                    lineType=cv2.LINE_AA
+                )
                 cv2.circle(vis_bgr, (handle_x, handle_y), 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-
-                overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=2)
-                cv2.rectangle(vis_bgr, (x+1, y+1), (x + w-1, y + h-1), color, 1, lineType=cv2.LINE_AA)
-                for hx, hy in [(x,y),(x+w,y),(x,y+h),(x+w,y+h)]:
-                    cv2.circle(vis_bgr, (hx, hy), self.HANDLE_RADIUS, (255,255,255), -1, lineType=cv2.LINE_AA)
 
             # label with shadow for contrast
             label = f'{r.get("name","ROI")}'
