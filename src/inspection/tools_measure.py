@@ -21,19 +21,6 @@ def _edge_energy(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) 
     else:
         gray = crop if crop.ndim == 2 else cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
 
-        zx, zy = 0, 0
-        zone = params.get("count_zone")
-        zx = zy = 0
-        if isinstance(zone, (list, tuple)) and len(zone) == 4:
-            zx, zy, zw, zh = [int(v) for v in zone]
-            H, W = gray.shape[:2]
-            x1 = max(0, min(zx, W - 1))
-            y1 = max(0, min(zy, H - 1))
-            x2 = max(x1 + 1, min(W, x1 + zw))
-            y2 = max(y1 + 1, min(H, y1 + zh))
-            gray = gray[y1:y2, x1:x2]
-            zx, zy = x1, y1
-
     ksize = int(params.get("ksize", 3))
     ksize = 3 if ksize not in (3, 5) else ksize
     sigma = float(params.get("sigma", 0))
@@ -83,6 +70,18 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
 
     if img8.ndim == 3:
         img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+    
+    zx, zy = 0, 0
+    zone = params.get("count_zone")
+    if isinstance(zone, (list, tuple)) and len(zone) == 4:
+        x0, y0, zw, zh = [int(v) for v in zone]
+        H, W = img8.shape[:2]
+        x1 = max(0, min(x0, W - 1))
+        y1 = max(0, min(y0, H - 1))
+        x2 = max(x1 + 1, min(W, x1 + zw))
+        y2 = max(y1 + 1, min(H, y1 + zh))
+        img8 = img8[y1:y2, x1:x2]
+        zx, zy = x1, y1
 
     _, bw = cv2.threshold(img8, 0, 255, cv2.THRESH_BINARY)
 
@@ -124,14 +123,14 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
             areas_kept.append(area)
             boxes_kept.append([x, y, w, h])
 
-        meta = {
-            "blob_count": int(cnt),
-            "blob_areas_all": areas_all,
-            "blob_areas_kept": areas_kept,
-            "blob_boxes_kept": boxes_kept,
-            "num_labels": int(num - 1),
-            "count_zone": params.get("count_zone"),
-        }
+    meta = {
+        "blob_count": int(cnt),
+        "blob_areas_all": areas_all,
+        "blob_areas_kept": areas_kept,
+        "blob_boxes_kept": boxes_kept,
+        "num_labels": int(num - 1),
+        "count_zone": params.get("count_zone"),
+    }
 
     expected = params.get("expected", None)
     min_count = params.get("min_count", None)
