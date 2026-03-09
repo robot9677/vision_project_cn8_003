@@ -1,6 +1,7 @@
 import cv2
 import os
 from ui import overlay_clean as overlay
+from app.app_paths import DATA_DIR
 
 DEV_MODE = True
 
@@ -31,8 +32,8 @@ def draw_dev_hud(img, st, product_profile=None):
         roi_text = f"ROI:{roi_id}" if roi_id is not None else "ROI:-"
 
         hint = f"{roi_text}  T: template  K: save OK  N: save NG"
-        ok_dir = os.path.join("data", "dataset", "OK")
-        ng_dir = os.path.join("data", "dataset", "NG")
+        ok_dir = os.path.join(DATA_DIR, "dataset", "OK")
+        ng_dir = os.path.join(DATA_DIR, "dataset", "NG")
 
         try:
             ok_cnt = len(os.listdir(ok_dir))
@@ -45,7 +46,7 @@ def draw_dev_hud(img, st, product_profile=None):
             ng_cnt = 0
 
         hint = f"{hint}   OK:{ok_cnt} NG:{ng_cnt}"
-        
+
         x = 16
         y = h - 100
         ovl2 = img.copy()

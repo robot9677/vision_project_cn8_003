@@ -30,13 +30,14 @@ from runtime.runtime_config_loader import load_runtime_config
 from app.app_setup import ensure_dirs
 from app.app_paths import (
     PRODUCT_PROFILE_PATH,
-    PROJECT_ROOT,
+    TEMPLATE_PATH,
     DATA_DIR,
     ROI_DIR,
     ROI_PATH,
     RECIPE_PATH,
     RUNTIME_CONFIG_PATH,
     LOGS_ROOT,
+    PROJECT_ROOT,
 )
 
 # =========================
@@ -366,6 +367,7 @@ class VisionApp:
 
     def _draw_ui(self, vis):
         st = self.state
+        st.active_roi_id = self.roi_mgr.selected_id
 
         overlay.draw_status_bar(vis, st.status)
 
@@ -385,6 +387,7 @@ class VisionApp:
                 int(self.runtime_cfg.get("pose_bad_n", 5)),
             )
 
+        draw_mode_indicator(vis, st.edit_mode)
         draw_dev_hud(vis, st, self.product_profile)
         return vis
     
@@ -451,6 +454,9 @@ class VisionApp:
                 self.editor.update(vis)
             else:
                 self._render_run_frame(vis, frame_gray8)
+
+            if not st.edit_mode:
+                self._run_auto_inspect_tick(frame_gray8, vis)
         
             # Status + banner + control Bar(button) + HUD  Draw
             vis = self._draw_ui(vis)

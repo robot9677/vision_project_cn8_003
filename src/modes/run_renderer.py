@@ -93,7 +93,14 @@ def draw_run_tracking(
     roi_label_pos,
 ):
     if (not runtime_cfg.get("enable_tracker", True)) or (not product_profile["modules"].get("tracker", True)):
-        overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr),active_id=roi_mgr.selected_id,roi_results=state.last_results,)
+        state.tracking_stable = False
+        state.stable_frame_count = 0
+        overlay.draw_rois(
+            vis,
+            rois=roi_mgr_to_list(roi_mgr),
+            active_id=roi_mgr.selected_id,
+            roi_results=state.last_results,
+        )
         return
 
     tracker = getattr(inspector, "tracker", None)
