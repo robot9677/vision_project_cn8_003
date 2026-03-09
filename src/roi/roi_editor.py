@@ -209,7 +209,22 @@ class ROIEditor:
         Himg, Wimg = vis_bgr.shape[:2]
 
         overlay.draw_origin_axes(vis_bgr, origin=(40, 60), axis_len=80)
-        overlay.draw_selected_roi_info(vis_bgr, self.roi_mgr.get_selected())
+        sel = self.roi_mgr.get_selected()
+
+        parent_roi = None
+        if sel is not None:
+            sx, sy, sw, sh = sel["x"], sel["y"], sel["w"], sel["h"]
+            parents = []
+            for r in self.roi_mgr.list():
+                if r["id"] == sel["id"]:
+                    continue
+                rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+                if sx >= rx and sy >= ry and sx + sw <= rx + rw and sy + sh <= ry + rh:
+                    parents.append(r)
+            if parents:
+                parent_roi = min(parents, key=lambda r: r["w"] * r["h"])
+
+        overlay.draw_selected_roi_info(vis_bgr, sel, parent_roi)
 
         # 1) optional: darken whole image a bit to make ROIs pop
         alpha = 0.1   # 0 = no darken, 0.35 = mild darken (조절 가능)

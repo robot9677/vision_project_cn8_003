@@ -277,7 +277,7 @@ def draw_origin_axes(img, origin=(40, 60), axis_len=80):
     # origin label
     draw_text(img, f"(0,0)", (ox + 6, oy - 10), color=(0, 255, 255), scale=0.5, thickness=1, align="lt")
 
-def draw_selected_roi_info(img, roi):
+def draw_selected_roi_info(img, roi, parent_roi=None):
     if not roi:
         return
 
@@ -287,7 +287,14 @@ def draw_selected_roi_info(img, roi):
     h = int(roi.get("h", 0))
     rid = roi.get("id", "")
 
-    text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}"
+    if parent_roi and parent_roi.get("id") != rid:
+        px = int(parent_roi.get("x", 0))
+        py = int(parent_roi.get("y", 0))
+        dx = x - px
+        dy = y - py
+        text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}   rel:{dx},{dy}"
+    else:
+        text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}"
     draw_text(img, text, (140, 20), color=(0, 255, 255), scale=0.6, thickness=1, align="lt")
 
 def draw_control_bar(img, buttons):
