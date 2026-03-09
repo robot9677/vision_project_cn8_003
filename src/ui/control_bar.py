@@ -43,6 +43,8 @@ BUTTON_ID_TO_CMD_NAME = {
 
 KEY_TO_CMD_NAME = {
     27: "QUIT",
+    65367: "QUIT",
+    360: "QUIT",
     ord("q"): "QUIT",
     ord("e"): "TOGGLE_MODE",
     ord("s"): "SAVE",
