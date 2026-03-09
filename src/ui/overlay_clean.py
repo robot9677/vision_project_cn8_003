@@ -258,6 +258,23 @@ def draw_overall_banner(img, overall_ok, info=None):
             draw_text(img, dbg, (x-250, y+2), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
 
 
+def draw_origin_axes(img, origin=(40, 60), axis_len=80):
+    ox, oy = int(origin[0]), int(origin[1])
+
+    # origin point
+    cv2.circle(img, (ox, oy), 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+    # X axis
+    cv2.arrowedLine(img, (ox, oy), (ox + axis_len, oy), (0, 255, 255), 1, line_type=cv2.LINE_AA, tipLength=0.12)
+    draw_text(img, "X+", (ox + axis_len + 8, oy), color=(0, 255, 255), scale=0.5, thickness=1, align="lt")
+
+    # Y axis
+    cv2.arrowedLine(img, (ox, oy), (ox, oy + axis_len), (0, 255, 255), 1, line_type=cv2.LINE_AA, tipLength=0.12)
+    draw_text(img, "Y+", (ox - 4, oy + axis_len + 14), color=(0, 255, 255), scale=0.5, thickness=1, align="lt")
+
+    # origin label
+    draw_text(img, f"(0,0)", (ox + 6, oy - 10), color=(0, 255, 255), scale=0.5, thickness=1, align="lt")
+    
 def draw_control_bar(img, buttons):
     h, w = img.shape[:2]
     bar_h = 72
