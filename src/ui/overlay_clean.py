@@ -127,7 +127,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         # prepare label lines
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
-        line2 = ""
+        line2 = f"x:{x} y:{y} w:{w} h:{h}"
         # metric summary (optional)
         if roi_results is not None:
             rv = roi_results.get(rid_str) if isinstance(roi_results, dict) else None

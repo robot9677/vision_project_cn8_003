@@ -42,7 +42,8 @@ class ROIEditor:
 
     def _hit_test(self, x, y):
         """Return roi dict and hit region: 'inside', 'edge', 'corner', or None"""
-        for r in reversed(self.roi_mgr.list()):
+        rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]))
+        for r in rois:
             rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
             if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - self.EDGE_MARGIN <= y <= ry + rh + self.EDGE_MARGIN:
                 # inside outer margin: determine type
@@ -251,11 +252,11 @@ class ROIEditor:
             color = palette[idx % len(palette)]
             # non-selected: colored thick rect
             if r["id"] != sel_id:
-                cv2.rectangle(vis_bgr, (x, y), (x + w, y + h), color, 3, lineType=cv2.LINE_AA)
+                cv2.rectangle(vis_bgr, (x, y), (x + w, y + h), color, 1, lineType=cv2.LINE_AA)
             else:
                 # selected: white outer + colored inner for emphasis
-                overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=4)
-                cv2.rectangle(vis_bgr, (x+2, y+2), (x + w-2, y + h-2), color, 2, lineType=cv2.LINE_AA)
+                overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=2)
+                cv2.rectangle(vis_bgr, (x+1, y+1), (x + w-1, y + h-1), color, 1, lineType=cv2.LINE_AA)
                 for hx, hy in [(x,y),(x+w,y),(x,y+h),(x+w,y+h)]:
                     cv2.circle(vis_bgr, (hx, hy), self.HANDLE_RADIUS, (255,255,255), -1, lineType=cv2.LINE_AA)
 
