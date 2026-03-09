@@ -137,7 +137,7 @@ class VisionApp:
     def __init__(self):
         ensure_dirs(DATA_DIR, ROI_DIR, LOGS_ROOT)
 
-        self.runtime_cfg = load_runtime_config(RUNTIME_CFG_PATH)
+        self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
         self.cam = CameraGST(GST_PIPELINE)
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
