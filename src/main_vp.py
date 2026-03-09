@@ -16,6 +16,7 @@ from inspection.stabilizer import Stabilizer
 from inspection.normalize import normalize_frame
 from inspection.logger import save_snapshot, save_template_copy
 
+from ui import overlay_clean as overlay
 from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
 from ui.pose_guide import draw_pose_message
