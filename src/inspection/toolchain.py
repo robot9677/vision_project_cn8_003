@@ -52,4 +52,5 @@ def run_toolchain(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str
         final_ok = all(oks)
 
     ctx["metrics"]["_last_image"] = cur
-    return bool(final_ok), ctx["metrics"], ("OK" if final_ok else last_reason)
+    ret_metrics = dict(ctx["metrics"])
+    return bool(final_ok), ret_metrics, ("OK" if final_ok else last_reason)

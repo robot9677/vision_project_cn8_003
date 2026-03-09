@@ -262,7 +262,7 @@ class Inspector:
                     "roi_id": str(v.roi_id),
                     "ok": bool(v.ok),
                     "reason": v.reason,
-                    "metrics": v.metrics,
+                    "metrics": {k: v2 for k, v2 in v.metrics.items() if not isinstance(v2, np.ndarray)},
                 } for k, v in results.items()
             }
         }
