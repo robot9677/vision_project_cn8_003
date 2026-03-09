@@ -21,6 +21,18 @@ def _edge_energy(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) 
     else:
         gray = crop if crop.ndim == 2 else cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
 
+        zone = params.get("count_zone")
+        zx = zy = 0
+        if isinstance(zone, (list, tuple)) and len(zone) == 4:
+            zx, zy, zw, zh = [int(v) for v in zone]
+            H, W = gray.shape[:2]
+            x1 = max(0, min(zx, W - 1))
+            y1 = max(0, min(zy, H - 1))
+            x2 = max(x1 + 1, min(W, x1 + zw))
+            y2 = max(y1 + 1, min(H, y1 + zh))
+            gray = gray[y1:y2, x1:x2]
+            zx, zy = x1, y1
+
     ksize = int(params.get("ksize", 3))
     ksize = 3 if ksize not in (3, 5) else ksize
     sigma = float(params.get("sigma", 0))
@@ -99,8 +111,8 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
 
     for i in range(1, num):
         area = int(stats[i, cv2.CC_STAT_AREA])
-        x = int(stats[i, cv2.CC_STAT_LEFT])
-        y = int(stats[i, cv2.CC_STAT_TOP])
+        x = int(stats[i, cv2.CC_STAT_LEFT]) + zx
+        y = int(stats[i, cv2.CC_STAT_TOP]) + zy
         w = int(stats[i, cv2.CC_STAT_WIDTH])
         h = int(stats[i, cv2.CC_STAT_HEIGHT])
 
@@ -111,13 +123,14 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
             areas_kept.append(area)
             boxes_kept.append([x, y, w, h])
 
-    meta = {
-        "blob_count": int(cnt),
-        "blob_areas_all": areas_all,
-        "blob_areas_kept": areas_kept,
-        "blob_boxes_kept": boxes_kept,
-        "num_labels": int(num - 1),
-    }
+        meta = {
+            "blob_count": int(cnt),
+            "blob_areas_all": areas_all,
+            "blob_areas_kept": areas_kept,
+            "blob_boxes_kept": boxes_kept,
+            "num_labels": int(num - 1),
+            "count_zone": params.get("count_zone"),
+        }
 
     expected = params.get("expected", None)
     min_count = params.get("min_count", None)

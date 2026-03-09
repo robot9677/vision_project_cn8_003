@@ -218,6 +218,7 @@ class Inspector:
                     f"blob={metrics.get('blob_count')} "
                     f"areas={metrics.get('blob_areas_kept')} "
                     f"boxes={metrics.get('blob_boxes_kept')} "
+                    f"zone={metrics.get('count_zone')} "
                     f"th={metrics.get('th_value')} "
                     f"white_ratio={metrics.get('white_ratio')} "
                     f"mean_raw={metrics.get('mean_raw')} "
