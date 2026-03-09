@@ -358,7 +358,6 @@ class VisionApp:
 
         if key != -1:
             cmd = key_to_cmd(key, UICmd)
-            print(f"[DBG CMD] key={key}, cmd={cmd}")
             if cmd != UICmd.NONE:
                 st.pending_cmd = cmd
 
