@@ -1,7 +1,7 @@
 {
   "run_mode": "held",
 
-  "normalize_enabled": true,
+  "normalize_enabled": false,
   "normalize_target_mean": 60.0,
 
   "enable_tracker": true,
