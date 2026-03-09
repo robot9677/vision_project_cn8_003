@@ -123,7 +123,21 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
             color = cfg.COLOR_ROI_ACTIVE if hasattr(cfg, "COLOR_ROI_ACTIVE") else color
 
         # draw rectangle
-        draw_rect(img, (x, y), (x + w, y + h), color=color, thickness=thickness)
+        # ----- rotated rectangle -----
+        angle = float(r.get("angle", 0.0)) if isinstance(r, dict) else float(getattr(r, "angle", 0.0))
+
+        cx = x + w / 2
+        cy = y + h / 2
+
+        rect = ((cx, cy), (w, h), angle)
+
+        box = cv2.boxPoints(rect)
+        box = np.int32(box)
+
+        cv2.polylines(img, [box], True, color, thickness, lineType=cv2.LINE_AA)
+
+        # center point
+        cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
 
         # prepare label lines
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
