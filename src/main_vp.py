@@ -72,8 +72,6 @@ GST_PIPELINE = (
     "appsink drop=true max-buffers=1 sync=false"
 )
 
-TEMPLATE_PATH = os.path.join(PROJECT_ROOT, "data", "roi", "align_template.png")
-
 POSE_ROI_ID_STR = "1"          # pose 판단 ROI (문자열 키)
 POSE_METRIC_KEY = "blob_count" # pose 판단 metric
 POSE_EXPECT = 4                # blob_count == 4
