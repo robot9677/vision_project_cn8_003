@@ -26,9 +26,16 @@ from ui.control_bar import render_control_bar, key_to_cmd, button_id_to_cmd
 from app.command_executor import execute_command
 from inspection.inspect_service import run_inspect_once
 from modes.run_renderer import draw_run_tracking
-
-# NOTE: overlay_clean.py 에 draw_text_kr() 있어야 함
-
+from runtime.runtime_config_loader import load_runtime_config
+from app.app_setup import ensure_dirs
+from app.app_paths import (
+    DATA_DIR,
+    ROI_DIR,
+    ROI_PATH,
+    RECIPE_PATH,
+    RUNTIME_CONFIG_PATH,
+    LOGS_ROOT,
+)
 
 # =========================
 # Commands
@@ -46,23 +53,10 @@ class UICmd(Enum):
     DELETE = 9
     TOGGLE_AUTO_INSPECT = 10  # NEW
 
-
-
-
-
 # =========================
 # Config
 # =========================
 DEV_MODE = True
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DATA_DIR     = os.path.join(PROJECT_ROOT, "data")
-ROI_DIR      = os.path.join(DATA_DIR, "roi")
-ROI_PATH     = os.path.join(ROI_DIR, "roi.json")
-RECIPE_PATH  = os.path.join(ROI_DIR, "recipe_static.json")
-RUNTIME_CFG_PATH = os.path.join(ROI_DIR, "runtime_config.json")
-PRODUCT_PROFILE_PATH = os.path.join(ROI_DIR, "product_profile.json")
-LOGS_ROOT    = os.path.join(DATA_DIR, "logs")
 
 DEV    = "/dev/video0"
 WIDTH  = 1280
@@ -85,35 +79,6 @@ POSE_EXPECT = 4                # blob_count == 4
 # =========================
 # Small utils
 # =========================
-def ensure_dirs():
-    os.makedirs(ROI_DIR, exist_ok=True)
-    os.makedirs(LOGS_ROOT, exist_ok=True)
-    os.makedirs(os.path.join(DATA_DIR, "images", "ok"), exist_ok=True)
-    os.makedirs(os.path.join(DATA_DIR, "images", "ng"), exist_ok=True)
-    os.makedirs(os.path.join(DATA_DIR, "templates"), exist_ok=True)
-    os.makedirs(os.path.join(DATA_DIR, "dataset", "OK"), exist_ok=True)
-    os.makedirs(os.path.join(DATA_DIR, "dataset", "NG"), exist_ok=True)
-
-def load_runtime_config(path):
-    cfg = {
-        "enable_auto_inspect": False,
-        "auto_inspect_interval": 1.0,
-        "auto_inspect_avg5": False,
-        "pose_roi_id": "1",
-        "pose_metric_key": "blob_count",
-        "pose_expect": 4,
-    }
-
-    try:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                user_cfg = json.load(f)
-            if isinstance(user_cfg, dict):
-                cfg.update(user_cfg)
-    except Exception as e:
-        print("[WARN] runtime config load failed:", e)
-
-    return cfg
 
 def roi_label_pos(x, y, w, h, margin=25):
     tx = x
@@ -169,7 +134,7 @@ class AppState:
 
 class VisionApp:
     def __init__(self):
-        ensure_dirs()
+        ensure_dirs(DATA_DIR, ROI_DIR, LOGS_ROOT)
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CFG_PATH)
         self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
@@ -182,7 +147,12 @@ class VisionApp:
             pass
 
         self.editor = ROIEditor(self.roi_mgr)
-        self.inspector = Inspector(self.roi_mgr, recipe_path=RECIPE_PATH, logs_root=LOGS_ROOT)
+        self.inspector = Inspector(
+            self.roi_mgr,
+            recipe_path=RECIPE_PATH,
+            logs_root=LOGS_ROOT,
+            runtime_cfg=self.runtime_cfg,
+        )
         self.editor.on_select_changed = self.inspector.reset_tracker_template
 
         self.stabilizer = Stabilizer(window=5, move_thresh_px=3, alpha=0.7)
@@ -417,6 +387,36 @@ class VisionApp:
 
         draw_dev_hud(vis, st, self.product_profile)
         return vis
+    
+    def _prepare_frame(self, frame):
+        st = self.state
+
+        if frame is None:
+            return None, None
+
+        if frame.ndim == 3:
+            frame = frame[:, :, 0]
+
+        frame_gray8 = frame
+
+        if (not st.edit_mode) and frame_gray8 is not None:
+            norm_enabled = bool(self.runtime_cfg.get("normalize_enabled", False))
+            norm_target = float(self.runtime_cfg.get("normalize_target_mean", 120.0))
+            if norm_enabled:
+                frame_gray8, _ = normalize_frame(
+                    frame_gray8,
+                    target_mean=norm_target,
+                    do_clahe=True,
+                )
+
+        vis = cv2.cvtColor(frame_gray8, cv2.COLOR_GRAY2BGR)
+        return frame_gray8, vis
+    
+    def _read_frame(self):
+        frame = self.cam.read()
+        if frame is None:
+            return None
+        return frame
 
     # -------------------------
     # Main loop
@@ -428,7 +428,7 @@ class VisionApp:
         last_ok_frame_time = time.time()
 
         while True:
-            frame = self.cam.read()
+            frame = self._read_frame()
             if frame is None:
                 if time.time() - last_ok_frame_time > 1.0:
                     st.status = "No frames >1s (check camera)"
@@ -439,18 +439,12 @@ class VisionApp:
 
             last_ok_frame_time = time.time()
 
-            if frame.ndim == 3:
-                frame = frame[:, :, 0]
-            frame_gray8 = frame
-
-            # optional normalize (RUN only)
-            if (not st.edit_mode) and frame_gray8 is not None:
-                norm_enabled = bool(self.runtime_cfg.get("normalize_enabled", False))
-                norm_target = float(self.runtime_cfg.get("normalize_target_mean", 120.0))
-                if norm_enabled:
-                    frame_gray8, _ = normalize_frame(frame_gray8, target_mean=norm_target, do_clahe=True)
-
-            vis = cv2.cvtColor(frame_gray8, cv2.COLOR_GRAY2BGR)
+            frame_gray8, vis = self._prepare_frame(frame)
+            if frame_gray8 is None:
+                cv2.waitKey(1)
+                if st.quit_requested:
+                    break
+                continue
 
             # edit / run draw
             if st.edit_mode:

@@ -28,7 +28,7 @@ class ROIResult:
     metrics: Dict[str, Any]
 
 class Inspector:
-    def __init__(self, roi_mgr, recipe_path: str, logs_root: str):
+    def __init__(self, roi_mgr, recipe_path: str, logs_root: str, runtime_cfg=None):
         self.roi_mgr = roi_mgr
         self.recipe_path = recipe_path
         self.logs_root = logs_root
@@ -36,10 +36,17 @@ class Inspector:
         self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
         print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
         self.mean_filter = TemporalMeanFilter(win=5)
-        self.tracker = ROITracker(search_margin=80, thr=0.70, reacquire_margin=220, reacquire_scale=0.5)
+        self.tracker = ROITracker(
+            search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
+            thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
+            reacquire_margin=int(self.runtime_cfg.get("tracker_reacquire_margin", 220)),
+            reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
+        )
+        self.runtime_cfg = runtime_cfg or {}
         register_enhance_tools()
         register_measure_tools()
         register_locate_tools()
+        register_identify_tools()
 
 
     def reload_recipe(self):
@@ -240,8 +247,8 @@ class Inspector:
 
     def autotune_recipe_from_frame(self, frame_gray8, save_path=None):
         import copy
-        target_mean = 50.0
-        margin = 10.0
+        target_mean = float(self.runtime_cfg.get("autotune_target_mean", 50.0))
+        margin = float(self.runtime_cfg.get("autotune_margin", 10.0))
         save_path = save_path or self.recipe_path
         
         """
