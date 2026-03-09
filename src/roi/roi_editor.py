@@ -47,6 +47,12 @@ class ROIEditor:
             rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
             if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - self.EDGE_MARGIN <= y <= ry + rh + self.EDGE_MARGIN:
                 # inside outer margin: determine type
+                cx = rx + rw // 2
+                cy = ry + rh // 2
+
+                if abs(x - cx) <= 8 and abs(y - cy) <= 8:
+                    return r, "center", None
+                
                 inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
                 # corners
                 corners = {
@@ -105,11 +111,15 @@ class ROIEditor:
                 self.active_roi = r["id"]
                 self.roi_mgr.select(self.active_roi)
                 self.on_select_changed()
+                
                 if typ in ("corner","edge"):
                     self.action = "resize"
-                    self.resize_dir = sub if typ=="corner" else sub
+                    self.resize_dir = sub
+                elif typ == "center":
+                    self.action = "move"
                 else:
                     self.action = "move"
+
                 self.dragging = True
             return
 
@@ -277,7 +287,7 @@ class ROIEditor:
                 cy = int(y + h / 2)
                 cv2.line(vis_bgr, (cx - 6, cy), (cx + 6, cy), (0, 255, 255), 1, lineType=cv2.LINE_AA)
                 cv2.line(vis_bgr, (cx, cy - 6), (cx, cy + 6), (0, 255, 255), 1, lineType=cv2.LINE_AA)
-                
+
                 overlay.draw_rect(vis_bgr, (x, y), (x + w, y + h), color=(255,255,255), thickness=2)
                 cv2.rectangle(vis_bgr, (x+1, y+1), (x + w-1, y + h-1), color, 1, lineType=cv2.LINE_AA)
                 for hx, hy in [(x,y),(x+w,y),(x,y+h),(x+w,y+h)]:
