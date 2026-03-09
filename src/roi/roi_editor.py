@@ -48,18 +48,19 @@ class ROIEditor:
         rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]))
         for r in rois:
             rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-            if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - self.EDGE_MARGIN <= y <= ry + rh + self.EDGE_MARGIN:
+            top_extra = 24  # rotate handle 포함
+            if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - top_extra <= y <= ry + rh + self.EDGE_MARGIN:
                 # inside outer margin: determine type
                 cx = rx + rw // 2
                 cy = ry + rh // 2
 
-                if abs(x - cx) <= 8 and abs(y - cy) <= 8:
-                    return r, "center", None
-                
                 handle_x = cx
                 handle_y = ry - 18
                 if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
                     return r, "rotate", None
+
+                if abs(x - cx) <= 8 and abs(y - cy) <= 8:
+                    return r, "center", None
                 
                 inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
                 # corners
