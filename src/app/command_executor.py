@@ -35,7 +35,7 @@ def _execute_edit_mode(app, cmd, frame_gray8):
         try:
             app.roi_mgr.select_next()
             app.editor.on_select_changed()
-            st.status = f"Selected ROI: {app.roi_mgr.selected_id}"
+           # st.status = f"Selected ROI: {app.roi_mgr.selected_id}"
         except Exception:
             st.status = "Select next failed"
         return
