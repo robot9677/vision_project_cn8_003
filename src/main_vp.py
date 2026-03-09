@@ -467,9 +467,11 @@ class VisionApp:
             cv2.imshow(self.win, vis)
 
             # key
-            key = cv2.waitKeyEx(1)
-            if key != -1:
-                print(f"[DBG KEY] raw={key}")
+            key_raw = cv2.waitKeyEx(1)
+            key = (key_raw & 0xFF) if key_raw != -1 else -1
+
+            if key_raw != -1:
+                print(f"[DBG KEY] raw={key_raw}, norm={key}")
 
             self._handle_key_input(key, frame_gray8, vis)
 
