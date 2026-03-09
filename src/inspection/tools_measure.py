@@ -95,18 +95,27 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
     cnt = 0
     areas_all = []
     areas_kept = []
+    boxes_kept = []
 
     for i in range(1, num):
         area = int(stats[i, cv2.CC_STAT_AREA])
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        w = int(stats[i, cv2.CC_STAT_WIDTH])
+        h = int(stats[i, cv2.CC_STAT_HEIGHT])
+
         areas_all.append(area)
+
         if area_min <= area <= area_max:
             cnt += 1
             areas_kept.append(area)
+            boxes_kept.append([x, y, w, h])
 
     meta = {
         "blob_count": int(cnt),
         "blob_areas_all": areas_all,
         "blob_areas_kept": areas_kept,
+        "blob_boxes_kept": boxes_kept,
         "num_labels": int(num - 1),
     }
 
