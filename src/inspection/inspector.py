@@ -202,6 +202,7 @@ class Inspector:
                 print(
                     f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
                     f"blob={metrics.get('blob_count')} "
+                    f"areas={metrics.get('blob_areas_kept')} "
                     f"white_ratio={metrics.get('white_ratio')} "
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "

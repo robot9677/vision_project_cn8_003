@@ -88,12 +88,21 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
     area_max = float(params.get("area_max", 1e18))
 
     cnt = 0
+    areas_all = []
+    areas_kept = []
+
     for i in range(1, num):
-        area = stats[i, cv2.CC_STAT_AREA]
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        areas_all.append(area)
         if area_min <= area <= area_max:
             cnt += 1
+            areas_kept.append(area)
 
-    meta = {"blob_count": int(cnt)}
+    meta = {
+        "blob_count": int(cnt),
+        "blob_areas_all": areas_all,
+        "blob_areas_kept": areas_kept,
+    }
 
     expected = params.get("expected", None)
     min_count = params.get("min_count", None)

@@ -10,7 +10,7 @@
         "tools":[
           {"tool":"enhance.clahe","params":{"clip":2.0,"grid":8}},
           {"tool":"enhance.threshold","params":{"mode":"otsu"}},
-          {"tool":"measure.blob_count","params":{"polarity":"black","expected":4,"area_min":80,"area_max":5000,"open":3}}
+          {"tool":"measure.blob_count","params":{"polarity":"black","expected":4,"area_min":120,"area_max":5000,"open":5}}
         ]
     },
     "ROI2": {
