@@ -467,8 +467,7 @@ class VisionApp:
             cv2.imshow(self.win, vis)
 
             # key
-            key_raw = cv2.waitKeyEx(1)
-            key = (key_raw & 0xFF) if key_raw != -1 else -1
+            key = cv2.waitKeyEx(1)
 
             if key_raw != -1:
                 print(f"[DBG KEY] raw={key_raw}, norm={key}")
