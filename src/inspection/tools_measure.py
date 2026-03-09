@@ -21,6 +21,7 @@ def _edge_energy(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) 
     else:
         gray = crop if crop.ndim == 2 else cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
 
+        zx, zy = 0, 0
         zone = params.get("count_zone")
         zx = zy = 0
         if isinstance(zone, (list, tuple)) and len(zone) == 4:
