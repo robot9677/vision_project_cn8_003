@@ -91,9 +91,9 @@ class Inspector:
                 nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
                 dx, dy = int(nrx - rx), int(nry - ry)
 
-                if auto_mode == False:
-                    print("[TRK] reacquired")
-
+                if not auto_mode:
+                    print(f"[DBG TRK] dx={dx} dy={dy}")
+                    
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
 
@@ -199,7 +199,17 @@ class Inspector:
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
             if not auto_mode:
-                print(f"[DBG INSPECT] ROI{roi_id} saved metrics keys={list(metrics.keys())[:10]}")
+                print(
+                    f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
+                    f"blob={metrics.get('blob_count')} "
+                    f"white_ratio={metrics.get('white_ratio')} "
+                    f"mean_raw={metrics.get('mean_raw')} "
+                    f"mean={metrics.get('mean')} "
+                    f"norm_gain={metrics.get('norm_gain')} "
+                    f"dx={metrics.get('dx')} dy={metrics.get('dy')}"
+                )
+                if metrics.get("_tool_steps") is not None:
+                    print(f"[DBG TOOLS ROI{roi_id}] {metrics.get('_tool_steps')}")
 
         # --- overall decision by recipe ---
         decision = (self.recipe.get("decision") or {})
