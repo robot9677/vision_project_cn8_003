@@ -24,12 +24,13 @@ class ROIManager:
             h = self.H - y
         return x, y, w, h
 
-    def add(self, x, y, w, h, name=None):
+    def add(self, x, y, w, h, name=None, angle=0.0):
         x, y, w, h = self._clamp_rect(x, y, w, h)
         roi = {
             "id": self._next_id,
             "name": name or f"ROI{self._next_id}",
-            "x": int(x), "y": int(y), "w": int(w), "h": int(h)
+            "x": int(x), "y": int(y), "w": int(w), "h": int(h),
+            "angle": float(angle),
         }
         self.rois.append(roi)
         self.selected_id = roi["id"]
@@ -52,7 +53,7 @@ class ROIManager:
                 return r
         return None
 
-    def update(self, roi_id, x=None, y=None, w=None, h=None, name=None):
+    def update(self, roi_id, x=None, y=None, w=None, h=None, name=None, angle=None):
         r = self.get(roi_id)
         if not r:
             return False
@@ -64,6 +65,9 @@ class ROIManager:
         r.update({"x": int(nx), "y": int(ny), "w": int(nw), "h": int(nh)})
         if name is not None:
             r["name"] = name
+        if angle is not None:
+            r["angle"] = float(angle)
+
         return True
 
     def list(self):
@@ -124,7 +128,8 @@ class ROIManager:
             self.rois.append({
                 "id": roi_id,
                 "name": r.get("name", f"ROI{roi_id}"),
-                "x": x, "y": y, "w": w, "h": h
+                "x": x, "y": y, "w": w, "h": h,
+                "angle": float(r.get("angle",0.0)),
             })
             max_id = max(max_id, roi_id)
         self._next_id = max_id + 1 if max_id > 0 else self._next_id

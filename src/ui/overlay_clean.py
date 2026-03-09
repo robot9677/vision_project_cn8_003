@@ -127,7 +127,10 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         # prepare label lines
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
-        line2 = f"x:{x} y:{y} w:{w} h:{h}"
+
+        angle = float(r.get("angle", 0.0)) if isinstance(r, dict) else float(getattr(r, "angle", 0.0))
+        line2 = f"x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}"
+
         line3 = "SELECTED" if roi_id == active_id else ""
 
         # metric summary (optional)
@@ -287,10 +290,11 @@ def draw_selected_roi_info(img, roi, parent_roi=None):
     h = int(roi.get("h", 0))
     rid = roi.get("id", "")
 
+    angle = float(roi.get("angle", 0.0))
     cx = int(x + w / 2)
     cy = int(y + h / 2)
 
-    text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h}  cx:{cx} cy:{cy}"
+    text = f"Selected ROI: {rid}  x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}  cx:{cx} cy:{cy}"
 
     if parent_roi and parent_roi.get("id") != rid:
         px = int(parent_roi.get("x", 0))
