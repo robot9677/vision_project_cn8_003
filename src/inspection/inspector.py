@@ -78,13 +78,17 @@ class Inspector:
                 self.tracker.set_template(ref_crop_raw)
 
             # 정규화
+            use_normalize = bool(self.runtime_cfg.get("normalize_enabled", False)) and auto_mode
+
             if (
-                bool(self.runtime_cfg.get("normalize_enabled", False))
+                use_normalize
                 and ref_crop_raw is not None
                 and ref_crop_raw.size > 0
             ):
                 target_mean = float(self.runtime_cfg.get("normalize_target_mean", 50.0))
                 frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=target_mean)
+            else:
+                norm_gain = 1.0
 
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
             use_tracker = bool(self.runtime_cfg.get("enable_tracker", True)) and auto_mode
