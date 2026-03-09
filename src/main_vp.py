@@ -321,6 +321,79 @@ class VisionApp:
                 avg5=avg5,
             )
 
+    def _render_run_frame(self, vis, frame_gray8):
+        st = self.state
+        run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
+
+        if run_mode == "static":
+
+            overlay.draw_rois(
+                vis,
+                rois=[
+                    {
+                        "id": r.get("id"),
+                        "label": r.get("name"),
+                        "rect": (
+                            int(r.get("x", 0)),
+                            int(r.get("y", 0)),
+                            int(r.get("w", 0)),
+                            int(r.get("h", 0)),
+                        ),
+                    }
+                    for r in getattr(self.roi_mgr, "rois", [])
+                ],
+                active_id=self.roi_mgr.selected_id,
+                roi_results=st.last_results,
+            )
+
+            st.tracking_stable = True
+            st.stable_frame_count = 999
+
+        else:
+
+            draw_run_tracking(
+                vis,
+                frame_gray8,
+                runtime_cfg=self.runtime_cfg,
+                product_profile=self.product_profile,
+                state=st,
+                roi_mgr=self.roi_mgr,
+                inspector=self.inspector,
+                stabilizer=self.stabilizer,
+                data_dir=DATA_DIR,
+                snapshot_cooldown=float(self.runtime_cfg.get("snapshot_cooldown", 5.0)),
+                snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
+                prune_snapshots=prune_snapshots,
+                roi_label_pos=roi_label_pos,
+            )
+
+    def _handle_key_input(self, key, frame_gray8, vis_bgr):
+        st = self.state
+
+        consumed, sample_msg = handle_sample_keys(
+            key,
+            frame_gray8,
+            vis_bgr,
+            edit_mode=st.edit_mode,
+            roi_mgr=self.roi_mgr,
+            data_dir=DATA_DIR,
+            snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
+        )
+        if consumed:
+            if sample_msg:
+                st.status = sample_msg
+            return
+
+        if key != 255:
+            cmd = key_to_cmd(key, UICmd)
+            if cmd != UICmd.NONE:
+                st.pending_cmd = cmd
+
+        if st.pending_cmd != UICmd.NONE:
+            cmd_to_run = st.pending_cmd
+            st.pending_cmd = UICmd.NONE
+            execute_command(self, cmd_to_run, frame_gray8, vis_bgr)
+
     # -------------------------
     # Main loop
     # -------------------------
@@ -359,54 +432,7 @@ class VisionApp:
             if st.edit_mode:
                 self.editor.update(vis)
             else:
-                run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
-                st.run_mode_text = "STATIC" if run_mode == "static" else "HELD"
-
-                if run_mode == "static":
-                    overlay.draw_rois(
-                        vis,
-                        rois=[
-                            {
-                                "id": r.get("id"),
-                                "label": r.get("name"),
-                                "rect": (
-                                    int(r.get("x", 0)),
-                                    int(r.get("y", 0)),
-                                    int(r.get("w", 0)),
-                                    int(r.get("h", 0)),
-                                ),
-                            }
-                            for r in getattr(self.roi_mgr, "rois", [])
-                        ],
-                        active_id=self.roi_mgr.selected_id,
-                        roi_results=st.last_results,
-                    )
-                    st.tracking_stable = True
-                    st.stable_frame_count = 999
-                    if st.status in ("RUN MODE", "RUN MODE (stable)", "RUN MODE (tracking...)"):
-                        st.status = "RUN MODE / STATIC"
-                else:
-                    draw_run_tracking(
-                        vis,
-                        frame_gray8,
-                        runtime_cfg=self.runtime_cfg,
-                        product_profile=self.product_profile,
-                        state=st,
-                        roi_mgr=self.roi_mgr,
-                        inspector=self.inspector,
-                        stabilizer=self.stabilizer,
-                        data_dir=DATA_DIR,
-                        snapshot_cooldown=float(self.runtime_cfg.get("snapshot_cooldown", 5.0)),
-                        snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
-                        prune_snapshots=prune_snapshots,
-                        roi_label_pos=roi_label_pos,
-                    )
-                    if st.status == "RUN MODE (stable)":
-                        st.status = "RUN MODE / HELD (stable)"
-                    elif st.status == "RUN MODE (tracking...)":
-                        st.status = "RUN MODE / HELD (tracking...)"
-                    elif st.status == "RUN MODE":
-                        st.status = "RUN MODE / HELD"
+                self._render_run_frame(vis, frame_gray8)
         
             # status + banner
             overlay.draw_status_bar(vis, st.status)
@@ -426,36 +452,7 @@ class VisionApp:
 
             # key
             key = cv2.waitKey(1) & 0xFF
-
-            # sample keys first (consumes key)
-            consumed, sample_msg = handle_sample_keys(
-                key,
-                frame_gray8,
-                vis,
-                edit_mode=st.edit_mode,
-                roi_mgr=self.roi_mgr,
-                data_dir=DATA_DIR,
-                snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200))
-            )
-            if consumed:
-                if sample_msg:
-                    st.status = sample_msg
-                key = 255
-
-            # keyboard -> pending cmd
-            if key != 255:
-                cmd = key_to_cmd(key, UICmd)
-                if cmd != UICmd.NONE:
-                    st.pending_cmd = cmd
-
-            # execute pending cmd
-            if st.pending_cmd != UICmd.NONE:
-                cmd_to_run = st.pending_cmd
-                st.pending_cmd = UICmd.NONE
-                execute_command(self, cmd_to_run, frame_gray8, vis)
-
-            if st.quit_requested:
-                break
+            self._handle_key_input(key, frame_gray8, vis)
 
         self.cam.release()
         cv2.destroyAllWindows()
