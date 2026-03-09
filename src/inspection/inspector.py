@@ -87,12 +87,16 @@ class Inspector:
                 frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=target_mean)
 
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
-            if bool(self.runtime_cfg.get("enable_tracker", True)):
+            use_tracker = bool(self.runtime_cfg.get("enable_tracker", True)) and auto_mode
+
+            if use_tracker:
                 nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
                 dx, dy = int(nrx - rx), int(nry - ry)
 
                 if not auto_mode:
                     print(f"[DBG TRK] dx={dx} dy={dy}")
+            else:
+                dx, dy = 0, 0
                     
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
