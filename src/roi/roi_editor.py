@@ -261,7 +261,7 @@ class ROIEditor:
                     cv2.circle(vis_bgr, (hx, hy), self.HANDLE_RADIUS, (255,255,255), -1, lineType=cv2.LINE_AA)
 
             # label with shadow for contrast
-            label = f'{r.get("name","ROI")}#{r["id"]}'
+            label = f'{r.get("name","ROI")}'
             tx, ty = x, y - 10 if y > 20 else y + 18
             # shadow
             overlay.draw_text(vis_bgr, label, (tx+1, (ty+1)-5), color=(0,0,0), scale=cfg.FONT_SCALE-0.1, thickness=3, align='lt')
