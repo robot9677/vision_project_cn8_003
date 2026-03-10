@@ -33,7 +33,17 @@ def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
         h = int(mr["h"])
 
         if lr is None:
-            overlay.draw_rect(vis, (x, y), (x + w, y + h), color=(0, 200, 0), thickness=2)
+            overlay.draw_rois(
+                vis,
+                rois=[{
+                    "id": int(mr.get("id")),
+                    "label": mr.get("name", f"ROI{rid}"),
+                    "rect": (x, y, w, h),
+                    "angle": float(mr.get("angle", 0.0)),
+                }],
+                active_id=None,
+                roi_results=None,
+            )
             tx, ty = roi_label_pos(x, y, w, h)
             overlay.draw_text(vis, f"ROI{rid}", (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1, align="lt")
             continue
@@ -43,7 +53,17 @@ def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
         reason = getattr(lr, "reason", "") or ""
 
         box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
-        overlay.draw_rois(vis,rois=[{"id": rid,"label": f"ROI{rid}","rect": (x, y, w, h),"angle": float(mr.get("angle",0.0))}],active_id=None,roi_results=last_results)
+        overlay.draw_rois(
+            vis,
+            rois=[{
+                "id": int(mr.get("id")),
+                "label": mr.get("name", f"ROI{rid}"),
+                "rect": (x, y, w, h),
+                "angle": float(mr.get("angle", 0.0)),
+            }],
+            active_id=None,
+            roi_results={str(mr.get("id")): lr} if lr is not None else None,
+        )
 
         line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
         if ok_flag:
