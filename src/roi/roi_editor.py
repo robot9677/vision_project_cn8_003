@@ -405,7 +405,7 @@ class ROIEditor:
             label_x, label_y = g["label"]
 
             tx = int(label_x - 18)
-            ty = int(label_y - 10)
+            ty = int(label_y - 5)
 
             # shadow
             overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
