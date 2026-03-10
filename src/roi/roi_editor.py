@@ -44,6 +44,27 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
+        def _dist_pt_seg(self, px, py, ax, ay, bx, by):
+        abx = bx - ax
+        aby = by - ay
+        apx = px - ax
+        apy = py - ay
+        ab2 = abx * abx + aby * aby
+        if ab2 <= 1e-6:
+            dx = px - ax
+            dy = py - ay
+            return (dx * dx + dy * dy) ** 0.5
+        t = (apx * abx + apy * aby) / ab2
+        t = max(0.0, min(1.0, t))
+        qx = ax + t * abx
+        qy = ay + t * aby
+        dx = px - qx
+        dy = py - qy
+        return (dx * dx + dy * dy) ** 0.5
+
+    def _point_in_rotated_rect(self, x, y, box):
+        return cv2.pointPolygonTest(box.astype(np.float32), (float(x), float(y)), False) >= 0
+
     def _rotate_vec(self, vx, vy, angle_deg):
         th = math.radians(angle_deg)
         c = math.cos(th)
@@ -116,29 +137,30 @@ class ROIEditor:
             # center
             if abs(x - cxi) <= 8 and abs(y - cyi) <= 8:
                 return r, "center", None
-                            
-            inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
-            # corners
-            corners = {
-                "tl": (rx, ry),
-                "tr": (rx+rw, ry),
-                "bl": (rx, ry+rh),
-                "br": (rx+rw, ry+rh)
-            }
-            for name, (corner_x, corner_y) in corners.items():
-                if abs(x-corner_x) <= self.EDGE_MARGIN and abs(y-corner_y) <= self.EDGE_MARGIN:
+
+            # rotated corners
+            boxi = box.astype(int)
+            corner_names = ["tl", "tr", "br", "bl"]
+            for name, (corner_x, corner_y) in zip(corner_names, boxi):
+                if abs(x - int(corner_x)) <= self.EDGE_MARGIN and abs(y - int(corner_y)) <= self.EDGE_MARGIN:
                     return r, "corner", name
-            # edges
-            if abs(x - rx) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
-                return r, "edge", "l"
-            if abs(x - (rx+rw)) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
-                return r, "edge", "r"
-            if abs(y - ry) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
-                return r, "edge", "t"
-            if abs(y - (ry+rh)) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
-                return r, "edge", "b"
-            if inside:
+
+            # rotated edges
+            edges = [
+                ("t", box[0], box[1]),
+                ("r", box[1], box[2]),
+                ("b", box[2], box[3]),
+                ("l", box[3], box[0]),
+            ]
+            for ename, p0, p1 in edges:
+                d = self._dist_pt_seg(x, y, p0[0], p0[1], p1[0], p1[1])
+                if d <= self.EDGE_MARGIN:
+                    return r, "edge", ename
+
+            # inside rotated rect
+            if self._point_in_rotated_rect(x, y, box):
                 return r, "inside", None
+
             return r, "near", None
         return None, None, None
 
