@@ -37,6 +37,8 @@ class ROIEditor:
         self.last_mouse = (0,0)
         self.rotate_start_angle = 0.0
         self.rotate_base_angle = 0.0
+        self.resize_start_roi = None
+        self.resize_anchor_local = None
 
         # double-click detection
         self._last_click_time = 0
@@ -44,6 +46,24 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
+    def _screen_to_local(self, px, py, cx, cy, angle_deg):
+        dx = px - cx
+        dy = py - cy
+        th = math.radians(-angle_deg)
+        c = math.cos(th)
+        s = math.sin(th)
+        lx = dx * c - dy * s
+        ly = dx * s + dy * c
+        return lx, ly
+
+    def _local_to_screen(self, lx, ly, cx, cy, angle_deg):
+        th = math.radians(angle_deg)
+        c = math.cos(th)
+        s = math.sin(th)
+        sx = lx * c - ly * s + cx
+        sy = lx * s + ly * c + cy
+        return sx, sy
+    
     def _dist_pt_seg(self, px, py, ax, ay, bx, by):
         abx = bx - ax
         aby = by - ay
@@ -154,7 +174,7 @@ class ROIEditor:
             ]
             for ename, p0, p1 in edges:
                 d = self._dist_pt_seg(x, y, p0[0], p0[1], p1[0], p1[1])
-                if d <= self.EDGE_MARGIN:
+                if d <= max(self.EDGE_MARGIN, 10):
                     return r, "edge", ename
 
             # inside rotated rect
@@ -201,6 +221,30 @@ class ROIEditor:
                 if typ in ("corner","edge"):
                     self.action = "resize"
                     self.resize_dir = sub
+
+                    self.resize_start_roi = dict(r)
+
+                    rw = float(r["w"])
+                    rh = float(r["h"])
+
+                    if sub == "l":
+                        self.resize_anchor_local = ( rw / 2.0,  0.0)
+                    elif sub == "r":
+                        self.resize_anchor_local = (-rw / 2.0,  0.0)
+                    elif sub == "t":
+                        self.resize_anchor_local = ( 0.0,  rh / 2.0)
+                    elif sub == "b":
+                        self.resize_anchor_local = ( 0.0, -rh / 2.0)
+                    elif sub == "tl":
+                        self.resize_anchor_local = ( rw / 2.0,  rh / 2.0)
+                    elif sub == "tr":
+                        self.resize_anchor_local = (-rw / 2.0,  rh / 2.0)
+                    elif sub == "bl":
+                        self.resize_anchor_local = ( rw / 2.0, -rh / 2.0)
+                    elif sub == "br":
+                        self.resize_anchor_local = (-rw / 2.0, -rh / 2.0)
+                    else:
+                        self.resize_anchor_local = None
                 elif typ == "rotate":
                     self.action = "rotate"
                     r_angle = float(r.get("angle", 0.0))
@@ -231,53 +275,65 @@ class ROIEditor:
                     ny = r["y"] + dy
                     self.roi_mgr.update(self.active_roi, x=nx, y=ny)
             elif self.action == "resize" and self.active_roi is not None:
-                r = self.roi_mgr.get(self.active_roi)
-                if r:
-                    rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                    angle = float(r.get("angle", 0.0))
+                r0 = self.resize_start_roi
+                if r0 and self.resize_anchor_local is not None:
+                    rx = float(r0["x"])
+                    ry = float(r0["y"])
+                    rw = float(r0["w"])
+                    rh = float(r0["h"])
+                    angle = float(r0.get("angle", 0.0))
 
-                    # 현재 중심 고정
-                    cx = rx + rw / 2.0
-                    cy = ry + rh / 2.0
+                    c0x = rx + rw / 2.0
+                    c0y = ry + rh / 2.0
 
-                    # 화면 이동량 -> ROI 로컬축 이동량
-                    th = math.radians(-angle)
-                    c = math.cos(th)
-                    s = math.sin(th)
-
-                    ldx = dx * c - dy * s
-                    ldy = dx * s + dy * c
-
-                    nw, nh = float(rw), float(rh)
+                    cur_lx, cur_ly = self._screen_to_local(x, y, c0x, c0y, angle)
+                    ax, ay = self.resize_anchor_local
                     dir = self.resize_dir
 
+                    # opposite anchor 고정, 잡은 점만 이동
+                    px, py = cur_lx, cur_ly
+
                     if dir == "l":
-                        nw = rw - ldx * 2.0
+                        py = 0.0
                     elif dir == "r":
-                        nw = rw + ldx * 2.0
+                        py = 0.0
                     elif dir == "t":
-                        nh = rh - ldy * 2.0
+                        px = 0.0
                     elif dir == "b":
-                        nh = rh + ldy * 2.0
-                    elif dir in ("tl", "tr", "bl", "br"):
-                        if "l" in dir:
-                            nw = rw - ldx * 2.0
-                        if "r" in dir:
-                            nw = rw + ldx * 2.0
-                        if "t" in dir:
-                            nh = rh - ldy * 2.0
-                        if "b" in dir:
-                            nh = rh + ldy * 2.0
+                        px = 0.0
 
-                    nw = max(self.min_size, int(round(nw)))
-                    nh = max(self.min_size, int(round(nh)))
+                    nw = abs(ax - px)
+                    nh = abs(ay - py)
 
-                    # center 유지하도록 x,y 재계산
-                    nx = int(round(cx - nw / 2.0))
-                    ny = int(round(cy - nh / 2.0))
+                    if dir in ("l", "r"):
+                        nh = rh
+                    elif dir in ("t", "b"):
+                        nw = rw
+
+                    nw = max(float(self.min_size), nw)
+                    nh = max(float(self.min_size), nh)
+
+                    # local center = anchor와 dragged point의 중점
+                    if dir in ("l", "r"):
+                        clx = (ax + px) / 2.0
+                        cly = 0.0
+                    elif dir in ("t", "b"):
+                        clx = 0.0
+                        cly = (ay + py) / 2.0
+                    else:
+                        clx = (ax + px) / 2.0
+                        cly = (ay + py) / 2.0
+
+                    ncx, ncy = self._local_to_screen(clx, cly, c0x, c0y, angle)
+
+                    nx = int(round(ncx - nw / 2.0))
+                    ny = int(round(ncy - nh / 2.0))
+                    nw = int(round(nw))
+                    nh = int(round(nh))
 
                     nx, ny, nw, nh = self.roi_mgr._clamp_rect(nx, ny, nw, nh)
                     self.roi_mgr.update(self.active_roi, x=nx, y=ny, w=nw, h=nh)
+
             elif self.action == "rotate" and self.active_roi is not None:
                 r = self.roi_mgr.get(self.active_roi)
                 if r:
@@ -306,6 +362,8 @@ class ROIEditor:
             self.resize_dir = None
             self.rotate_start_angle = 0.0
             self.rotate_base_angle = 0.0
+            self.resize_start_roi = None
+            self.resize_anchor_local = None
             return
 
         if event == cv2.EVENT_RBUTTONDOWN:
