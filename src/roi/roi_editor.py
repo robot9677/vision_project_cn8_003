@@ -44,41 +44,44 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
-    def _get_rotate_handle_point(self, r):
+    def _rotate_vec(self, vx, vy, angle_deg):
+        th = math.radians(angle_deg)
+        c = math.cos(th)
+        s = math.sin(th)
+        return (vx * c - vy * s, vx * s + vy * c)
 
+    def _get_roi_top_geometry(self, r, handle_dist=30, label_dist=18):
         x, y, w, h = r["x"], r["y"], r["w"], r["h"]
         angle = float(r.get("angle", 0.0))
 
         cx = x + w / 2.0
         cy = y + h / 2.0
 
-        rect = ((cx, cy), (w, h), angle)
-        box = cv2.boxPoints(rect)
+        # ROI 로컬 좌표계 기준 "상단"
+        top_mid_local = (0.0, -h / 2.0)
+        handle_local = (0.0, -(h / 2.0 + handle_dist))
+        label_local = (0.0, -(h / 2.0 + label_dist))
 
-        # 상단 edge 찾기
-        pts = sorted(box.tolist(), key=lambda p: (p[1], p[0]))
-        top1 = np.array(pts[0])
-        top2 = np.array(pts[1])
+        top_mid_dx, top_mid_dy = self._rotate_vec(top_mid_local[0], top_mid_local[1], angle)
+        handle_dx, handle_dy = self._rotate_vec(handle_local[0], handle_local[1], angle)
+        label_dx, label_dy = self._rotate_vec(label_local[0], label_local[1], angle)
 
-        top_mid = (top1 + top2) / 2.0
+        top_mid = (cx + top_mid_dx, cy + top_mid_dy)
+        handle_pt = (cx + handle_dx, cy + handle_dy)
+        label_pt = (cx + label_dx, cy + label_dy)
 
-        # 중심 → 상단 방향 벡터
-        vx = top_mid[0] - cx
-        vy = top_mid[1] - cy
-
-        norm = np.sqrt(vx*vx + vy*vy)
-        if norm < 1e-6:
-            return int(cx), int(cy), int(cx), int(cy)
-
-        ux = vx / norm
-        uy = vy / norm
-
-        dist = 30
-
-        handle_x = top_mid[0] + ux * dist
-        handle_y = top_mid[1] + uy * dist
-
-        return int(handle_x), int(handle_y), int(cx), int(cy)
+        return {
+            "center": (int(cx), int(cy)),
+            "top_mid": (int(top_mid[0]), int(top_mid[1])),
+            "handle": (int(handle_pt[0]), int(handle_pt[1])),
+            "label": (int(label_pt[0]), int(label_pt[1])),
+        }
+    
+    def _get_rotate_handle_point(self, r):
+        g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=18)
+        handle_x, handle_y = g["handle"]
+        cx, cy = g["center"]
+        return handle_x, handle_y, cx, cy
 
     def _hit_test(self, x, y):
         """Return roi dict and hit region: 'inside', 'edge', 'corner', or None"""
@@ -381,17 +384,13 @@ class ROIEditor:
                     cv2.circle(vis_bgr, (int(hx), int(hy)), self.HANDLE_RADIUS, (255, 255, 255), -1, lineType=cv2.LINE_AA)
 
                 # rotation handle: top edge midpoint -> outward
-                handle_x, handle_y, cxi2, cyi2 = self._get_rotate_handle_point(r)
-
-                # 상단 변의 중점도 동일 방식으로 계산
-                box_tmp = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(float)
-                pts = sorted(box_tmp.tolist(), key=lambda p: (p[1], p[0]))
-                top2 = np.array(pts[:2], dtype=float)
-                top_mid = top2.mean(axis=0)
+                g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=18)
+                top_mid_x, top_mid_y = g["top_mid"]
+                handle_x, handle_y = g["handle"]
 
                 cv2.line(
                     vis_bgr,
-                    (int(top_mid[0]), int(top_mid[1])),
+                    (top_mid_x, top_mid_y),
                     (handle_x, handle_y),
                     (0, 255, 255),
                     1,
@@ -402,13 +401,11 @@ class ROIEditor:
             # label with shadow for contrast
             label = f'{r.get("name","ROI")}'
 
-            boxf = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(float)
-            pts = sorted(boxf.tolist(), key=lambda p: (p[1], p[0]))
-            top2 = np.array(pts[:2], dtype=float)
-            top_mid = top2.mean(axis=0)
+            g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=18)
+            label_x, label_y = g["label"]
 
-            tx = int(top_mid[0] - 18)
-            ty = int(top_mid[1] - 14)
+            tx = int(label_x - 18)
+            ty = int(label_y - 10)
 
             # shadow
             overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
