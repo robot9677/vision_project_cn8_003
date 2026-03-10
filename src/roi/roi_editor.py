@@ -158,27 +158,36 @@ class ROIEditor:
             if abs(x - cxi) <= 8 and abs(y - cyi) <= 8:
                 return r, "center", None
 
-            # rotated corners
-            boxi = box.astype(int)
-            corner_names = ["tl", "tr", "br", "bl"]
-            for name, (corner_x, corner_y) in zip(corner_names, boxi):
-                if abs(x - int(corner_x)) <= self.EDGE_MARGIN and abs(y - int(corner_y)) <= self.EDGE_MARGIN:
+            # local coord 기준 hit test
+            lx, ly = self._screen_to_local(x, y, cx, cy, angle)
+
+            half_w = rw / 2.0
+            half_h = rh / 2.0
+            m = max(self.EDGE_MARGIN, 10)
+
+            # corners
+            corners_local = {
+                "tl": (-half_w, -half_h),
+                "tr": ( half_w, -half_h),
+                "bl": (-half_w,  half_h),
+                "br": ( half_w,  half_h),
+            }
+            for name, (clx, cly) in corners_local.items():
+                if abs(lx - clx) <= m and abs(ly - cly) <= m:
                     return r, "corner", name
 
-            # rotated edges
-            edges = [
-                ("t", box[0], box[1]),
-                ("r", box[1], box[2]),
-                ("b", box[2], box[3]),
-                ("l", box[3], box[0]),
-            ]
-            for ename, p0, p1 in edges:
-                d = self._dist_pt_seg(x, y, p0[0], p0[1], p1[0], p1[1])
-                if d <= max(self.EDGE_MARGIN, 10):
-                    return r, "edge", ename
+            # edges
+            if abs(lx + half_w) <= m and (-half_h <= ly <= half_h):
+                return r, "edge", "l"
+            if abs(lx - half_w) <= m and (-half_h <= ly <= half_h):
+                return r, "edge", "r"
+            if abs(ly + half_h) <= m and (-half_w <= lx <= half_w):
+                return r, "edge", "t"
+            if abs(ly - half_h) <= m and (-half_w <= lx <= half_w):
+                return r, "edge", "b"
 
             # inside rotated rect
-            if self._point_in_rotated_rect(x, y, box):
+            if (-half_w <= lx <= half_w) and (-half_h <= ly <= half_h):
                 return r, "inside", None
 
             return r, "near", None
