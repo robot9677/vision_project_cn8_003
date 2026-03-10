@@ -208,64 +208,64 @@ class ROIEditor:
                     nx = r["x"] + dx
                     ny = r["y"] + dy
                     self.roi_mgr.update(self.active_roi, x=nx, y=ny)
-                elif self.action == "resize" and self.active_roi is not None:
+            elif self.action == "resize" and self.active_roi is not None:
 
-                    r = self.roi_mgr.get(self.active_roi)
-                    if r:
+                r = self.roi_mgr.get(self.active_roi)
+                if r:
 
-                        rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                        angle = float(r.get("angle",0.0))
+                    rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+                    angle = float(r.get("angle",0.0))
 
-                        dx = x - self.last_mouse[0]
-                        dy = y - self.last_mouse[1]
+                    dx = x - self.last_mouse[0]
+                    dy = y - self.last_mouse[1]
 
-                        # 화면 이동 → ROI 로컬 이동으로 변환
-                        th = math.radians(-angle)
-                        c = math.cos(th)
-                        s = math.sin(th)
+                    # 화면 이동 → ROI 로컬 이동으로 변환
+                    th = math.radians(-angle)
+                    c = math.cos(th)
+                    s = math.sin(th)
 
-                        ldx = dx * c - dy * s
-                        ldy = dx * s + dy * c
+                    ldx = dx * c - dy * s
+                    ldy = dx * s + dy * c
 
-                        nx, ny, nw, nh = rx, ry, rw, rh
-                        dir = self.resize_dir
+                    nx, ny, nw, nh = rx, ry, rw, rh
+                    dir = self.resize_dir
 
-                        if dir == "l":
+                    if dir == "l":
+                        nx = rx + ldx
+                        nw = rw - ldx
+
+                    elif dir == "r":
+                        nw = rw + ldx
+
+                    elif dir == "t":
+                        ny = ry + ldy
+                        nh = rh - ldy
+
+                    elif dir == "b":
+                        nh = rh + ldy
+
+                    if dir in ("tl","tr","bl","br"):
+
+                        if "l" in dir:
                             nx = rx + ldx
                             nw = rw - ldx
 
-                        elif dir == "r":
+                        if "r" in dir:
                             nw = rw + ldx
 
-                        elif dir == "t":
+                        if "t" in dir:
                             ny = ry + ldy
                             nh = rh - ldy
 
-                        elif dir == "b":
+                        if "b" in dir:
                             nh = rh + ldy
 
-                        if dir in ("tl","tr","bl","br"):
+                    nw = max(self.min_size, int(nw))
+                    nh = max(self.min_size, int(nh))
 
-                            if "l" in dir:
-                                nx = rx + ldx
-                                nw = rw - ldx
+                    nx, ny, nw, nh = self.roi_mgr._clamp_rect(nx, ny, nw, nh)
 
-                            if "r" in dir:
-                                nw = rw + ldx
-
-                            if "t" in dir:
-                                ny = ry + ldy
-                                nh = rh - ldy
-
-                            if "b" in dir:
-                                nh = rh + ldy
-
-                        nw = max(self.min_size, int(nw))
-                        nh = max(self.min_size, int(nh))
-
-                        nx, ny, nw, nh = self.roi_mgr._clamp_rect(nx, ny, nw, nh)
-
-                        self.roi_mgr.update(self.active_roi, x=nx, y=ny, w=nw, h=nh)
+                    self.roi_mgr.update(self.active_roi, x=nx, y=ny, w=nw, h=nh)
             elif self.action == "rotate" and self.active_roi is not None:
                 r = self.roi_mgr.get(self.active_roi)
                 if r:
