@@ -403,18 +403,19 @@ class ROIEditor:
             label = f'{r.get("name","ROI")}'
 
             boxf = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(float)
-            top_pt = boxf[np.argmin(boxf[:, 1])]
+            pts = sorted(boxf.tolist(), key=lambda p: (p[1], p[0]))
+            top2 = np.array(pts[:2], dtype=float)
+            top_mid = top2.mean(axis=0)
 
-            tx = int(top_pt[0] - 10)
-            ty = int(top_pt[1] - 12)
+            tx = int(top_mid[0] - 18)
+            ty = int(top_mid[1] - 14)
 
             # shadow
-            overlay.draw_text(vis_bgr, label, (tx+1, (ty+1)-5), color=(0,0,0), scale=cfg.FONT_SCALE-0.1, thickness=3, align='lt')
+            overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
+
             # main text
-            overlay.draw_text(vis_bgr, label, (tx, ty-5), color=cfg.COLOR_TEXT, scale=cfg.FONT_SCALE-0.1, thickness=cfg.FONT_THICK, align='lt')
+            overlay.draw_text(vis_bgr, label,(tx, ty),color=cfg.COLOR_TEXT,scale=cfg.FONT_SCALE - 0.1,thickness=cfg.FONT_THICK,align='lt')
         # --- end replacement ---
-
-
 
         # 3) during creation, draw preview (keep bright color)
         if self.creating:
