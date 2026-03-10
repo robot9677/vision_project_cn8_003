@@ -50,6 +50,7 @@ def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
         rois=rois,
         active_id=None,
         roi_results=roi_results,
+        compact=True,
     )
 
 
@@ -72,12 +73,7 @@ def draw_run_tracking(
     if (not runtime_cfg.get("enable_tracker", True)) or (not product_profile["modules"].get("tracker", True)):
         state.tracking_stable = False
         state.stable_frame_count = 0
-        overlay.draw_rois(
-            vis,
-            rois=roi_mgr_to_list(roi_mgr),
-            active_id=roi_mgr.selected_id,
-            roi_results=state.last_results,
-        )
+        overlay.draw_rois(vis,rois=roi_mgr_to_list(roi_mgr),active_id=roi_mgr.selected_id,roi_results=state.last_results,compact=True,)
         return
 
     tracker = getattr(inspector, "tracker", None)
@@ -159,22 +155,12 @@ def draw_run_tracking(
 
             draw_roi_overlay(vis, moved, state.last_results, roi_label_pos)
         else:
-            overlay.draw_rois(
-                vis,
-                rois=roi_mgr_to_list(roi_mgr),
-                active_id=roi_mgr.selected_id,
-                roi_results=state.last_results,
-            )
+            overlay.draw_rois(vis,rois=roi_mgr_to_list(roi_mgr),active_id=roi_mgr.selected_id,roi_results=state.last_results,compact=True,)
             state.tracking_stable = False
             state.stable_frame_count = 0
 
     except Exception as e:
         print("[DBG] run-mode tracker overlay exception:", e)
-        overlay.draw_rois(
-            vis,
-            rois=roi_mgr_to_list(roi_mgr),
-            active_id=roi_mgr.selected_id,
-            roi_results=state.last_results,
-        )
+        overlay.draw_rois(vis,rois=roi_mgr_to_list(roi_mgr),active_id=roi_mgr.selected_id,roi_results=state.last_results,compact=True,)
         state.tracking_stable = False
         state.stable_frame_count = 0

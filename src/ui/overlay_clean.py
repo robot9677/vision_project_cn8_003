@@ -59,7 +59,7 @@ def draw_status_bar(img, text):
     draw_text(img, text, (cfg.MARGIN if hasattr(cfg, "MARGIN") else 8, int(bar_h/2)+6), color=cfg.COLOR_TEXT, scale=cfg.FONT_SCALE, thickness=cfg.FONT_THICK, align="lt")
 
 
-def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_selected=False, **kwargs):
+def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_selected=False, compact=False, **kwargs):
     """
     rois: list of dicts {'id':int, 'label':str, 'rect':(x,y,w,h)} OR objects with x,y,w,h,name,id
     active_id: roi id to highlight
@@ -143,9 +143,13 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
 
         angle = float(r.get("angle", 0.0)) if isinstance(r, dict) else float(getattr(r, "angle", 0.0))
-        line2 = f"x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}"
 
-        line3 = "SELECTED" if roi_id == active_id else ""
+        if compact:
+            line2 = ""
+        else:
+            line2 = f"x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}"
+
+        line3 = "SELECTED" if (roi_id == active_id and not compact) else ""
 
         # metric summary (optional)
         if roi_results is not None:
@@ -197,21 +201,42 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
         max_w = max(sz[0] for sz in sizes) if sizes else 0
         total_h = sum(heights) + max(0, (len(lines)-1)) * line_spacing
 
-        margin = 6
-        # default place above ROI, else below
-        bottom_y = y - margin
-        place_above = True
-        if bottom_y - total_h - 4 < 0:
-            place_above = False
-            bottom_y = y + h + total_h + margin
+        margin = 10
 
-        bg_x1 = x
-        if bg_x1 + max_w + 8 > w_img:
-            bg_x1 = max(2, w_img - max_w - 8)
+        # rotated ROI 기준 상단 방향 라벨 anchor
+        top_mid_local = np.array([0.0, -h / 2.0], dtype=float)
+        label_local = np.array([0.0, -(h / 2.0 + margin + total_h)], dtype=float)
+
+        th = np.radians(angle)
+        c = np.cos(th)
+        s = np.sin(th)
+
+        rot = np.array([[c, -s], [s, c]], dtype=float)
+
+        label_pt = np.array([cx, cy], dtype=float) + rot @ label_local
+
+        bg_x1 = int(label_pt[0] - max_w / 2 - 4)
+        bg_y1 = int(label_pt[1] - 4)
         bg_x2 = bg_x1 + max_w + 8
-        top_text_y = bottom_y - total_h - 4
-        bg_y1 = max(2, top_text_y - 4)
-        bg_y2 = min(h_img - 2, bottom_y + 4)
+        bg_y2 = bg_y1 + total_h + 8
+
+        # clamp
+        if bg_x1 < 2:
+            bg_x2 += (2 - bg_x1)
+            bg_x1 = 2
+        if bg_x2 > w_img - 2:
+            shift = bg_x2 - (w_img - 2)
+            bg_x1 -= shift
+            bg_x2 -= shift
+        if bg_y1 < 2:
+            bg_y2 += (2 - bg_y1)
+            bg_y1 = 2
+        if bg_y2 > h_img - 2:
+            shift = bg_y2 - (h_img - 2)
+            bg_y1 -= shift
+            bg_y2 -= shift
+
+        top_text_y = bg_y1 + 4 + heights[0]
 
         # draw semi-transparent background
         temp = img.copy()
