@@ -43,6 +43,36 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
+    def _get_rotate_handle_point(self, r, dist=18):
+        rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+        angle = float(r.get("angle", 0.0))
+
+        cx = rx + rw / 2.0
+        cy = ry + rh / 2.0
+
+        box = cv2.boxPoints(((cx, cy), (rw, rh), angle)).astype(float)
+
+        # y가 가장 작은 상단 2점을 선택
+        pts = sorted(box.tolist(), key=lambda p: (p[1], p[0]))
+        top2 = np.array(pts[:2], dtype=float)
+
+        top_mid = top2.mean(axis=0)
+
+        vx = top_mid[0] - cx
+        vy = top_mid[1] - cy
+        norm = (vx * vx + vy * vy) ** 0.5
+
+        if norm > 1e-6:
+            ux = vx / norm
+            uy = vy / norm
+        else:
+            ux, uy = 0.0, -1.0
+
+        handle_x = top_mid[0] + ux * dist
+        handle_y = top_mid[1] + uy * dist
+
+        return int(handle_x), int(handle_y), int(cx), int(cy)
+
     def _hit_test(self, x, y):
         """Return roi dict and hit region: 'inside', 'edge', 'corner', or None"""
         rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]))
@@ -51,30 +81,7 @@ class ROIEditor:
             top_extra = 24  # rotate handle 포함
             if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - top_extra <= y <= ry + rh + self.EDGE_MARGIN:
                 # inside outer margin: determine type
-                angle = float(r.get("angle", 0.0))
-
-                cx = rx + rw / 2.0
-                cy = ry + rh / 2.0
-
-                box = cv2.boxPoints(((cx, cy), (rw, rh), angle))
-                box = box.astype(float)
-
-                # rotation handle: top edge midpoint -> outward
-                p0 = box[0]
-                p1 = box[1]
-                top_mid = (p0 + p1) / 2.0
-
-                vx = top_mid[0] - cx
-                vy = top_mid[1] - cy
-                norm = (vx * vx + vy * vy) ** 0.5
-                if norm > 1e-6:
-                    ux = vx / norm
-                    uy = vy / norm
-                else:
-                    ux, uy = 0.0, -1.0
-
-                handle_x = top_mid[0] + ux * 18
-                handle_y = top_mid[1] + uy * 18
+                handle_x, handle_y, cx, cy = self._get_rotate_handle_point(r)
 
                 if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
                     return r, "rotate", None
@@ -352,21 +359,13 @@ class ROIEditor:
                     cv2.circle(vis_bgr, (int(hx), int(hy)), self.HANDLE_RADIUS, (255, 255, 255), -1, lineType=cv2.LINE_AA)
 
                 # rotation handle: top edge midpoint -> outward
-                p0 = box_outer[0]
-                p1 = box_outer[1]
-                top_mid = ((p0 + p1) / 2.0)
+                handle_x, handle_y, cxi2, cyi2 = self._get_rotate_handle_point(r)
 
-                vx = top_mid[0] - cx
-                vy = top_mid[1] - cy
-                norm = (vx * vx + vy * vy) ** 0.5
-                if norm > 1e-6:
-                    ux = vx / norm
-                    uy = vy / norm
-                else:
-                    ux, uy = 0.0, -1.0
-
-                handle_x = int(top_mid[0] + ux * 18)
-                handle_y = int(top_mid[1] + uy * 18)
+                # 상단 변의 중점도 동일 방식으로 계산
+                box_tmp = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(float)
+                pts = sorted(box_tmp.tolist(), key=lambda p: (p[1], p[0]))
+                top2 = np.array(pts[:2], dtype=float)
+                top_mid = top2.mean(axis=0)
 
                 cv2.line(
                     vis_bgr,
