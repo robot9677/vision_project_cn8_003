@@ -119,8 +119,8 @@ class ROIEditor:
                 "bl": (rx, ry+rh),
                 "br": (rx+rw, ry+rh)
             }
-            for name, (cx,cy) in corners.items():
-                if abs(x-cx) <= self.EDGE_MARGIN and abs(y-cy) <= self.EDGE_MARGIN:
+            for name, (corner_x, corner_y) in corners.items():
+                if abs(x-corner_x) <= self.EDGE_MARGIN and abs(y-corner_y) <= self.EDGE_MARGIN:
                     return r, "corner", name
             # edges
             if abs(x - rx) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
