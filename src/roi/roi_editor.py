@@ -57,10 +57,13 @@ class ROIEditor:
         cx = x + w / 2.0
         cy = y + h / 2.0
 
-        # ROI 로컬 좌표계 기준 "상단"
+        # ROI 로컬 좌표계 기준
         top_mid_local = (0.0, -h / 2.0)
         handle_local = (0.0, -(h / 2.0 + handle_dist))
-        label_local = (0.0, -(h / 2.0 + label_dist))
+
+        # 라벨은 상단 중앙이 아니라 "상단 좌측 코너 바깥" 기준
+        # => 박스 각도와 같이 자연스럽게 회전해서 이동
+        label_local = (w / 2.0, -(h / 2.0 + label_dist))
 
         top_mid_dx, top_mid_dy = self._rotate_vec(top_mid_local[0], top_mid_local[1], angle)
         handle_dx, handle_dy = self._rotate_vec(handle_local[0], handle_local[1], angle)
@@ -404,8 +407,8 @@ class ROIEditor:
             g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=18)
             label_x, label_y = g["label"]
 
-            tx = int(label_x )
-            ty = int(label_y - 10)
+            tx = int(label_x)
+            ty = int(label_y)
 
             # shadow
             overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
