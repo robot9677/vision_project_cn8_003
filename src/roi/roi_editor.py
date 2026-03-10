@@ -44,18 +44,40 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
-    def _get_rotate_handle_point(self, r, dist=18):
-        rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+    def _get_rotate_handle_point(self, r):
+
+        x, y, w, h = r["x"], r["y"], r["w"], r["h"]
         angle = float(r.get("angle", 0.0))
 
-        cx = rx + rw / 2.0
-        cy = ry + rh / 2.0
+        cx = x + w / 2.0
+        cy = y + h / 2.0
 
-        box = cv2.boxPoints(((cx, cy), (rw, rh), angle)).astype(float)
+        rect = ((cx, cy), (w, h), angle)
+        box = cv2.boxPoints(rect)
 
-        # y가 가장 작은 상단 2점을 선택
-        handle_x = cx
-        handle_y = cy - (rh / 2.0) - dist
+        # 상단 edge 찾기
+        pts = sorted(box.tolist(), key=lambda p: (p[1], p[0]))
+        top1 = np.array(pts[0])
+        top2 = np.array(pts[1])
+
+        top_mid = (top1 + top2) / 2.0
+
+        # 중심 → 상단 방향 벡터
+        vx = top_mid[0] - cx
+        vy = top_mid[1] - cy
+
+        norm = np.sqrt(vx*vx + vy*vy)
+        if norm < 1e-6:
+            return int(cx), int(cy), int(cx), int(cy)
+
+        ux = vx / norm
+        uy = vy / norm
+
+        dist = 30
+
+        handle_x = top_mid[0] + ux * dist
+        handle_y = top_mid[1] + uy * dist
+
         return int(handle_x), int(handle_y), int(cx), int(cy)
 
     def _hit_test(self, x, y):
@@ -370,7 +392,7 @@ class ROIEditor:
 
             tx = int(top_pt[0] - 10)
             ty = int(top_pt[1] - 12)
-            
+
             # shadow
             overlay.draw_text(vis_bgr, label, (tx+1, (ty+1)-5), color=(0,0,0), scale=cfg.FONT_SCALE-0.1, thickness=3, align='lt')
             # main text
