@@ -311,6 +311,7 @@ class VisionApp:
                             int(r.get("w", 0)),
                             int(r.get("h", 0)),
                         ),
+                        "angle": float(r.get("angle", 0.0)),
                     }
                     for r in getattr(self.roi_mgr, "rois", [])
                 ],

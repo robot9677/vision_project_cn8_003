@@ -59,6 +59,49 @@ class Inspector:
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
 
+    def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0):
+        H, W = frame_gray8.shape[:2]
+
+        x = float(roi.get("x", 0)) + float(dx)
+        y = float(roi.get("y", 0)) + float(dy)
+        w = max(1, int(roi.get("w", 1)))
+        h = max(1, int(roi.get("h", 1)))
+        angle = float(roi.get("angle", 0.0))
+
+        cx = x + w / 2.0
+        cy = y + h / 2.0
+
+        # 회전 ROI의 bounding box 계산
+        rect = ((cx, cy), (w, h), angle)
+        box = cv2.boxPoints(rect).astype(np.float32)
+
+        min_x = max(0, int(np.floor(np.min(box[:, 0]))))
+        min_y = max(0, int(np.floor(np.min(box[:, 1]))))
+        max_x = min(W, int(np.ceil(np.max(box[:, 0]))))
+        max_y = min(H, int(np.ceil(np.max(box[:, 1]))))
+
+        if max_x <= min_x or max_y <= min_y:
+            return None
+
+        patch = frame_gray8[min_y:max_y, min_x:max_x]
+        if patch is None or patch.size == 0:
+            return None
+
+        local_cx = cx - min_x
+        local_cy = cy - min_y
+
+        M = cv2.getRotationMatrix2D((local_cx, local_cy), angle, 1.0)
+        rotated = cv2.warpAffine(
+            patch,
+            M,
+            (patch.shape[1], patch.shape[0]),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
+        crop = cv2.getRectSubPix(rotated, (w, h), (local_cx, local_cy))
+        return crop
+
     def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
         results: Dict[str, ROIResult] = {}
 
@@ -109,16 +152,7 @@ class Inspector:
             roi_id = roi.get("id")
             key = str(roi_id)
 
-            x, y, w, h = int(roi["x"]), int(roi["y"]), int(roi["w"]), int(roi["h"])
-            x, y = x + dx, y + dy
-
-            # clamp (x1,y1,x2,y2)
-            x1 = max(0, min(x, W - 1))
-            y1 = max(0, min(y, H - 1))
-            x2 = max(x1 + 1, min(W, x1 + w))
-            y2 = max(y1 + 1, min(H, y1 + h))
-
-            crop = frame_gray8[y1:y2, x1:x2]
+            crop = self._crop_rotated(frame_gray8, roi, dx=dx, dy=dy)
             
             if crop is None or crop.size == 0:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
