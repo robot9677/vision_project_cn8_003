@@ -23,78 +23,34 @@ def roi_mgr_to_list(roi_mgr):
 
 
 def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
+    rois = []
+
     for mr in moved:
         rid = str(mr.get("id"))
         lr = last_results.get(rid) if last_results else None
 
-        x = int(mr["x"])
-        y = int(mr["y"])
-        w = int(mr["w"])
-        h = int(mr["h"])
+        rois.append({
+            "id": int(mr.get("id")),
+            "label": mr.get("name", f"ROI{rid}"),
+            "rect": (
+                int(mr.get("x", 0)),
+                int(mr.get("y", 0)),
+                int(mr.get("w", 0)),
+                int(mr.get("h", 0)),
+            ),
+            "angle": float(mr.get("angle", 0.0)),
+        })
 
-        if lr is None:
-            overlay.draw_rois(
-                vis,
-                rois=[{
-                    "id": int(mr.get("id")),
-                    "label": mr.get("name", f"ROI{rid}"),
-                    "rect": (x, y, w, h),
-                    "angle": float(mr.get("angle", 0.0)),
-                }],
-                active_id=None,
-                roi_results=None,
-            )
-            tx, ty = roi_label_pos(x, y, w, h)
-            overlay.draw_text(vis, f"ROI{rid}", (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1, align="lt")
-            continue
+    roi_results = None
+    if last_results:
+        roi_results = {str(k): v for k, v in last_results.items()}
 
-        metrics = getattr(lr, "metrics", None) or {}
-        ok_flag = bool(getattr(lr, "ok", False))
-        reason = getattr(lr, "reason", "") or ""
-
-        box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
-        overlay.draw_rois(
-            vis,
-            rois=[{
-                "id": int(mr.get("id")),
-                "label": mr.get("name", f"ROI{rid}"),
-                "rect": (x, y, w, h),
-                "angle": float(mr.get("angle", 0.0)),
-            }],
-            active_id=None,
-            roi_results={str(mr.get("id")): lr} if lr is not None else None,
-        )
-
-        line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
-        if ok_flag:
-            parts = []
-            mean_v = metrics.get("mean", metrics.get("mean_raw"))
-            score_v = metrics.get("score")
-            wr = metrics.get("white_ratio")
-            edge = metrics.get("edge_energy", metrics.get("lap_var", metrics.get("laplacian_var")))
-            qr = metrics.get("qr_data")
-            bc = metrics.get("blob_count")
-
-            if mean_v is not None:
-                parts.append(f"m:{float(mean_v):.1f}")
-            if score_v is not None:
-                parts.append(f"s:{float(score_v):.2f}")
-            if wr is not None:
-                parts.append(f"wr:{float(wr):.2f}")
-            if edge is not None:
-                parts.append(f"e:{float(edge):.1f}")
-            if bc is not None:
-                parts.append(f"bc:{int(bc)}")
-            if qr:
-                parts.append(f"qr:{str(qr)[:12]}")
-            line2 = " ".join(parts[:3]) if parts else ""
-        else:
-            line2 = str(reason)[:24] if reason else "FAIL"
-
-        tx, ty = roi_label_pos(x, y, w, h)
-        if line2:
-            overlay.draw_text(vis, line2, (tx, ty), color=(255, 220, 20), scale=0.45, thickness=1, align="lt")
-        overlay.draw_text(vis, line1, (tx, ty + 14), color=(255, 220, 20), scale=0.45, thickness=1, align="lt")
+    overlay.draw_rois(
+        vis,
+        rois=rois,
+        active_id=None,
+        roi_results=roi_results,
+    )
 
 
 def draw_run_tracking(
@@ -161,7 +117,15 @@ def draw_run_tracking(
                 except Exception:
                     nx, ny, nw, nh = x, y, w, h
 
-                moved.append({"id": r.get("id"), "name": r.get("name", ""), "x": nx, "y": ny, "w": nw, "h": nh})
+                moved.append({
+                    "id": r.get("id"),
+                    "name": r.get("name", ""),
+                    "x": nx,
+                    "y": ny,
+                    "w": nw,
+                    "h": nh,
+                    "angle": float(r.get("angle", 0.0)),
+                })
 
             smoothed, stable = stabilizer.update(moved)
 
