@@ -54,24 +54,8 @@ class ROIEditor:
         box = cv2.boxPoints(((cx, cy), (rw, rh), angle)).astype(float)
 
         # y가 가장 작은 상단 2점을 선택
-        pts = sorted(box.tolist(), key=lambda p: (p[1], p[0]))
-        top2 = np.array(pts[:2], dtype=float)
-
-        top_mid = top2.mean(axis=0)
-
-        vx = top_mid[0] - cx
-        vy = top_mid[1] - cy
-        norm = (vx * vx + vy * vy) ** 0.5
-
-        if norm > 1e-6:
-            ux = vx / norm
-            uy = vy / norm
-        else:
-            ux, uy = 0.0, -1.0
-
-        handle_x = top_mid[0] + ux * dist
-        handle_y = top_mid[1] + uy * dist
-
+        handle_x = cx
+        handle_y = cy - (rh / 2.0) - dist
         return int(handle_x), int(handle_y), int(cx), int(cy)
 
     def _hit_test(self, x, y):
@@ -380,7 +364,13 @@ class ROIEditor:
 
             # label with shadow for contrast
             label = f'{r.get("name","ROI")}'
-            tx, ty = x, y - 10 if y > 20 else y + 18
+
+            boxf = cv2.boxPoints(((cx, cy), (w, h), angle)).astype(float)
+            top_pt = boxf[np.argmin(boxf[:, 1])]
+
+            tx = int(top_pt[0] - 10)
+            ty = int(top_pt[1] - 12)
+            
             # shadow
             overlay.draw_text(vis_bgr, label, (tx+1, (ty+1)-5), color=(0,0,0), scale=cfg.FONT_SCALE-0.1, thickness=3, align='lt')
             # main text
