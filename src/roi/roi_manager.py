@@ -13,6 +13,12 @@ class ROIManager:
         self.selected_id = None
         self._next_id = 1
 
+    def _normalize_angle(self, angle):
+        a = float(angle) % 360.0
+        if a < 0:
+            a += 360.0
+        return a
+    
     def _clamp_rect(self, x, y, w, h):
         x = max(0, min(int(x), self.W - 1))
         y = max(0, min(int(y), self.H - 1))
@@ -30,7 +36,7 @@ class ROIManager:
             "id": self._next_id,
             "name": name or f"ROI{self._next_id}",
             "x": int(x), "y": int(y), "w": int(w), "h": int(h),
-            "angle": float(angle),
+            "angle": self._normalize_angle(angle),
         }
         self.rois.append(roi)
         self.selected_id = roi["id"]
@@ -66,7 +72,7 @@ class ROIManager:
         if name is not None:
             r["name"] = name
         if angle is not None:
-            r["angle"] = float(angle)
+            r["angle"] = self._normalize_angle(angle)
 
         return True
 
@@ -129,7 +135,7 @@ class ROIManager:
                 "id": roi_id,
                 "name": r.get("name", f"ROI{roi_id}"),
                 "x": x, "y": y, "w": w, "h": h,
-                "angle": float(r.get("angle",0.0)),
+                "angle": self._normalize_angle(r.get("angle", 0.0)),
             })
             max_id = max(max_id, roi_id)
         self._next_id = max_id + 1 if max_id > 0 else self._next_id
