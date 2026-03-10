@@ -16,6 +16,7 @@ def roi_mgr_to_list(roi_mgr):
                 int(r.get("w", 0)),
                 int(r.get("h", 0)),
             ),
+            "angle": float(r.get("angle", 0.0)),
         }
         for r in getattr(roi_mgr, "rois", [])
     ]
@@ -42,7 +43,7 @@ def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
         reason = getattr(lr, "reason", "") or ""
 
         box_color = (0, 200, 0) if ok_flag else (0, 0, 200)
-        overlay.draw_rect(vis, (x, y), (x + w, y + h), color=box_color, thickness=2)
+        overlay.draw_rois(vis,rois=[{"id": rid,"label": f"ROI{rid}","rect": (x, y, w, h),"angle": float(mr.get("angle",0.0))}],active_id=None,roi_results=last_results)
 
         line1 = f"ROI{rid} {'OK' if ok_flag else 'NG'}"
         if ok_flag:
