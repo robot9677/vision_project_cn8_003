@@ -85,40 +85,55 @@ class ROIEditor:
         rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]))
         for r in rois:
             rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-            top_extra = 24  # rotate handle 포함
-            if rx - self.EDGE_MARGIN <= x <= rx + rw + self.EDGE_MARGIN and ry - top_extra <= y <= ry + rh + self.EDGE_MARGIN:
-                # inside outer margin: determine type
-                handle_x, handle_y, cx, cy = self._get_rotate_handle_point(r)
+            angle = float(r.get("angle", 0.0))
 
-                if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
-                    return r, "rotate", None
+            cx = rx + rw / 2.0
+            cy = ry + rh / 2.0
+            box = cv2.boxPoints(((cx, cy), (rw, rh), angle)).astype(float)
 
-                if abs(x - cx) <= 8 and abs(y - cy) <= 8:
-                    return r, "center", None
-                                
-                inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
-                # corners
-                corners = {
-                    "tl": (rx, ry),
-                    "tr": (rx+rw, ry),
-                    "bl": (rx, ry+rh),
-                    "br": (rx+rw, ry+rh)
-                }
-                for name, (cx,cy) in corners.items():
-                    if abs(x-cx) <= self.EDGE_MARGIN and abs(y-cy) <= self.EDGE_MARGIN:
-                        return r, "corner", name
-                # edges
-                if abs(x - rx) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
-                    return r, "edge", "l"
-                if abs(x - (rx+rw)) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
-                    return r, "edge", "r"
-                if abs(y - ry) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
-                    return r, "edge", "t"
-                if abs(y - (ry+rh)) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
-                    return r, "edge", "b"
-                if inside:
-                    return r, "inside", None
-                return r, "near", None
+            handle_x, handle_y, cxi, cyi = self._get_rotate_handle_point(r)
+
+            # rotated ROI + rotate handle 포함 bounding box
+            pts = np.vstack([box, np.array([[handle_x, handle_y]], dtype=float)])
+            min_x = int(np.floor(np.min(pts[:, 0]))) - self.EDGE_MARGIN
+            max_x = int(np.ceil(np.max(pts[:, 0]))) + self.EDGE_MARGIN
+            min_y = int(np.floor(np.min(pts[:, 1]))) - self.EDGE_MARGIN
+            max_y = int(np.ceil(np.max(pts[:, 1]))) + self.EDGE_MARGIN
+
+            if not (min_x <= x <= max_x and min_y <= y <= max_y):
+                continue
+
+            # rotate handle 우선
+            if abs(x - handle_x) <= 8 and abs(y - handle_y) <= 8:
+                return r, "rotate", None
+
+            # center
+            if abs(x - cxi) <= 8 and abs(y - cyi) <= 8:
+                return r, "center", None
+                            
+            inside = (rx <= x <= rx+rw and ry <= y <= ry+rh)
+            # corners
+            corners = {
+                "tl": (rx, ry),
+                "tr": (rx+rw, ry),
+                "bl": (rx, ry+rh),
+                "br": (rx+rw, ry+rh)
+            }
+            for name, (cx,cy) in corners.items():
+                if abs(x-cx) <= self.EDGE_MARGIN and abs(y-cy) <= self.EDGE_MARGIN:
+                    return r, "corner", name
+            # edges
+            if abs(x - rx) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
+                return r, "edge", "l"
+            if abs(x - (rx+rw)) <= self.EDGE_MARGIN and ry <= y <= ry+rh:
+                return r, "edge", "r"
+            if abs(y - ry) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
+                return r, "edge", "t"
+            if abs(y - (ry+rh)) <= self.EDGE_MARGIN and rx <= x <= rx+rw:
+                return r, "edge", "b"
+            if inside:
+                return r, "inside", None
+            return r, "near", None
         return None, None, None
 
     def _on_mouse(self, event, x, y, flags, param):
