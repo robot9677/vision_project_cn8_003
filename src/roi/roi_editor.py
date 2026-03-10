@@ -238,9 +238,6 @@ class ROIEditor:
                     rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
                     angle = float(r.get("angle",0.0))
 
-                    dx = x - self.last_mouse[0]
-                    dy = y - self.last_mouse[1]
-
                     # 화면 이동 → ROI 로컬 이동으로 변환
                     th = math.radians(-angle)
                     c = math.cos(th)
