@@ -44,7 +44,7 @@ class ROIEditor:
 
         self.on_select_changed = lambda: None
 
-        def _dist_pt_seg(self, px, py, ax, ay, bx, by):
+    def _dist_pt_seg(self, px, py, ax, ay, bx, by):
         abx = bx - ax
         aby = by - ay
         apx = px - ax
