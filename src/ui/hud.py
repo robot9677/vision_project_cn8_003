@@ -69,4 +69,4 @@ def draw_mode_indicator(img, edit_mode):
     overlay.draw_text(img, text, (x, y), color=color, scale=0.7, thickness=2, align="lt")
 
     if DEV_MODE:
-        overlay.draw_text(img, "DEV", (x, y -18), color=(180, 180, 180), scale=0.5, thickness=1, align="lt")
+        overlay.draw_text(img, "DEV", (x, y +18), color=(180, 180, 180), scale=0.5, thickness=1, align="lt")
