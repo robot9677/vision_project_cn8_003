@@ -357,12 +357,17 @@ class Inspector:
             m = float(np.mean(crop))
             mn = max(0.0, m - margin)
             mx = min(255.0, m + margin)
-            overrides[f"ROI{roi_id}"] = {
-                "type": "mean_threshold",
-                "min_mean": float(mn),
-                "max_mean": float(mx),
-            }
+            cfg = get_roi_cfg(self.recipe, roi_id)
 
+            # toolchain ROI는 유지
+            if "tools" in cfg:
+                overrides[f"ROI{roi_id}"] = cfg
+            else:
+                overrides[f"ROI{roi_id}"] = {
+                    "type": "mean_threshold",
+                    "min_mean": float(mn),
+                    "max_mean": float(mx),
+                }
         # 기존 recipe를 베이스로 복사해서, overrides만 교체
         base = self.recipe if isinstance(self.recipe, dict) else {}
         recipe = copy.deepcopy(base)
