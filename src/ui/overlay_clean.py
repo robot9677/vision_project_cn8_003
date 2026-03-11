@@ -46,180 +46,6 @@ def draw_rect(img, pt1, pt2, color=None, thickness=1, fill=False):
     else:
         cv2.rectangle(img, (x1, y1), (x2, y2), color, int(thickness), lineType=cfg.LINE_TYPE)
 
-def draw_text_rotated(img, text, center, angle_deg, color=None, scale=None, thickness=None):
-    if color is None:
-        color = cfg.COLOR_TEXT
-    if scale is None:
-        scale = cfg.FONT_SCALE
-    if thickness is None:
-        thickness = cfg.FONT_THICK
-
-    text = str(text)
-    (tw, th), baseline = cv2.getTextSize(text, cfg.FONT, scale, thickness)
-
-    pad = 6
-    bw = tw + pad * 2
-    bh = th + baseline + pad * 2
-
-    patch = np.zeros((bh, bw, 4), dtype=np.uint8)
-
-    # text
-    cv2.putText(
-        patch,
-        text,
-        (pad, pad + th),
-        cfg.FONT,
-        scale,
-        (*color, 255),
-        int(thickness),
-        cfg.LINE_TYPE
-    )
-
-    M = cv2.getRotationMatrix2D((bw / 2.0, bh / 2.0), angle_deg, 1.0)
-    cos = abs(M[0, 0])
-    sin = abs(M[0, 1])
-
-    nw = int((bh * sin) + (bw * cos))
-    nh = int((bh * cos) + (bw * sin))
-
-    M[0, 2] += (nw / 2.0) - (bw / 2.0)
-    M[1, 2] += (nh / 2.0) - (bh / 2.0)
-
-    rotated = cv2.warpAffine(
-        patch,
-        M,
-        (nw, nh),
-        flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0, 0),
-    )
-
-    cx, cy = int(center[0]), int(center[1])
-    x1 = int(cx - nw / 2)
-    y1 = int(cy - nh / 2)
-    x2 = x1 + nw
-    y2 = y1 + nh
-
-    ih, iw = img.shape[:2]
-    sx1 = max(0, x1)
-    sy1 = max(0, y1)
-    sx2 = min(iw, x2)
-    sy2 = min(ih, y2)
-
-    if sx1 >= sx2 or sy1 >= sy2:
-        return
-
-    rx1 = sx1 - x1
-    ry1 = sy1 - y1
-    rx2 = rx1 + (sx2 - sx1)
-    ry2 = ry1 + (sy2 - sy1)
-
-    roi = img[sy1:sy2, sx1:sx2]
-    over = rotated[ry1:ry2, rx1:rx2]
-
-    alpha = over[:, :, 3:4].astype(np.float32) / 255.0
-    roi[:] = (over[:, :, :3].astype(np.float32) * alpha + roi.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
-    
-def draw_text_block_rotated(
-    img,
-    lines,
-    center,
-    angle_deg,
-    color=None,
-    scale=None,
-    thickness=None,
-    bg_alpha=0.4,
-    pad=4,
-    line_spacing=4,
-):
-    if color is None:
-        color = cfg.COLOR_TEXT
-    if scale is None:
-        scale = cfg.FONT_SCALE
-    if thickness is None:
-        thickness = cfg.FONT_THICK
-
-    if not lines:
-        return
-
-    sizes = [cv2.getTextSize(str(s), cfg.FONT, scale, thickness)[0] for s in lines]
-    heights = [cv2.getTextSize(str(s), cfg.FONT, scale, thickness)[0][1] for s in lines]
-
-    max_w = max(w for w, _ in sizes)
-    total_h = sum(heights) + max(0, len(lines) - 1) * line_spacing
-
-    bw = max_w + pad * 2
-    bh = total_h + pad * 2
-
-    patch = np.zeros((bh, bw, 4), dtype=np.uint8)
-
-    # bg
-    patch[:, :, 0:3] = (0, 0, 0)
-    patch[:, :, 3] = int(255 * bg_alpha)
-
-    # border
-    cv2.rectangle(patch, (0, 0), (bw - 1, bh - 1), (50, 50, 50, 255), 1, lineType=cfg.LINE_TYPE)
-
-    # text
-    cur_y = pad + heights[0]
-    for i, t in enumerate(lines):
-        cv2.putText(
-            patch,
-            str(t),
-            (pad, cur_y),
-            cfg.FONT,
-            scale,
-            (*color, 255),
-            int(thickness),
-            cfg.LINE_TYPE,
-        )
-        if i + 1 < len(lines):
-            cur_y += heights[i + 1] + line_spacing
-
-    rot_m = cv2.getRotationMatrix2D((bw / 2.0, bh / 2.0), angle_deg, 1.0)
-    cos = abs(rot_m[0, 0])
-    sin = abs(rot_m[0, 1])
-
-    new_w = int((bh * sin) + (bw * cos))
-    new_h = int((bh * cos) + (bw * sin))
-
-    rot_m[0, 2] += (new_w / 2.0) - (bw / 2.0)
-    rot_m[1, 2] += (new_h / 2.0) - (bh / 2.0)
-
-    rotated = cv2.warpAffine(
-        patch,
-        rot_m,
-        (new_w, new_h),
-        flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0, 0),
-    )
-
-    cx, cy = int(center[0]), int(center[1])
-    x1 = int(cx - new_w / 2)
-    y1 = int(cy - new_h / 2)
-    x2 = x1 + new_w
-    y2 = y1 + new_h
-
-    ih, iw = img.shape[:2]
-    sx1 = max(0, x1)
-    sy1 = max(0, y1)
-    sx2 = min(iw, x2)
-    sy2 = min(ih, y2)
-
-    if sx1 >= sx2 or sy1 >= sy2:
-        return
-
-    rx1 = sx1 - x1
-    ry1 = sy1 - y1
-    rx2 = rx1 + (sx2 - sx1)
-    ry2 = ry1 + (sy2 - sy1)
-
-    roi = img[sy1:sy2, sx1:sx2]
-    over = rotated[ry1:ry2, rx1:rx2]
-
-    alpha = over[:, :, 3:4].astype(np.float32) / 255.0
-    roi[:] = (over[:, :, :3].astype(np.float32) * alpha + roi.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
 
 # --- higher-level UI elements ---
 def draw_status_bar(img, text):
@@ -416,25 +242,19 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
         if compact:
             lines2 = [s for s in lines if s]
 
-            line_gap = 14
-            # ROI angle -> readable text angle
-            text_angle = ((angle + 180.0) % 360.0) - 180.0
-
-            # 글자가 뒤집혀 보이지 않게 보정
-            if text_angle < -90.0:
-                text_angle += 180.0
-            elif text_angle > 90.0:
-                text_angle -= 180.0
+            # EDIT와 동일하게 수평 텍스트 + ROI 상단 기준 위치
+            tx = int(x)
+            ty = int(y - 10 if y > 20 else y + h + 18)
 
             for i, t in enumerate(lines2):
-                draw_text_rotated(
+                draw_text(
                     img,
                     t,
-                    center=(cx, cy - (h / 2) - 18 - i * line_gap),
-                    angle_deg=text_angle,
+                    (tx, ty + (i * 14)),
                     color=cfg.COLOR_TEXT,
                     scale=base_font_scale,
                     thickness=base_thickness,
+                    align="lt",
                 )
         else:
             temp = img.copy()
