@@ -16,11 +16,12 @@
           "tool": "measure.blob_count",
           "params": {
             "polarity": "black",
-            "expected": 2,
-            "area_min": 200,
-            "area_max": 5000,
+            "expected": 4,
+            "area_min": 120,
+            "area_max": 2000,
             "open": 1,
-            "close": 5
+            "close": 3,
+            "count_zone": [8, 8, 165, 175]
           }
         }
       ]
