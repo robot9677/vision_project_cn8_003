@@ -76,6 +76,10 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
     base_thickness = cfg.FONT_THICK
     line_spacing = 4
 
+    roi_text_color = (0, 255, 255)
+    roi_text_scale = 0.5
+    roi_text_thickness = 2
+
     for idx, r in enumerate(rois):
         # normalize roi dict/object to {id, x,y,w,h, name/label}
         if isinstance(r, dict):
@@ -251,9 +255,9 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                     img,
                     t,
                     (tx, ty + (i * 14)),
-                    color=cfg.COLOR_TEXT,
-                    scale=base_font_scale,
-                    thickness=base_thickness,
+                    color=roi_text_color,
+                    scale=roi_text_scale,
+                    thickness=roi_text_thickness,
                     align="lt",
                 )
         else:
@@ -267,7 +271,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
             cur_y = top_text_y + heights[0]
             for i, t in enumerate(lines):
                 tx = bg_x1 + 4
-                draw_text(img, t, (tx, cur_y), color=cfg.COLOR_TEXT, scale=base_font_scale, thickness=base_thickness, align="lt")
+                draw_text(img, t, (tx, cur_y), color=roi_text_color, scale=roi_text_scale, thickness=roi_text_thickness, align="lt")
                 if i+1 < len(lines):
                     cur_y += heights[i+1] + line_spacing
 
