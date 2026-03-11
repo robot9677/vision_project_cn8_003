@@ -233,6 +233,8 @@ class VisionApp:
 
         if st.edit_mode:
             st.status = "EDIT MODE"
+            self.last_overall_ok = None
+            self.last_results = None
         else:
             run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
             st.status = "RUN MODE / STATIC" if run_mode == "static" else "RUN MODE / HELD"
@@ -374,11 +376,7 @@ class VisionApp:
         overlay.draw_status_bar(vis, st.status)
 
         if st.last_overall_ok is not None:
-            overlay.draw_overall_banner(
-                vis,
-                st.last_overall_ok,
-                info=_extract_info_from_results(st.last_results),
-            )
+            overlay.draw_overall_banner(vis,st.last_overall_ok,info=_extract_info_from_results(st.last_results),)
 
         st.last_buttons = render_control_bar(vis, st.edit_mode)
 
