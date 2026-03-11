@@ -417,12 +417,21 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
             lines2 = [s for s in lines if s]
 
             line_gap = 14
+            # ROI angle -> readable text angle
+            text_angle = ((angle + 180.0) % 360.0) - 180.0
+
+            # 글자가 뒤집혀 보이지 않게 보정
+            if text_angle < -90.0:
+                text_angle += 180.0
+            elif text_angle > 90.0:
+                text_angle -= 180.0
+
             for i, t in enumerate(lines2):
                 draw_text_rotated(
                     img,
                     t,
                     center=(cx, cy - (h / 2) - 18 - i * line_gap),
-                    angle_deg=angle,
+                    angle_deg=text_angle,
                     color=cfg.COLOR_TEXT,
                     scale=base_font_scale,
                     thickness=base_thickness,
