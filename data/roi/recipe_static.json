@@ -2,11 +2,16 @@
   "default": {
     "type": "toolchain"
   },
-
   "overrides": {
     "ROI1": {
       "type": "toolchain",
       "tools": [
+        {
+          "tool": "enhance.threshold",
+          "params": {
+            "mode": "otsu"
+          }
+        },
         {
           "tool": "measure.blob_count",
           "params": {
@@ -21,7 +26,6 @@
       ]
     }
   },
-
   "decision": {
     "mode": "any_fail_is_ng"
   }
