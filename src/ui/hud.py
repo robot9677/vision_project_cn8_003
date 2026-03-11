@@ -23,7 +23,7 @@ def draw_dev_hud(img, st, product_profile=None):
         text1 = f"RUN({mode_text}/{track_text}): SPACE=inspect  a=autoInspect  c=autotune  p=reload  e=edit  {auto_text}"
 
     ovl = img.copy()
-    # overlay.draw_rect(ovl, (8, h - 64), (w - 8, h - 8), color=(0, 0, 0), fill=True)
+    overlay.draw_rect(ovl, (8, h - 64), (w - 8, h - 8), color=(0, 0, 0), fill=True)
     cv2.addWeighted(ovl, 0.45, img, 0.55, 0, img)
     overlay.draw_text(img, text1, (16, h - 80), color=(220, 220, 220), scale=0.6, thickness=1, align="lt")
 
@@ -64,7 +64,7 @@ def draw_mode_indicator(img, edit_mode):
     y = 28
 
     ovl = img.copy()
-    overlay.draw_rect(ovl, (x - 8, y - 22), (x + tw + 8, y + 6), color=(0, 0, 0), fill=True)
+    #overlay.draw_rect(ovl, (x - 8, y - 22), (x + tw + 8, y + 6), color=(0, 0, 0), fill=True)
     cv2.addWeighted(ovl, 0.4, img, 0.6, 0, img)
     overlay.draw_text(img, text, (x, y), color=color, scale=0.7, thickness=2, align="lt")
 
