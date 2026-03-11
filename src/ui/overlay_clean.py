@@ -2,7 +2,6 @@
 import cv2
 import numpy as np
 from ui import ui_config as cfg
-from PIL import ImageFont, ImageDraw, Image
 
 # --- basic drawing helpers ---
 def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"):
@@ -25,17 +24,6 @@ def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"
     y_draw = int(y + th / 2)
     cv2.putText(img, str(text), (x, y_draw), cfg.FONT, scale, color, int(thickness), cfg.LINE_TYPE)
 
-def draw_text_kr(img, text, pos, size=28, color=(255,255,255)):
-    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-
-    img_pil = Image.fromarray(img)
-    draw = ImageDraw.Draw(img_pil)
-    font = ImageFont.truetype(font_path, size)
-
-    draw.text(pos, text, font=font, fill=color)
-
-    return np.array(img_pil)
-
 def draw_rect(img, pt1, pt2, color=None, thickness=1, fill=False):
     if color is None:
         color = cfg.COLOR_TEXT
@@ -45,7 +33,6 @@ def draw_rect(img, pt1, pt2, color=None, thickness=1, fill=False):
         cv2.rectangle(img, (x1, y1), (x2, y2), color, -1)
     else:
         cv2.rectangle(img, (x1, y1), (x2, y2), color, int(thickness), lineType=cfg.LINE_TYPE)
-
 
 # --- higher-level UI elements ---
 def draw_status_bar(img, text):
@@ -111,7 +98,6 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                 rv = roi_results.get(rid_str) if rid_str in roi_results else roi_results.get(roi_id)
             if rv is not None:
                 ok = rv.get("ok") if isinstance(rv, dict) else getattr(rv, "ok", None)
-                reason = rv.get("reason") if isinstance(rv, dict) else getattr(rv, "reason", "")
                 metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
                 if ok is True:
                     color = cfg.COLOR_OK
@@ -145,8 +131,6 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         # prepare label lines
         line1 = f"{label}#{roi_id}" if roi_id is not None else label
-
-        angle = float(r.get("angle", 0.0)) if isinstance(r, dict) else float(getattr(r, "angle", 0.0))
 
         if compact:
             line2 = ""
@@ -199,49 +183,6 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         lines = [line1, line2] + ([line3] if line3 else [])
 
-        # text sizing
-        sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
-        heights = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0][1] for s in lines]
-        max_w = max(sz[0] for sz in sizes) if sizes else 0
-        total_h = sum(heights) + max(0, (len(lines)-1)) * line_spacing
-
-        margin = 10
-
-        # rotated ROI 기준 상단 방향 라벨 anchor
-        top_mid_local = np.array([0.0, -h / 2.0], dtype=float)
-        label_local = np.array([0.0, -(h / 2.0 + margin + total_h)], dtype=float)
-
-        th = np.radians(angle)
-        c = np.cos(th)
-        s = np.sin(th)
-
-        rot = np.array([[c, -s], [s, c]], dtype=float)
-
-        label_pt = np.array([cx, cy], dtype=float) + rot @ label_local
-
-        bg_x1 = int(label_pt[0] - max_w / 2 - 4)
-        bg_y1 = int(label_pt[1] - 4)
-        bg_x2 = bg_x1 + max_w + 8
-        bg_y2 = bg_y1 + total_h + 8
-
-        # clamp
-        if bg_x1 < 2:
-            bg_x2 += (2 - bg_x1)
-            bg_x1 = 2
-        if bg_x2 > w_img - 2:
-            shift = bg_x2 - (w_img - 2)
-            bg_x1 -= shift
-            bg_x2 -= shift
-        if bg_y1 < 2:
-            bg_y2 += (2 - bg_y1)
-            bg_y1 = 2
-        if bg_y2 > h_img - 2:
-            shift = bg_y2 - (h_img - 2)
-            bg_y1 -= shift
-            bg_y2 -= shift
-
-        top_text_y = bg_y1 + 4 + heights[0]
-
         # draw semi-transparent background
         if compact:
             lines2 = [s for s in lines if s]
@@ -261,6 +202,48 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                     align="lt",
                 )
         else:
+            # text sizing
+            sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
+            heights = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0][1] for s in lines]
+            max_w = max(sz[0] for sz in sizes) if sizes else 0
+            total_h = sum(heights) + max(0, (len(lines)-1)) * line_spacing
+
+            margin = 10
+
+            # rotated ROI 기준 상단 방향 라벨 anchor
+            label_local = np.array([0.0, -(h / 2.0 + margin + total_h)], dtype=float)
+
+            th = np.radians(angle)
+            c = np.cos(th)
+            s = np.sin(th)
+
+            rot = np.array([[c, -s], [s, c]], dtype=float)
+
+            label_pt = np.array([cx, cy], dtype=float) + rot @ label_local
+
+            bg_x1 = int(label_pt[0] - max_w / 2 - 4)
+            bg_y1 = int(label_pt[1] - 4)
+            bg_x2 = bg_x1 + max_w + 8
+            bg_y2 = bg_y1 + total_h + 8
+
+            # clamp
+            if bg_x1 < 2:
+                bg_x2 += (2 - bg_x1)
+                bg_x1 = 2
+            if bg_x2 > w_img - 2:
+                shift = bg_x2 - (w_img - 2)
+                bg_x1 -= shift
+                bg_x2 -= shift
+            if bg_y1 < 2:
+                bg_y2 += (2 - bg_y1)
+                bg_y1 = 2
+            if bg_y2 > h_img - 2:
+                shift = bg_y2 - (h_img - 2)
+                bg_y1 -= shift
+                bg_y2 -= shift
+
+            top_text_y = bg_y1 + 4 + heights[0]
+
             temp = img.copy()
             draw_rect(temp, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(0,0,0), fill=True)
             draw_rect(img, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(50,50,50), thickness=1)
