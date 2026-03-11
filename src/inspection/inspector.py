@@ -160,6 +160,9 @@ class Inspector:
 
             if not auto_mode:
                 print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
+                dbg_raw_path = os.path.join(self.logs_root, f"roi{roi_id}_raw.png")
+                cv2.imwrite(dbg_raw_path, crop)
+                print(f"[DBG RAW SAVE] {dbg_raw_path}")
             if crop is None or crop.size == 0:
                 if not auto_mode:
                     print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
