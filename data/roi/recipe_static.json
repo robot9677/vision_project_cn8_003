@@ -1,4 +1,27 @@
 {
+  "default": {
+    "type": "toolchain"
+  },
+
+  "overrides": {
+    "ROI1": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.blob_count",
+          "params": {
+            "polarity": "black",
+            "expected": 2,
+            "area_min": 120,
+            "area_max": 5000,
+            "open": 3,
+            "close": 7
+          }
+        }
+      ]
+    }
+  },
+
   "decision": {
     "mode": "any_fail_is_ng"
   }
