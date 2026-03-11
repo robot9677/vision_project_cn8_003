@@ -414,18 +414,19 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         # draw semi-transparent background
         if compact:
-            draw_text_block_rotated(
-                img,
-                [s for s in lines if s],
-                center=((bg_x1 + bg_x2) / 2.0, (bg_y1 + bg_y2) / 2.0),
-                angle_deg=angle,
-                color=cfg.COLOR_TEXT,
-                scale=base_font_scale,
-                thickness=base_thickness,
-                bg_alpha=0.4,
-                pad=4,
-                line_spacing=line_spacing,
-            )
+            lines2 = [s for s in lines if s]
+
+            line_gap = 14
+            for i, t in enumerate(lines2):
+                draw_text_rotated(
+                    img,
+                    t,
+                    center=(cx, cy - (h / 2) - 18 - i * line_gap),
+                    angle_deg=angle,
+                    color=cfg.COLOR_TEXT,
+                    scale=base_font_scale,
+                    thickness=base_thickness,
+                )
         else:
             temp = img.copy()
             draw_rect(temp, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(0,0,0), fill=True)
