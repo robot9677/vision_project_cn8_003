@@ -39,10 +39,10 @@ def draw_status_bar(img, text):
     h, w = img.shape[:2]
     bar_h = cfg.STATUS_HEIGHT if hasattr(cfg, "STATUS_HEIGHT") else 40
     # dark background
-    dark = img.copy()
-    draw_rect(dark, (0, 0), (w, bar_h), color=cfg.STATUS_BG if hasattr(cfg, "STATUS_BG") else (0,0,0), fill=True)
-    alpha = 0.6
-    cv2.addWeighted(dark, alpha, img, 1.0 - alpha, 0, img)
+    # dark = img.copy()
+    # draw_rect(dark, (0, 0), (w, bar_h), color=cfg.STATUS_BG if hasattr(cfg, "STATUS_BG") else (0,0,0), fill=True)
+    # alpha = 0.6
+    # cv2.addWeighted(dark, alpha, img, 1.0 - alpha, 0, img)
     draw_text(img, text, (cfg.MARGIN if hasattr(cfg, "MARGIN") else 8, int(bar_h/2)+6), color=cfg.COLOR_TEXT, scale=cfg.FONT_SCALE, thickness=cfg.FONT_THICK, align="lt")
 
 
