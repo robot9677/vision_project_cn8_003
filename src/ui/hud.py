@@ -64,7 +64,7 @@ def draw_mode_indicator(img, edit_mode):
     y = 28
 
     ovl = img.copy()
-    overlay.draw_rect(ovl, (x - 6, y - 25), (x + tw + 8, y + 8), color=(0, 0, 0), fill=True)
+    overlay.draw_rect(ovl, (x - 6, y - 25), (x + tw + 8, y + 10), color=(0, 0, 0), fill=True)
     cv2.addWeighted(ovl, 0.4, img, 0.6, 0, img)
     overlay.draw_text(img, text, (x, y -18), color=color, scale=0.7, thickness=2, align="lt")
 
