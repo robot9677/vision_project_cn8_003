@@ -66,12 +66,11 @@ class Inspector:
         y = float(roi.get("y", 0)) + float(dy)
         w = max(1, int(roi.get("w", 1)))
         h = max(1, int(roi.get("h", 1)))
-        aangle = float(roi.get("angle", 0.0)) + float(dangle)
+        angle = float(roi.get("angle", 0.0)) + float(dangle)
 
         cx = x + w / 2.0
         cy = y + h / 2.0
 
-        # 회전 ROI의 bounding box 계산
         rect = ((cx, cy), (w, h), angle)
         box = cv2.boxPoints(rect).astype(np.float32)
 
