@@ -138,3 +138,55 @@ class ROITracker:
             return x, y, w, h
 
         return x, y, w, h
+    
+    
+    def _rotate_keep_size(self, img: np.ndarray, angle: float) -> np.ndarray:
+        h, w = img.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, 1.0)
+        return cv2.warpAffine(
+            img,
+            M,
+            (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
+    def track_pose(self, frame_gray8: np.ndarray, x, y, w, h, angle=0.0, angle_range=4.0, angle_step=1.0):
+        if self.template is None:
+            return x, y, w, h, float(angle)
+
+        best = (x, y, w, h, float(angle))
+        best_score = -1.0
+
+        angles = np.arange(-angle_range, angle_range + 0.001, angle_step, dtype=np.float32)
+
+        H, W = frame_gray8.shape[:2]
+        sx = max(0, int(x - self.search_margin))
+        sy = max(0, int(y - self.search_margin))
+        ex = min(W, int(x + w + self.search_margin))
+        ey = min(H, int(y + h + self.search_margin))
+        search = frame_gray8[sy:ey, sx:ex]
+
+        if search.size == 0:
+            return best
+
+        th, tw = self.template.shape[:2]
+
+        for da in angles:
+            tmpl = self._rotate_keep_size(self.template, float(da))
+            if search.shape[0] < th or search.shape[1] < tw:
+                continue
+
+            res = cv2.matchTemplate(search, tmpl, self.method)
+            _, maxv, _, maxloc = cv2.minMaxLoc(res)
+
+            if maxv > best_score:
+                nx = sx + int(maxloc[0])
+                ny = sy + int(maxloc[1])
+                best = (nx, ny, w, h, float(angle) + float(da))
+                best_score = float(maxv)
+
+        if best_score >= self.thr:
+            return best
+
+        return x, y, w, h, float(angle)

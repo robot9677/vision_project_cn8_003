@@ -59,14 +59,14 @@ class Inspector:
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
 
-    def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0):
+    def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
 
         x = float(roi.get("x", 0)) + float(dx)
         y = float(roi.get("y", 0)) + float(dy)
         w = max(1, int(roi.get("w", 1)))
         h = max(1, int(roi.get("h", 1)))
-        angle = float(roi.get("angle", 0.0))
+        aangle = float(roi.get("angle", 0.0)) + float(dangle)
 
         cx = x + w / 2.0
         cy = y + h / 2.0
@@ -136,14 +136,25 @@ class Inspector:
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
             use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
 
+            dangle = 0.0
+
             if use_tracker:
-                nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
+                na = float(ref.get("angle", 0.0))
+                nrx, nry, _, _, na = self.tracker.track_pose(
+                    frame_gray8,
+                    rx, ry, rw, rh,
+                    angle=float(ref.get("angle", 0.0)),
+                    angle_range=float(self.runtime_cfg.get("tracker_angle_range", 4.0)),
+                    angle_step=float(self.runtime_cfg.get("tracker_angle_step", 1.0)),
+                )
                 dx, dy = int(nrx - rx), int(nry - ry)
+                dangle = float(na - float(ref.get("angle", 0.0)))
 
                 if not auto_mode:
-                    print(f"[DBG TRK] dx={dx} dy={dy}")
+                    print(f"[DBG TRK] dx={dx} dy={dy} dangle={dangle:.2f}")
             else:
                 dx, dy = 0, 0
+                dangle = 0.0
                     
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
@@ -152,7 +163,7 @@ class Inspector:
             roi_id = roi.get("id")
             key = str(roi_id)
 
-            crop = self._crop_rotated(frame_gray8, roi, dx=dx, dy=dy)
+            crop = self._crop_rotated(frame_gray8, roi, dx=dx, dy=dy, dangle=dangle)
             
             if crop is None or crop.size == 0:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
@@ -246,6 +257,7 @@ class Inspector:
             metrics["norm_gain"] = float(norm_gain)
             metrics["dx"] = dx
             metrics["dy"] = dy
+            metrics["dangle"] = float(dangle)
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
@@ -262,6 +274,7 @@ class Inspector:
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "
                     f"dx={metrics.get('dx')} dy={metrics.get('dy')}"
+                    f"dx={metrics.get('dx')} dy={metrics.get('dy')} dangle={metrics.get('dangle')}"
                 )
                 dbg_path = f"/home/robot96/vision_project/data/logs/roi{roi_id}_last.png"
                 last_img = metrics.get("_last_image")
