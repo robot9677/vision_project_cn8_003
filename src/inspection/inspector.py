@@ -375,7 +375,8 @@ class Inspector:
                         blob_count = int(metrics_bt.get("blob_count", 0))
                         areas = metrics_bt.get("blob_areas_kept") or []
 
-                        params["expected"] = blob_count
+                        # expected 는 자동 변경하지 않음
+                        # 정상 기준 개수는 사용자가 직접 정하거나 기존 값을 유지
 
                         if areas:
                             params["area_min"] = int(max(1, min(areas) * 0.7))
