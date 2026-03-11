@@ -134,7 +134,7 @@ class Inspector:
                 norm_gain = 1.0
 
             # ref만 추적해서 Δ 계산(정규화된 프레임에서)
-            use_tracker = bool(self.runtime_cfg.get("enable_tracker", True)) and auto_mode
+            use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
 
             if use_tracker:
                 nrx, nry, _, _ = self.tracker.track(frame_gray8, rx, ry, rw, rh)
