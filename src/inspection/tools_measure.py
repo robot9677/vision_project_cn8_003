@@ -109,14 +109,24 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
     areas_kept = []
     boxes_kept = []
 
+    bh, bw_img = bw.shape[:2]
+
     for i in range(1, num):
         area = int(stats[i, cv2.CC_STAT_AREA])
-        x = int(stats[i, cv2.CC_STAT_LEFT]) + zx
-        y = int(stats[i, cv2.CC_STAT_TOP]) + zy
+
+        sx = int(stats[i, cv2.CC_STAT_LEFT])
+        sy = int(stats[i, cv2.CC_STAT_TOP])
         w = int(stats[i, cv2.CC_STAT_WIDTH])
         h = int(stats[i, cv2.CC_STAT_HEIGHT])
 
+        x = sx + zx
+        y = sy + zy
+
         areas_all.append(area)
+
+        # zone 내부 경계에 닿는 blob 제외
+        if sx <= 0 or sy <= 0 or (sx + w) >= bw_img or (sy + h) >= bh:
+            continue
 
         if area_min <= area <= area_max:
             cnt += 1
