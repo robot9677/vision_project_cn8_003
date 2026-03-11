@@ -247,8 +247,8 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
             lines2 = [s for s in lines if s]
 
             # EDIT와 동일하게 수평 텍스트 + ROI 상단 기준 위치
-            tx = int(x)
-            ty = int(y  if y > 20 else y + h + 18)
+            tx = int(x-10)
+            ty = int(y - 20 if y > 20 else y + h + 18)
 
             for i, t in enumerate(lines2):
                 draw_text(
