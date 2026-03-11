@@ -130,6 +130,9 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
         "blob_boxes_kept": boxes_kept,
         "num_labels": int(num - 1),
         "count_zone": params.get("count_zone"),
+        "area_min": area_min,
+        "area_max": area_max,
+        "polarity": polarity,
     }
 
     expected = params.get("expected", None)
