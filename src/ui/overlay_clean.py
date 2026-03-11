@@ -76,7 +76,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
     base_thickness = cfg.FONT_THICK
     line_spacing = 4
 
-    roi_text_color = (180, 180, 180)
+    roi_text_color = (0, 255, 0)
     roi_text_scale = 0.35
     roi_text_thickness = 1
 
