@@ -77,7 +77,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
     line_spacing = 4
 
     roi_text_color = (50, 50, 50)
-    roi_text_scale = 0.3
+    roi_text_scale = 0.5
     roi_text_thickness = 0.8
 
     for idx, r in enumerate(rois):
