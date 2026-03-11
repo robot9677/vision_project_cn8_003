@@ -130,7 +130,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
         cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
 
         # prepare label lines
-        line1 = f"{label}#{roi_id}" if roi_id is not None else label
+        line1 = f"{label}" if roi_id is not None else label
 
         if compact:
             line2 = ""
