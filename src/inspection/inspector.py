@@ -359,9 +359,31 @@ class Inspector:
             mx = min(255.0, m + margin)
             cfg = get_roi_cfg(self.recipe, roi_id)
 
-            # toolchain ROI는 유지
             if "tools" in cfg:
-                overrides[f"ROI{roi_id}"] = cfg
+                roi_cfg = copy.deepcopy(cfg)
+
+                for step in roi_cfg.get("tools", []):
+                    tool_name = str(step.get("tool", "")).strip().lower()
+                    params = step.get("params") or {}
+
+                    if tool_name == "measure.blob_count":
+                        ok_bt, metrics_bt, _reason_bt = run_toolchain(crop, {
+                            "tools": roi_cfg.get("tools", []),
+                            "tool_decision": roi_cfg.get("tool_decision", "all_ok"),
+                        })
+
+                        blob_count = int(metrics_bt.get("blob_count", 0))
+                        areas = metrics_bt.get("blob_areas_kept") or []
+
+                        params["expected"] = blob_count
+
+                        if areas:
+                            params["area_min"] = int(max(1, min(areas) * 0.7))
+                            params["area_max"] = int(max(areas) * 1.3)
+
+                        step["params"] = params
+
+                overrides[f"ROI{roi_id}"] = roi_cfg
             else:
                 overrides[f"ROI{roi_id}"] = {
                     "type": "mean_threshold",
