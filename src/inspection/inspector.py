@@ -260,6 +260,9 @@ class Inspector:
                     f"norm_gain={metrics.get('norm_gain')} "
                     f"dx={metrics.get('dx')} dy={metrics.get('dy')}"
                 )
+                if not auto_mode and isinstance(metrics.get("_last_image"), np.ndarray):
+                    cv2.imwrite(f"/tmp/roi{roi_id}_last.png", metrics["_last_image"])
+                    
                 if metrics.get("_tool_steps") is not None:
                     print(f"[DBG TOOLS ROI{roi_id}] {metrics.get('_tool_steps')}")
 
