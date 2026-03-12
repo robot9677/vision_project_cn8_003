@@ -272,8 +272,8 @@ class Inspector:
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "
-                    f"dx={metrics.get('dx')} dy={metrics.get('dy')}"
-                    f"dx={metrics.get('dx')} dy={metrics.get('dy')} dangle={metrics.get('dangle')}"
+                    f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
+                    f"dangle={metrics.get('dangle')}"
                 )
                 dbg_path = f"/home/robot96/vision_project/data/logs/roi{roi_id}_last.png"
                 last_img = metrics.get("_last_image")

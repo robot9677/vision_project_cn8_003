@@ -17,11 +17,11 @@
           "params": {
             "polarity": "black",
             "expected": 4,
-            "area_min": 150,
-            "area_max": 800,
-            "open": 5,
+            "area_min": 120,
+            "area_max": 550,
+            "open": 3,
             "close": 0,
-            "count_zone": [8, 8, 165, 175]
+            "count_zone": [4, 4, 190, 179]
           }
         }
       ]
