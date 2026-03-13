@@ -87,7 +87,7 @@
           "params": {
             "ksize": 3,
             "sigma": 0,
-            "thresh_min": 6.0
+            "thresh_min": 2.0
           }
         }
       ]
