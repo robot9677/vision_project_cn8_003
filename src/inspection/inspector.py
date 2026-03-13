@@ -52,7 +52,7 @@ class Inspector:
 
         if self.debug_view_enabled:
             cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("ROI DEBUG", 600, 350)
+            cv2.resizeWindow("ROI DEBUG", 1200, 700)
 
         register_enhance_tools()
         register_measure_tools()
@@ -83,8 +83,8 @@ class Inspector:
         raw_vis = _to_bgr(raw_crop)
         last_vis = _to_bgr(last_img)
 
-        cell_w = 220/2
-        cell_h = 140/2
+        cell_w = 220
+        cell_h = 140
 
         def _fit_cell(im, title, color):
             canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
