@@ -139,7 +139,7 @@ class VisionApp:
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
-        self.cam = CameraGST(GST_PIPELINE)
+        self.cam = CameraGST(GST_PIPELINE,auto_brightness=False,denoise_method='none',)
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
         try:
             self.roi_mgr.load(ROI_PATH)
