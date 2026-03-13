@@ -40,7 +40,7 @@ class Inspector:
         self.runtime_cfg = runtime_cfg or {}
         self.debug_view_enabled = bool(self.runtime_cfg.get("debug_view_enabled", True))
         self.debug_view_roi_id = str(self.runtime_cfg.get("debug_view_roi_id", "1"))
-        self.debug_view_scale = float(self.runtime_cfg.get("debug_view_scale", 2.0))
+        self.debug_view_scale = float(self.runtime_cfg.get("debug_view_scale", 1))
         self.tracker = ROITracker(
             search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
             thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
