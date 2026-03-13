@@ -7,18 +7,34 @@
       "type": "toolchain",
       "tools": [
         {
-          "tool": "enhance.threshold",
+          "tool": "enhance.gaussian_blur",
           "params": {
-            "mode": "otsu"
+            "ksize": 5,
+            "sigma": 0
+          }
+        },
+        {
+          "tool": "enhance.blackhat",
+          "params": {
+            "ksize": 15,
+            "shape": "ellipse"
+          }
+        },
+        {
+          "tool": "enhance.adaptive_threshold",
+          "params": {
+            "block_size": 31,
+            "C": -3,
+            "invert": false
           }
         },
         {
           "tool": "measure.blob_count",
           "params": {
-            "polarity": "black",
+            "polarity": "white",
             "expected": 4,
-            "area_min": 90,
-            "area_max": 700,
+            "area_min": 40,
+            "area_max": 400,
             "open": 1,
             "close": 0,
             "count_zone": [12, 12, 165, 155]
