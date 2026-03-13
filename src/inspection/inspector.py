@@ -109,7 +109,9 @@ class Inspector:
                 interpolation=cv2.INTER_NEAREST,
             )
 
+        cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
         cv2.imshow("ROI DEBUG", canvas)
+        cv2.waitKey(1)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
