@@ -186,7 +186,14 @@ def _dark_ratio(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
             k += 1
         img8 = cv2.GaussianBlur(img8, (k, k), 0)
 
-    thresh = int(params.get("thresh", 60))
+    base_mode = str(params.get("thresh_mode", "fixed")).lower()
+
+    if base_mode == "mean_offset":
+        offset = float(params.get("offset", -8))
+        thresh = int(np.clip(float(np.mean(img8)) + offset, 0, 255))
+    else:
+        thresh = int(params.get("thresh", 60))
+
     _, bw = cv2.threshold(img8, thresh, 255, cv2.THRESH_BINARY_INV)
 
     dark_ratio = float(np.count_nonzero(bw)) / float(bw.size) if bw.size else 0.0
@@ -213,6 +220,7 @@ def _dark_ratio(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
     meta = {
         "dark_ratio": float(dark_ratio),
         "dark_thresh": int(thresh),
+        "dark_mean": float(np.mean(img8)),
     }
 
     return dbg, meta, bool(ok), reason

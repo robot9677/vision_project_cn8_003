@@ -5,18 +5,19 @@
   "overrides": {
     "ROI1": {
       "type": "toolchain",
-        "tools": [
-          {
-            "tool": "measure.dark_ratio",
-            "params": {
-              "thresh": 55,
-              "min_ratio": 0.08,
-              "max_ratio": 0.45,
-              "blur": 3,
-              "invert": false
-            }
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -6,
+            "min_ratio": 0.02,
+            "max_ratio": 0.25,
+            "blur": 3,
+            "invert": false
           }
-        ]
+        }
+      ]
     }
   },
   "decision": {
