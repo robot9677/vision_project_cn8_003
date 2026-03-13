@@ -38,6 +38,9 @@ class Inspector:
         print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
         self.mean_filters = {}
         self.runtime_cfg = runtime_cfg or {}
+        self.debug_view_enabled = bool(self.runtime_cfg.get("debug_view_enabled", True))
+        self.debug_view_roi_id = str(self.runtime_cfg.get("debug_view_roi_id", "1"))
+        self.debug_view_scale = float(self.runtime_cfg.get("debug_view_scale", 2.0))
         self.tracker = ROITracker(
             search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
             thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
@@ -58,6 +61,55 @@ class Inspector:
 
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
+
+    def _show_debug_view(self, roi_id, raw_crop=None, last_img=None):
+        if not self.debug_view_enabled:
+            return
+        if str(roi_id) != self.debug_view_roi_id:
+            return
+
+        panels = []
+
+        if raw_crop is not None and isinstance(raw_crop, np.ndarray) and raw_crop.size > 0:
+            raw_vis = raw_crop.copy()
+            if raw_vis.ndim == 2:
+                raw_vis = cv2.cvtColor(raw_vis, cv2.COLOR_GRAY2BGR)
+            cv2.putText(raw_vis, "RAW", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            panels.append(raw_vis)
+
+        if last_img is not None and isinstance(last_img, np.ndarray) and last_img.size > 0:
+            last_vis = last_img.copy()
+            if last_vis.ndim == 2:
+                last_vis = cv2.cvtColor(last_vis, cv2.COLOR_GRAY2BGR)
+            cv2.putText(last_vis, "LAST", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            panels.append(last_vis)
+
+        if not panels:
+            return
+
+        if len(panels) == 1:
+            canvas = panels[0]
+        else:
+            h = max(p.shape[0] for p in panels)
+            aligned = []
+            for p in panels:
+                if p.shape[0] != h:
+                    new_w = int(round(p.shape[1] * (h / p.shape[0])))
+                    p = cv2.resize(p, (new_w, h))
+                aligned.append(p)
+            canvas = cv2.hconcat(aligned)
+
+        scale = max(0.2, float(self.debug_view_scale))
+        if scale != 1.0:
+            canvas = cv2.resize(
+                canvas,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=cv2.INTER_NEAREST,
+            )
+
+        cv2.imshow("ROI DEBUG", canvas)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
@@ -197,6 +249,12 @@ class Inspector:
             if metrics is None:
                 metrics = {}
 
+            self._show_debug_view(
+                roi_id=roi_id,
+                raw_crop=crop,
+                last_img=metrics.get("_last_image"),
+            )
+            
             # --- ensure mean exists for ALL ROIs ---
             mean_raw = float(np.mean(crop))
             metrics["mean_raw"] = mean_raw
