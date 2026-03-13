@@ -5,42 +5,42 @@
   "overrides": {
     "ROI1": {
       "type": "toolchain",
-      "tools": [
-        {
-          "tool": "enhance.gaussian_blur",
-          "params": {
-            "ksize": 5,
-            "sigma": 0
+        "tools": [
+          {
+            "tool": "enhance.gaussian_blur",
+            "params": {
+              "ksize": 5,
+              "sigma": 0
+            }
+          },
+          {
+            "tool": "enhance.clahe",
+            "params": {
+              "clip_limit": 2.0,
+              "tile_grid": 8
+            }
+          },
+          {
+            "tool": "enhance.adaptive_threshold",
+            "params": {
+              "block_size": 41,
+              "C": 4,
+              "invert": true
+            }
+          },
+          {
+            "tool": "measure.blob_count",
+            "params": {
+              "polarity": "white",
+              "expected": 4,
+              "area_min": 80,
+              "area_max": 500,
+              "open": 1,
+              "close": 3,
+              "count_zone": [12, 12, 165, 155]
+            }
           }
-        },
-        {
-          "tool": "enhance.blackhat",
-          "params": {
-            "ksize": 15,
-            "shape": "ellipse"
-          }
-        },
-        {
-          "tool": "enhance.adaptive_threshold",
-          "params": {
-            "block_size": 31,
-            "C": -3,
-            "invert": false
-          }
-        },
-        {
-          "tool": "measure.blob_count",
-          "params": {
-            "polarity": "white",
-            "expected": 4,
-            "area_min": 40,
-            "area_max": 400,
-            "open": 1,
-            "close": 0,
-            "count_zone": [12, 12, 165, 155]
-          }
-        }
-      ]
+        ]
     }
   },
   "decision": {
