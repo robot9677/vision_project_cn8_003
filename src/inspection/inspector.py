@@ -64,7 +64,7 @@ class Inspector:
 
     def _show_debug_view(self, roi_id, raw_crop=None, last_img=None):
         print(f"[DBG VIEW] roi_id={roi_id} enabled={self.debug_view_enabled}")
-        
+
         if not self.debug_view_enabled:
             return
         if str(roi_id) != self.debug_view_roi_id:
@@ -110,13 +110,6 @@ class Inspector:
                 fy=scale,
                 interpolation=cv2.INTER_NEAREST,
             )
-        canvas = cv2.resize(
-            canvas,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_NEAREST,
-        )
 
         if self.debug_view_enabled:
             cv2.imshow("ROI DEBUG", canvas)
@@ -182,7 +175,7 @@ class Inspector:
                 self.tracker.set_template(ref_crop_raw)
 
             # 정규화
-            use_normalize = bool(self.runtime_cfg.get("normalize_enabled", False)) and auto_mode
+            use_normalize = bool(self.runtime_cfg.get("normalize_enabled", False))
 
             if (
                 use_normalize
@@ -201,7 +194,7 @@ class Inspector:
 
             if use_tracker:
                 na = float(ref.get("angle", 0.0))
-                nrx, nry, _, _, na = self.tracker.track_pose(
+                nrx, nry, _, _, na, trk_score = self.tracker.track_pose(
                     frame_gray8,
                     rx, ry, rw, rh,
                     angle=float(ref.get("angle", 0.0)),
@@ -325,6 +318,7 @@ class Inspector:
             metrics["dx"] = dx
             metrics["dy"] = dy
             metrics["dangle"] = float(dangle)
+            metrics["trk_score"] = float(trk_score)
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
@@ -342,6 +336,7 @@ class Inspector:
                     f"norm_gain={metrics.get('norm_gain')} "
                     f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
                     f"dangle={metrics.get('dangle')}"
+                    f"trk_score={metrics.get('trk_score')}"
                 )
                 dbg_path = f"/home/robot96/vision_project/data/logs/roi{roi_id}_last.png"
                 last_img = metrics.get("_last_image")

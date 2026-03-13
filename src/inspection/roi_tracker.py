@@ -153,7 +153,7 @@ class ROITracker:
 
     def track_pose(self, frame_gray8: np.ndarray, x, y, w, h, angle=0.0, angle_range=4.0, angle_step=1.0):
         if self.template is None:
-            return x, y, w, h, float(angle)
+            return x, y, w, h, float(angle), 0.0
 
         best = (x, y, w, h, float(angle))
         best_score = -1.0
@@ -168,7 +168,7 @@ class ROITracker:
         search = frame_gray8[sy:ey, sx:ex]
 
         if search.size == 0:
-            return best
+            return x, y, w, h, float(angle), 0.0
 
         th, tw = self.template.shape[:2]
 
@@ -187,6 +187,6 @@ class ROITracker:
                 best_score = float(maxv)
 
         if best_score >= self.thr:
-            return best
+            return best[0], best[1], best[2], best[3], best[4], float(best_score)
 
-        return x, y, w, h, float(angle)
+        return x, y, w, h, float(angle), float(best_score)
