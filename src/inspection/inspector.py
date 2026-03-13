@@ -67,8 +67,8 @@ class Inspector:
 
         if not self.debug_view_enabled:
             return
-        if str(roi_id) != self.debug_view_roi_id:
-            return
+        # if str(roi_id) != self.debug_view_roi_id:
+        #     return
 
         panels = []
 
@@ -112,7 +112,7 @@ class Inspector:
             )
 
         if self.debug_view_enabled:
-            cv2.imshow("ROI DEBUG", canvas)
+            cv2.imshow(f"ROI DEBUG - ROI{roi_id}", canvas)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
