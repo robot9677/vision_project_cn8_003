@@ -52,7 +52,7 @@ class Inspector:
 
         if self.debug_view_enabled:
             cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("ROI DEBUG", 1200/2, 700/2)
+            cv2.resizeWindow("ROI DEBUG", 600, 350)
 
         register_enhance_tools()
         register_measure_tools()
