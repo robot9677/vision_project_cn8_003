@@ -48,6 +48,11 @@ class Inspector:
             reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
         )
         self.debug_images = {}
+        self.debug_tiles = {}
+
+        if self.debug_view_enabled:
+            cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("ROI DEBUG", 1200, 700)
 
         register_enhance_tools()
         register_measure_tools()
@@ -64,84 +69,59 @@ class Inspector:
         self.recipe = load_recipe(self.recipe_path)
 
     def _show_debug_view(self, roi_id, raw_crop=None, last_img=None):
-        print(f"[DBG VIEW] roi_id={roi_id} enabled={self.debug_view_enabled}")
-
         if not self.debug_view_enabled:
             return
-        # if str(roi_id) != self.debug_view_roi_id:
-        #     return
 
-        panels = []
+        def _to_bgr(im):
+            if im is None or not isinstance(im, np.ndarray) or im.size == 0:
+                return None
+            out = im.copy()
+            if out.ndim == 2:
+                out = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+            return out
 
-        if raw_crop is not None and isinstance(raw_crop, np.ndarray) and raw_crop.size > 0:
-            raw_vis = raw_crop.copy()
-            if raw_vis.ndim == 2:
-                raw_vis = cv2.cvtColor(raw_vis, cv2.COLOR_GRAY2BGR)
-            cv2.putText(raw_vis, "RAW", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            panels.append(raw_vis)
+        raw_vis = _to_bgr(raw_crop)
+        last_vis = _to_bgr(last_img)
 
-        if last_img is not None and isinstance(last_img, np.ndarray) and last_img.size > 0:
-            last_vis = last_img.copy()
-            if last_vis.ndim == 2:
-                last_vis = cv2.cvtColor(last_vis, cv2.COLOR_GRAY2BGR)
-            cv2.putText(last_vis, "LAST", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            panels.append(last_vis)
+        cell_w = 220
+        cell_h = 140
 
-        if not panels:
-            return
-
-        if len(panels) == 1:
-            canvas = panels[0]
-        else:
-            h = max(p.shape[0] for p in panels)
-            aligned = []
-            for p in panels:
-                if p.shape[0] != h:
-                    new_w = int(round(p.shape[1] * (h / p.shape[0])))
-                    p = cv2.resize(p, (new_w, h))
-                aligned.append(p)
-            canvas = cv2.hconcat(aligned)
-
-        scale = max(0.2, float(self.debug_view_scale))
-        if scale != 1.0:
-            canvas = cv2.resize(
-                canvas,
-                None,
-                fx=scale,
-                fy=scale,
-                interpolation=cv2.INTER_NEAREST,
-            )
-
-            self.debug_images[str(roi_id)] = canvas
-
-            # ---- GRID VIEW ----
-            imgs = []
-            for k in sorted(self.debug_images.keys()):
-                imgs.append(self.debug_images[k])
-
-            if not imgs:
-                return
-
-            cell_h = 160
-            grid = []
-
-            row = []
-            for i, im in enumerate(imgs):
+        def _fit_cell(im, title, color):
+            canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
+            if im is not None:
                 h, w = im.shape[:2]
-                scale = cell_h / h
-                im = cv2.resize(im, (int(w*scale), cell_h))
-                row.append(im)
+                scale = min((cell_w - 8) / max(1, w), (cell_h - 28) / max(1, h))
+                nw = max(1, int(w * scale))
+                nh = max(1, int(h * scale))
+                resized = cv2.resize(im, (nw, nh), interpolation=cv2.INTER_NEAREST)
+                x0 = (cell_w - nw) // 2
+                y0 = 24 + (cell_h - 24 - nh) // 2
+                canvas[y0:y0+nh, x0:x0+nw] = resized
+            cv2.putText(canvas, title, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+            cv2.rectangle(canvas, (0, 0), (cell_w - 1, cell_h - 1), (60, 60, 60), 1)
+            return canvas
 
-                if len(row) == 3:
-                    grid.append(cv2.hconcat(row))
-                    row = []
+        left = _fit_cell(raw_vis, f"ROI{roi_id} RAW", (0, 255, 255))
+        right = _fit_cell(last_vis, f"ROI{roi_id} LAST", (0, 255, 0))
+        pair = cv2.hconcat([left, right])
 
-            if row:
-                grid.append(cv2.hconcat(row))
+        self.debug_tiles[str(roi_id)] = pair
 
-            canvas = cv2.vconcat(grid)
+        keys = sorted(self.debug_tiles.keys(), key=lambda x: int(x))
+        pairs = [self.debug_tiles[k] for k in keys]
 
-            cv2.imshow("ROI DEBUG", canvas)
+        per_row = 2
+        blank = np.zeros_like(pair)
+        rows = []
+
+        for i in range(0, len(pairs), per_row):
+            row = pairs[i:i+per_row]
+            while len(row) < per_row:
+                row.append(blank.copy())
+            rows.append(cv2.hconcat(row))
+
+        grid = cv2.vconcat(rows)
+        cv2.imshow("ROI DEBUG", grid)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
@@ -186,6 +166,9 @@ class Inspector:
         return crop
 
     def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
+        if self.debug_view_enabled:
+            self.debug_tiles = {}
+
         results: Dict[str, ROIResult] = {}
 
         ref = self.roi_mgr.get_selected()
@@ -365,7 +348,7 @@ class Inspector:
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "
                     f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
-                    f"dangle={metrics.get('dangle')}"
+                    f"dangle={metrics.get('dangle')} "
                     f"trk_score={metrics.get('trk_score')}"
                 )
                 dbg_path = f"/home/robot96/vision_project/data/logs/roi{roi_id}_last.png"
