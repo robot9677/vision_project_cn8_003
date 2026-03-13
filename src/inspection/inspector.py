@@ -63,6 +63,8 @@ class Inspector:
         self.recipe = load_recipe(self.recipe_path)
 
     def _show_debug_view(self, roi_id, raw_crop=None, last_img=None):
+        print(f"[DBG VIEW] roi_id={roi_id} enabled={self.debug_view_enabled}")
+        
         if not self.debug_view_enabled:
             return
         if str(roi_id) != self.debug_view_roi_id:
@@ -108,10 +110,16 @@ class Inspector:
                 fy=scale,
                 interpolation=cv2.INTER_NEAREST,
             )
+        canvas = cv2.resize(
+            canvas,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_NEAREST,
+        )
 
-        cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-        cv2.imshow("ROI DEBUG", canvas)
-        cv2.waitKey(1)
+        if self.debug_view_enabled:
+            cv2.imshow("ROI DEBUG", canvas)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
