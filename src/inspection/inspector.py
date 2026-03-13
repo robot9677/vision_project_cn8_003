@@ -331,6 +331,7 @@ class Inspector:
                     f"zone={metrics.get('count_zone')} "
                     f"th={metrics.get('th_value')} "
                     f"white_ratio={metrics.get('white_ratio')} "
+                    f"dark_ratio={metrics.get('dark_ratio')} "
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "

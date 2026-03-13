@@ -7,37 +7,13 @@
       "type": "toolchain",
         "tools": [
           {
-            "tool": "enhance.gaussian_blur",
+            "tool": "measure.dark_ratio",
             "params": {
-              "ksize": 5,
-              "sigma": 0
-            }
-          },
-          {
-            "tool": "enhance.clahe",
-            "params": {
-              "clip_limit": 2.0,
-              "tile_grid": 8
-            }
-          },
-          {
-            "tool": "enhance.adaptive_threshold",
-            "params": {
-              "block_size": 41,
-              "C": 4,
-              "invert": true
-            }
-          },
-          {
-            "tool": "measure.blob_count",
-            "params": {
-              "polarity": "white",
-              "expected": 4,
-              "area_min": 80,
-              "area_max": 500,
-              "open": 1,
-              "close": 3,
-              "count_zone": [12, 12, 165, 155]
+              "thresh": 55,
+              "min_ratio": 0.08,
+              "max_ratio": 0.45,
+              "blur": 3,
+              "invert": false
             }
           }
         ]

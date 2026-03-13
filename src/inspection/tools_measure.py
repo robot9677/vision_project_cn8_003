@@ -160,7 +160,65 @@ def _blob_count(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) ->
 
     return bw, meta, bool(ok), reason
 
+def _dark_ratio(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any], bool, str]:
+    """
+    params:
+      - thresh: int (default 60)         # 이 값 이하를 dark 로 판단
+      - min_ratio: float (optional)      # 합격 최소 dark 비율
+      - max_ratio: float (optional)      # 합격 최대 dark 비율
+      - invert: bool (default False)     # debug용 반전 표시
+      - blur: int (default 0)            # 3,5... 가우시안 블러
+    """
+    if img is None or img.size == 0:
+        return img, {"dark_ratio": 0.0}, False, "EMPTY"
+
+    if img.dtype != np.uint8:
+        img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        img8 = img.copy()
+
+    if img8.ndim == 3:
+        img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+
+    k = int(params.get("blur", 0))
+    if k >= 3:
+        if k % 2 == 0:
+            k += 1
+        img8 = cv2.GaussianBlur(img8, (k, k), 0)
+
+    thresh = int(params.get("thresh", 60))
+    _, bw = cv2.threshold(img8, thresh, 255, cv2.THRESH_BINARY_INV)
+
+    dark_ratio = float(np.count_nonzero(bw)) / float(bw.size) if bw.size else 0.0
+
+    if bool(params.get("invert", False)):
+        dbg = cv2.bitwise_not(bw)
+    else:
+        dbg = bw
+
+    min_ratio = params.get("min_ratio", None)
+    max_ratio = params.get("max_ratio", None)
+
+    ok = True
+    reason = "OK"
+
+    if min_ratio is not None and dark_ratio < float(min_ratio):
+        ok = False
+        reason = "DARK_RATIO_LOW"
+
+    if max_ratio is not None and dark_ratio > float(max_ratio):
+        ok = False
+        reason = "DARK_RATIO_HIGH"
+
+    meta = {
+        "dark_ratio": float(dark_ratio),
+        "dark_thresh": int(thresh),
+    }
+
+    return dbg, meta, bool(ok), reason
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
     register_tool("measure.blob_count", _blob_count)
+    register_tool("measure.dark_ratio", _dark_ratio)
