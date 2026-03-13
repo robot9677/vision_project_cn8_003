@@ -47,6 +47,7 @@ class Inspector:
             reacquire_margin=int(self.runtime_cfg.get("tracker_reacquire_margin", 220)),
             reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
         )
+        self.debug_images = {}
 
         register_enhance_tools()
         register_measure_tools()
@@ -111,8 +112,36 @@ class Inspector:
                 interpolation=cv2.INTER_NEAREST,
             )
 
-        if self.debug_view_enabled:
-            cv2.imshow(f"ROI DEBUG - ROI{roi_id}", canvas)
+            self.debug_images[str(roi_id)] = canvas
+
+            # ---- GRID VIEW ----
+            imgs = []
+            for k in sorted(self.debug_images.keys()):
+                imgs.append(self.debug_images[k])
+
+            if not imgs:
+                return
+
+            cell_h = 160
+            grid = []
+
+            row = []
+            for i, im in enumerate(imgs):
+                h, w = im.shape[:2]
+                scale = cell_h / h
+                im = cv2.resize(im, (int(w*scale), cell_h))
+                row.append(im)
+
+                if len(row) == 3:
+                    grid.append(cv2.hconcat(row))
+                    row = []
+
+            if row:
+                grid.append(cv2.hconcat(row))
+
+            canvas = cv2.vconcat(grid)
+
+            cv2.imshow("ROI DEBUG", canvas)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]

@@ -129,7 +129,7 @@ class ROIEditor:
 
     def _hit_test(self, x, y):
         """Return roi dict and hit region: 'inside', 'edge', 'corner', or None"""
-        rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]))
+        rois = sorted(self.roi_mgr.list(), key=lambda r: (r["w"] * r["h"]), reverse=True)
         for r in rois:
             rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
             angle = float(r.get("angle", 0.0))
