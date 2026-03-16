@@ -183,6 +183,7 @@ class VisionApp:
         self.UICmd = UICmd
         self.baseline_path = os.path.join(RECIPES_DIR, "recipe_auto.json")
         self.baseline = AutoBaseline(self.baseline_path)
+        self.baseline_debug = False
 
     def _load_alignment_template(self):
         try:
@@ -400,11 +401,8 @@ class VisionApp:
             print(f"[AUTO BASELINE] results type={type(st.last_results)}")
             return False
 
-        print(f"[AUTO BASELINE] result count={len(st.last_results)}")
-
         for roi_id, res in st.last_results.items():
             metrics = getattr(res, "metrics", None) or {}
-            print(f"[AUTO BASELINE] ROI{roi_id} metrics={metrics}")
             roi_name = f"ROI{roi_id}"
 
             if roi_name in ("ROI2", "ROI3", "ROI4", "ROI5"):
@@ -422,32 +420,26 @@ class VisionApp:
         st.baseline_count += 1
 
         if st.baseline_count >= st.baseline_target_count:
-            print(f"[AUTO BASELINE] saving {st.baseline_count} samples...")
             self.baseline.save()
             st.status = f"Baseline saved ({st.baseline_count}/{st.baseline_target_count})"
-            print(f"[AUTO BASELINE] saved -> {self.baseline_path}")
+            print(f"[AUTO BASELINE] {st.status} -> {self.baseline_path}")
             st.baseline_learning = False
             st.baseline_count = 0
             self.baseline = AutoBaseline(self.baseline_path)
         else:
             st.status = f"Baseline sample added ({st.baseline_count}/{st.baseline_target_count})"
-            print(f"[AUTO BASELINE] {st.status}")
 
         return True
 
     def _handle_baseline_key(self, frame_gray8=None):
         st = self.state
 
-        print("[AUTO BASELINE] L key pressed")
-
         if st.edit_mode:
             st.status = "Baseline learn only in RUN mode"
-            print(f"[AUTO BASELINE] {st.status}")
             return
 
         if frame_gray8 is None:
             st.status = "No frame for baseline"
-            print(f"[AUTO BASELINE] {st.status}")
             return
 
         try:
@@ -461,10 +453,8 @@ class VisionApp:
                 )
             finally:
                 self.inspector.auto_mode = auto_mode_backup
-            print("[AUTO BASELINE] inspect refreshed for current frame")
         except Exception as e:
             st.status = f"Baseline inspect fail: {e}"
-            print(f"[AUTO BASELINE] {st.status}")
             return
 
         if not st.baseline_learning:
@@ -472,7 +462,6 @@ class VisionApp:
             st.baseline_target_count = int(self.runtime_cfg.get("baseline_ok_count", 10))
             st.baseline_count = 0
             self.baseline = AutoBaseline(self.baseline_path)
-            print(f"[AUTO BASELINE] learning start target={st.baseline_target_count}")
 
         self._add_baseline_from_last_results()
 

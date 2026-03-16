@@ -61,4 +61,3 @@ class AutoBaseline:
             json.dump(data, f, indent=2)
 
         print(f"[AUTO BASELINE SAVED] {self.save_path}")
-        print(json.dumps(data, indent=2))
