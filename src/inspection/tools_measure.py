@@ -357,9 +357,11 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
     best_area = 0
     blob_count = 0
     dbg = np.zeros_like(bw)
+    total_area = 0
 
     for i in range(1, num_labels):
         area = int(stats[i, cv2.CC_STAT_AREA])
+        total_area += area
 
         if area < min_area:
             continue
@@ -374,9 +376,17 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
             dbg[labels == i] = 255
 
     min_count = int(params.get("min_count", 1))
+    min_total_area = int(params.get("min_total_area", 0))
 
-    ok = blob_count >= min_count
-    reason = "OK" if ok else "BLOB_COUNT_LOW"
+    ok = True
+    reason = "OK"
+
+    if blob_count < min_count:
+        ok = False
+        reason = "BLOB_COUNT_LOW"
+    elif total_area < min_total_area:
+        ok = False
+        reason = "BLOB_AREA_LOW"
 
     meta = {
         "blob_area": int(best_area),
@@ -384,6 +394,7 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
         "blob_thresh": int(thresh),
         "blob_mean": float(np.mean(img8)),
         "blob_polarity": polarity,
+        "blob_total_area": int(total_area),
     }
 
     return dbg, meta, ok, reason
