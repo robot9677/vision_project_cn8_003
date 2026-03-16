@@ -65,7 +65,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
     roi_text_color = (0, 255, 0)
     roi_text_scale = 0.3
-    roi_text_thickness = 0.5
+    roi_text_thickness = 1
 
     for idx, r in enumerate(rois):
         # normalize roi dict/object to {id, x,y,w,h, name/label}
