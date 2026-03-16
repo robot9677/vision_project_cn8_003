@@ -1,15 +1,92 @@
 {
-  "name": "presence_basic",
-  "description": "basic presence test using dark ratio",
-  "version": 1,
-  "rules": {
-    "default": {
-      "measure": "presence",
-      "params": {
-        "bin_thr": 110,
-        "min_dark_ratio": 0.03,
-        "max_dark_ratio": 0.95
-      }
+  "default": {
+    "type": "mean_threshold",
+    "min_mean": 0.0,
+    "max_mean": 255.0
+  },
+  "overrides": {
+    "ROI2": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.08,
+            "max_ratio": 0.60,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
+    },
+    "ROI3": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.08,
+            "max_ratio": 0.60,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
+    },
+    "ROI4": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.08,
+            "max_ratio": 0.60,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
+    },
+    "ROI5": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.08,
+            "max_ratio": 0.60,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
+    },
+    "ROI6": {
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.03,
+            "max_ratio": 0.50,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
     }
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
   }
 }
