@@ -512,13 +512,13 @@ class ROIEditor:
             label_x, label_y = g["label"]
 
             tx = int(label_x)
-            ty = int(label_y)
+            ty = int(label_y - 14 if y > 14 else y + 2)
 
             # shadow
-            overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
+           # overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
 
             # main text
-            overlay.draw_text(vis_bgr, label,(tx, ty),color=cfg.COLOR_TEXT,scale=cfg.FONT_SCALE - 0.1,thickness=cfg.FONT_THICK,align='lt')
+            overlay.draw_text(vis_bgr, label,(tx, ty),color=cfg.COLOR_TEXT,scale=0.5 ,thickness=1 ,align='lt')
         # --- end replacement ---
 
         # 3) during creation, draw preview (keep bright color)
