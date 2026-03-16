@@ -373,8 +373,10 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
         if bool(params.get("debug_fill", True)):
             dbg[labels == i] = 255
 
-    ok = blob_count > 0
-    reason = "OK" if ok else "BLOB_NOT_FOUND"
+    min_count = int(params.get("min_count", 1))
+
+    ok = blob_count >= min_count
+    reason = "OK" if ok else "BLOB_COUNT_LOW"
 
     meta = {
         "blob_area": int(best_area),
