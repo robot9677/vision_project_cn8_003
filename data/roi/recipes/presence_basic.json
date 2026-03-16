@@ -73,10 +73,10 @@
       "type": "toolchain",
       "tools": [
         {
-          "tool": "measure.dark_ratio",
+          "tool": "measure.bright_ratio",
           "params": {
             "thresh_mode": "mean_offset",
-            "offset": -4,
+            "offset": 8,
             "min_ratio": 0.03,
             "max_ratio": 0.50,
             "blur": 3,
