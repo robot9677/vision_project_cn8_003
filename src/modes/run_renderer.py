@@ -88,39 +88,64 @@ def draw_run_tracking(
             else:
                 rois_src = []
 
+            ref = roi_mgr.get(1) or roi_mgr.get_selected()
+            if ref is None:
+                overlay.draw_rois(
+                    vis,
+                    rois=roi_mgr_to_list(roi_mgr),
+                    active_id=roi_mgr.selected_id,
+                    roi_results=state.last_results,
+                    compact=True,
+                )
+                state.tracking_stable = False
+                state.stable_frame_count = 0
+                return
+
+            rx = int(ref.get("x", 0))
+            ry = int(ref.get("y", 0))
+            rw = int(ref.get("w", 0))
+            rh = int(ref.get("h", 0))
+            ra = float(ref.get("angle", 0.0))
+
+            dx = dy = 0
+            dangle = 0.0
+
+            try:
+                if hasattr(tracker, "track_pose"):
+                    nrx, nry, _, _, na, _score = tracker.track_pose(
+                        frame_gray8,
+                        rx, ry, rw, rh,
+                        angle=ra,
+                        angle_range=float(runtime_cfg.get("tracker_angle_range", 4.0)),
+                        angle_step=float(runtime_cfg.get("tracker_angle_step", 1.0)),
+                    )
+                    dx = int(nrx - rx)
+                    dy = int(nry - ry)
+                    dangle = float(na - ra)
+                elif hasattr(tracker, "track"):
+                    nrx, nry, _, _ = tracker.track(frame_gray8, rx, ry, rw, rh)
+                    dx = int(nrx - rx)
+                    dy = int(nry - ry)
+            except Exception:
+                dx = dy = 0
+                dangle = 0.0
+
+            moved = []
             for r in rois_src:
                 x = int(r.get("x", 0))
                 y = int(r.get("y", 0))
                 w = int(r.get("w", 0))
                 h = int(r.get("h", 0))
-
-                try:
-                    out = tracker.track(frame_gray8, x, y, w, h) if hasattr(tracker, "track") else None
-                    if out is None:
-                        nx, ny, nw, nh = x, y, w, h
-                    elif isinstance(out, (list, tuple)) and len(out) == 4:
-                        nx, ny, nw, nh = map(int, out)
-                    elif isinstance(out, (list, tuple)) and len(out) == 2:
-                        dx, dy = map(int, out)
-                        nx, ny, nw, nh = x + dx, y + dy, w, h
-                    elif isinstance(out, dict):
-                        nx = int(out.get("x", x))
-                        ny = int(out.get("y", y))
-                        nw = int(out.get("w", w))
-                        nh = int(out.get("h", h))
-                    else:
-                        nx, ny, nw, nh = x, y, w, h
-                except Exception:
-                    nx, ny, nw, nh = x, y, w, h
+                a = float(r.get("angle", 0.0))
 
                 moved.append({
                     "id": r.get("id"),
                     "name": r.get("name", ""),
-                    "x": nx,
-                    "y": ny,
-                    "w": nw,
-                    "h": nh,
-                    "angle": float(r.get("angle", 0.0)),
+                    "x": x + dx,
+                    "y": y + dy,
+                    "w": w,
+                    "h": h,
+                    "angle": a + dangle,
                 })
 
             smoothed, stable = stabilizer.update(moved)
