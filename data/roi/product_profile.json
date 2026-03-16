@@ -14,7 +14,7 @@
     "__comment":"tracker : true 는 유동(hand held) 검사 장비를 의미",
     "auto_inspect": true,
     "__comment":"auto_inspect : true 는 자동 검사 장비를 의미"
-  },
+  }, 
 
   "ui": {
     "show_pose_guide": true,
