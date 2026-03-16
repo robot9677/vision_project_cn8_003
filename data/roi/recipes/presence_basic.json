@@ -70,20 +70,22 @@
       ]
     },
     "ROI6": {
-      "type": "toolchain",
-      "tools": [
+    "type": "toolchain",
+    "tools": [
         {
-          "tool": "measure.bright_ratio",
-          "params": {
+        "tool": "measure.presence_blob",
+        "params": {
+            "polarity": "bright",
             "thresh_mode": "mean_offset",
             "offset": 8,
-            "min_ratio": 0.005,
-            "max_ratio": 0.50,
             "blur": 3,
-            "invert": false
-          }
+            "min_area": 20,
+            "open_kernel": 2,
+            "close_kernel": 2,
+            "debug_fill": true
         }
-      ]
+        }
+    ]
     }
   },
   "decision": {
