@@ -1,0 +1,15 @@
+{
+  "name": "presence_basic",
+  "description": "basic presence test using dark ratio",
+  "version": 1,
+  "rules": {
+    "default": {
+      "measure": "presence",
+      "params": {
+        "bin_thr": 110,
+        "min_dark_ratio": 0.03,
+        "max_dark_ratio": 0.95
+      }
+    }
+  }
+}
