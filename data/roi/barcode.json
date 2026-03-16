@@ -1,0 +1,11 @@
+{
+  "default": {
+    "type": "mean_threshold",
+    "min_mean": 0.0,
+    "max_mean": 255.0
+  },
+  "overrides": {},
+  "decision": {
+    "mode": "any_fail_is_ng"
+  }
+}

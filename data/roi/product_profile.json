@@ -1,6 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "tape_presence",
+  "recipe_name": "barcode",
 
   "enable_modules": {
     "enhance": true,
