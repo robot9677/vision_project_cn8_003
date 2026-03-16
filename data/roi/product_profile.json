@@ -1,5 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
+  "recipe_name": "tape_presence",
 
   "enable_modules": {
     "enhance": true,

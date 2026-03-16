@@ -9,10 +9,10 @@ def load_product_profile(path):
 
     if "modules" in data:
         modules = data["modules"]
-
     elif "enable_modules" in data:
         modules = data["enable_modules"]
 
     data["modules"] = modules
+    data["recipe_name"] = data.get("recipe_name", "tape_presence")
 
     return data
