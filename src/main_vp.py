@@ -359,7 +359,7 @@ class VisionApp:
         st = self.state
 
         if key in (ord('l'), ord('L')):
-            self._handle_baseline_key()
+            self._handle_baseline_key(frame_gray8)
             return
         
         consumed, sample_msg = handle_sample_keys(
@@ -422,11 +422,25 @@ class VisionApp:
 
         return True
 
-    def _handle_baseline_key(self):
+    def _handle_baseline_key(self, frame_gray8=None):
         st = self.state
 
         if st.edit_mode:
             st.status = "Baseline learn only in RUN mode"
+            return
+
+        if frame_gray8 is None:
+            st.status = "No frame for baseline"
+            return
+
+        try:
+            st.last_results, st.last_overall_ok = self.inspector.inspect(
+                frame_gray8,
+                self.roi_mgr.get_rois(),
+                self.recipe
+            )
+        except Exception as e:
+            st.status = f"Baseline inspect fail: {e}"
             return
 
         if not st.baseline_learning:
