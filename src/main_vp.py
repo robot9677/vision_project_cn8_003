@@ -245,7 +245,7 @@ class VisionApp:
         try:
             self.roi_mgr.save(ROI_PATH)
             try:
-                ok_tpl = self.roi_mgr.save_alignment_template(frame_gray8, TEMPLATE_PATH, roi_id=None)
+                ok_tpl = self.roi_mgr.save_alignment_template(frame_gray8, TEMPLATE_PATH, roi_id=1 if self.roi_mgr.get(1) else None)
                 if ok_tpl:
                     self._load_alignment_template()
                     st.status = "Saved ROI + Template"
