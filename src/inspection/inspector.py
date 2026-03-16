@@ -50,10 +50,6 @@ class Inspector:
         self.debug_images = {}
         self.debug_tiles = {}
 
-        if self.debug_view_enabled:
-            cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("ROI DEBUG", 1200, 700)
-
         register_enhance_tools()
         register_measure_tools()
         register_locate_tools()
@@ -83,8 +79,8 @@ class Inspector:
         raw_vis = _to_bgr(raw_crop)
         last_vis = _to_bgr(last_img)
 
-        cell_w = 220
-        cell_h = 140
+        cell_w = 110
+        cell_h = 70
 
         def _fit_cell(im, title, color):
             canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
@@ -97,7 +93,7 @@ class Inspector:
                 x0 = (cell_w - nw) // 2
                 y0 = 24 + (cell_h - 24 - nh) // 2
                 canvas[y0:y0+nh, x0:x0+nw] = resized
-            cv2.putText(canvas, title, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+            cv2.putText(canvas, title, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 2)
             cv2.rectangle(canvas, (0, 0), (cell_w - 1, cell_h - 1), (60, 60, 60), 1)
             return canvas
 
@@ -121,6 +117,8 @@ class Inspector:
             rows.append(cv2.hconcat(row))
 
         grid = cv2.vconcat(rows)
+        cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("ROI DEBUG", 600, 350)
         cv2.imshow("ROI DEBUG", grid)
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
@@ -168,6 +166,10 @@ class Inspector:
     def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
         if self.debug_view_enabled:
             self.debug_tiles = {}
+            try:
+                cv2.destroyWindow("ROI DEBUG")
+            except:
+                pass
 
         results: Dict[str, ROIResult] = {}
 
