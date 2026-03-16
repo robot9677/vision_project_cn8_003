@@ -511,8 +511,8 @@ class ROIEditor:
             g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=0)
             label_x, label_y = g["label"]
 
-            tx = int(label_x)
-            ty = int(label_y - 14 if y > 14 else y + 2)
+            tx = int(x+2)
+            ty = int(y+2)
 
             # shadow
            # overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
