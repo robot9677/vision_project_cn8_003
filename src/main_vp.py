@@ -389,13 +389,19 @@ class VisionApp:
     def _add_baseline_from_last_results(self):
         st = self.state
 
+        trk_score = getattr(self.state, "trk_score", 1.0)
+        if trk_score < 0.90:
+            self.state.status = f"Baseline skipped: low track {trk_score:.3f}"
+            print(f"[AUTO BASELINE] {self.state.status}")
+            return False
+
         if not st.last_results:
             st.status = "No inspect result to learn"
             print(f"[AUTO BASELINE] results type={type(st.last_results)}")
             return False
 
         print(f"[AUTO BASELINE] result count={len(st.last_results)}")
-        
+
         for roi_id, res in st.last_results.items():
             metrics = getattr(res, "metrics", None) or {}
             roi_name = f"ROI{roi_id}"
@@ -425,8 +431,6 @@ class VisionApp:
         else:
             st.status = f"Baseline sample added ({st.baseline_count}/{st.baseline_target_count})"
             print(f"[AUTO BASELINE] {st.status}")
-
-        print(f"[AUTO BASELINE] sample {st.baseline_count}/{st.baseline_target_count} added")
 
         return True
 
