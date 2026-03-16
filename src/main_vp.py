@@ -404,6 +404,7 @@ class VisionApp:
 
         for roi_id, res in st.last_results.items():
             metrics = getattr(res, "metrics", None) or {}
+            print(f"[AUTO BASELINE] ROI{roi_id} metrics={metrics}")
             roi_name = f"ROI{roi_id}"
 
             if roi_name in ("ROI2", "ROI3", "ROI4", "ROI5"):
@@ -450,10 +451,16 @@ class VisionApp:
             return
 
         try:
-            st.last_overall_ok, st.last_results = self.inspector.inspect(
-                frame_gray8,
-                auto_mode=False
-            )
+            auto_mode_backup = getattr(self.inspector, "auto_mode", True)
+            self.inspector.auto_mode = False
+
+            try:
+                st.last_overall_ok, st.last_results = self.inspector.inspect(
+                    frame_gray8,
+                    auto_mode=False
+                )
+            finally:
+                self.inspector.auto_mode = auto_mode_backup
             print("[AUTO BASELINE] inspect refreshed for current frame")
         except Exception as e:
             st.status = f"Baseline inspect fail: {e}"
