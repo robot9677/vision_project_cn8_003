@@ -43,8 +43,7 @@
           "params": {
             "thresh_mode": "mean_offset",
             "offset": -4,
-            "min_ratio": 0.08,
-            "max_ratio": 0.60,
+            "min_ratio": 0.10,
             "blur": 3,
             "invert": false
           }
@@ -59,8 +58,7 @@
           "params": {
             "thresh_mode": "mean_offset",
             "offset": -4,
-            "min_ratio": 0.08,
-            "max_ratio": 0.60,
+            "min_ratio": 0.10,
             "blur": 3,
             "invert": false
           }
