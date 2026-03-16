@@ -173,7 +173,7 @@ class Inspector:
 
         results: Dict[str, ROIResult] = {}
 
-        ref = self.roi_mgr.get_selected()
+        ref = self.roi_mgr.get(1)
         norm_gain = 1.0
         dx = dy = 0
 

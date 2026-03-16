@@ -88,7 +88,7 @@ def draw_run_tracking(
             else:
                 rois_src = []
 
-            ref = roi_mgr.get(1) or roi_mgr.get_selected()
+            ref = roi_mgr.get(1) 
             if ref is None:
                 overlay.draw_rois(
                     vis,
