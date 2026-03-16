@@ -391,8 +391,11 @@ class VisionApp:
 
         if not st.last_results:
             st.status = "No inspect result to learn"
+            print(f"[AUTO BASELINE] results type={type(st.last_results)}")
             return False
 
+        print(f"[AUTO BASELINE] result count={len(st.last_results)}")
+        
         for roi_id, res in st.last_results.items():
             metrics = getattr(res, "metrics", None) or {}
             roi_name = f"ROI{roi_id}"
@@ -443,7 +446,7 @@ class VisionApp:
             return
 
         try:
-            st.last_results, st.last_overall_ok = self.inspector.inspect(
+            st.last_overall_ok, st.last_results = self.inspector.inspect(
                 frame_gray8,
                 auto_mode=False
             )
