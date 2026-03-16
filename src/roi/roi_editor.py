@@ -508,7 +508,7 @@ class ROIEditor:
             # label with shadow for contrast
             label = f'{r.get("name","ROI")}'
 
-            g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=18)
+            g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=0)
             label_x, label_y = g["label"]
 
             tx = int(label_x)
