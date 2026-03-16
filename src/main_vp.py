@@ -41,6 +41,7 @@ from app.app_paths import (
     LOGS_ROOT,
     PROJECT_ROOT,
 )
+from inspection.auto_baseline import AutoBaseline
 
 # =========================
 # Commands
@@ -134,6 +135,11 @@ class AppState:
     stable_frame_count: int = 0
     run_mode_text: str = "HELD"
 
+    #학습을 위한 저장
+    baseline_learning: bool = False
+    baseline_target_count: int = 10
+    baseline_count: int = 0
+
 
 class VisionApp:
     def __init__(self):
@@ -175,6 +181,8 @@ class VisionApp:
         cv2.resizeWindow(self.win, WIDTH, HEIGHT)
         cv2.setMouseCallback(self.win, self._mouse_router)
         self.UICmd = UICmd
+        self.baseline_path = os.path.join(ROI_DIR, "recipe_auto.json")
+        self.baseline = AutoBaseline(self.baseline_path)
 
     def _load_alignment_template(self):
         try:
@@ -350,6 +358,10 @@ class VisionApp:
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
 
+        if key in (ord('l'), ord('L')):
+            self._handle_baseline_key()
+            return
+        
         consumed, sample_msg = handle_sample_keys(
             key,
             frame_gray8,
@@ -373,6 +385,57 @@ class VisionApp:
             cmd_to_run = st.pending_cmd
             st.pending_cmd = UICmd.NONE
             execute_command(self, cmd_to_run, frame_gray8, vis_bgr)
+
+    def _add_baseline_from_last_results(self):
+        st = self.state
+
+        if not st.last_results:
+            st.status = "No inspect result to learn"
+            return False
+
+        for roi_id, res in st.last_results.items():
+            metrics = getattr(res, "metrics", None) or {}
+            roi_name = f"ROI{roi_id}"
+
+            if roi_name in ("ROI2", "ROI3", "ROI4", "ROI5"):
+                v = metrics.get("dark_ratio", None)
+                if v is not None:
+                    self.baseline.add_sample(roi_name, "dark_ratio", v)
+
+            elif roi_name == "ROI6":
+                v = metrics.get("blob_count", None)
+                if v is None:
+                    v = metrics.get("blob", None)
+                if v is not None:
+                    self.baseline.add_sample(roi_name, "blob_count", v)
+
+        st.baseline_count += 1
+
+        if st.baseline_count >= st.baseline_target_count:
+            self.baseline.save()
+            st.status = f"Baseline saved ({st.baseline_count}/{st.baseline_target_count})"
+            st.baseline_learning = False
+            st.baseline_count = 0
+            self.baseline = AutoBaseline(self.baseline_path)
+        else:
+            st.status = f"Baseline sample added ({st.baseline_count}/{st.baseline_target_count})"
+
+        return True
+
+    def _handle_baseline_key(self):
+        st = self.state
+
+        if st.edit_mode:
+            st.status = "Baseline learn only in RUN mode"
+            return
+
+        if not st.baseline_learning:
+            st.baseline_learning = True
+            st.baseline_target_count = int(self.runtime_cfg.get("baseline_ok_count", 10))
+            st.baseline_count = 0
+            self.baseline = AutoBaseline(self.baseline_path)
+
+        self._add_baseline_from_last_results()
 
     def _draw_ui(self, vis):
         st = self.state
