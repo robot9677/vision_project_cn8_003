@@ -181,7 +181,7 @@ class VisionApp:
         cv2.resizeWindow(self.win, WIDTH, HEIGHT)
         cv2.setMouseCallback(self.win, self._mouse_router)
         self.UICmd = UICmd
-        self.baseline_path = os.path.join(ROI_DIR, "recipe_auto.json")
+        self.baseline_path = os.path.join(RECIPES_DIR, "recipe_auto.json")
         self.baseline = AutoBaseline(self.baseline_path)
 
     def _load_alignment_template(self):
@@ -445,8 +445,7 @@ class VisionApp:
         try:
             st.last_results, st.last_overall_ok = self.inspector.inspect(
                 frame_gray8,
-                self.roi_mgr.get_rois(),
-                self.recipe
+                auto_mode=False
             )
             print("[AUTO BASELINE] inspect refreshed for current frame")
         except Exception as e:
