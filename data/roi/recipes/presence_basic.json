@@ -77,11 +77,11 @@
         "params": {
             "polarity": "bright",
             "thresh_mode": "mean_offset",
-            "offset": 8,
+            "offset": 2,
             "blur": 3,
-            "min_area": 20,
-            "open_kernel": 2,
-            "close_kernel": 2,
+            "min_area": 6,
+            "open_kernel": 0,
+            "close_kernel": 0,
             "debug_fill": true
         }
         }
