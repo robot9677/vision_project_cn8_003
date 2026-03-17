@@ -29,7 +29,7 @@ class CameraGST:
         self,
         gst_pipeline: str,
         auto_brightness: bool = False,
-        target_mean: float = 112.0,
+        target_mean: float = 150.0,
         demosaic_cache: bool = True,
         patterns=None,
         # denoise/hotpixel options
