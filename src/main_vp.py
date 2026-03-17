@@ -185,6 +185,39 @@ class VisionApp:
         self.baseline = AutoBaseline(self.baseline_path)
         self.baseline_debug = False
 
+    def _update_baseline_from_ok_results(self):
+        st = self.state
+
+        if not st.last_overall_ok:
+            return False
+        if not st.last_results:
+            return False
+
+        max_count = int(self.runtime_cfg.get("baseline_max_count", 200))
+
+        for roi_id, res in st.last_results.items():
+            metrics = getattr(res, "metrics", None) or {}
+            roi_name = f"ROI{roi_id}"
+
+            if roi_name in ("ROI2", "ROI3", "ROI4", "ROI5"):
+                v = metrics.get("dark_ratio", None)
+                if v is not None:
+                    self.baseline.update_from_ok_result(
+                        roi_name, "dark_ratio", v, max_count=max_count
+                    )
+
+            elif roi_name == "ROI6":
+                v = metrics.get("blob_count", None)
+                if v is None:
+                    v = metrics.get("blob", None)
+                if v is not None:
+                    self.baseline.update_from_ok_result(
+                        roi_name, "blob_count", v, max_count=max_count
+                    )
+
+        self.baseline.save()
+        return True
+    
     def _load_alignment_template(self):
         try:
             if os.path.exists(TEMPLATE_PATH):
@@ -359,6 +392,17 @@ class VisionApp:
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
 
+        if key in (ord('u'), ord('U')):
+            ok = self.baseline.load()
+            if not ok:
+                st.status = "No baseline file"
+                return
+            if self._update_baseline_from_ok_results():
+                st.status = "Baseline updated from OK result"
+            else:
+                st.status = "Baseline update skipped"
+            return
+        
         if key in (ord('l'), ord('L')):
             self._handle_baseline_key(frame_gray8)
             return
