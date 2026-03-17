@@ -48,6 +48,12 @@ class Inspector:
         )
         self.debug_images = {}
         self.debug_tiles = {}
+        self.baseline_path = os.path.join(os.path.dirname(recipe_path), "baseline_profile.json")
+        if os.path.exists(self.baseline_path):
+            with open(self.baseline_path, "r") as f:
+                self.baseline = json.load(f)
+        else:
+            self.baseline = None
 
         register_enhance_tools()
         register_measure_tools()
@@ -333,6 +339,13 @@ class Inspector:
             metrics["dangle"] = float(dangle)
             metrics["trk_score"] = float(trk_score)
 
+            # === baseline check 추가 ===
+            b_ok, b_reason = self._check_baseline(roi_id, metrics)
+
+            if not b_ok:
+                final_ok = False
+                reason = b_reason
+                
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
             if not auto_mode:
@@ -575,3 +588,50 @@ class Inspector:
 
         except Exception:
             pass
+
+    def _check_baseline(self, roi_id, metrics):
+    if not self.baseline:
+        return True, None
+
+    roi_name = f"ROI{roi_id}"
+    if roi_name not in self.baseline:
+        return True, None
+
+    data = self.baseline[roi_name]
+
+    # ROI2~5
+    if "dark_ratio" in data:
+        v = metrics.get("dark_ratio")
+        if v is None:
+            return True, None
+
+        low = data["dark_ratio"]["low"]
+        high = data["dark_ratio"]["high"]
+
+        if v < low:
+            return False, "BASELINE_LOW"
+        if v > high:
+            return False, "BASELINE_HIGH"
+
+        return True, None
+
+    # ROI6
+    if "blob_count" in data:
+        v = metrics.get("blob_count")
+        if v is None:
+            v = metrics.get("blob")
+
+        if v is None:
+            return True, None
+
+        low = data["blob_count"]["low"]
+        high = data["blob_count"]["high"]
+
+        if v < low:
+            return False, "BASELINE_LOW"
+        if v > high:
+            return False, "BASELINE_HIGH"
+
+        return True, None
+
+    return True, None
