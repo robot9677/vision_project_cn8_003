@@ -212,6 +212,13 @@ class CameraGST:
         except Exception as e:
             print("[DBG CAMERA] denoise error:", e)
 
+        # --- light sharpen ---
+        try:
+            blur = cv2.GaussianBlur(frame, (0, 0), 1.0)
+            frame = cv2.addWeighted(frame, 1.15, blur, -0.15, 0)
+        except Exception as e:
+            print("[DBG CAMERA] sharpen error:", e)
+            
         return frame
 
     def release(self):
