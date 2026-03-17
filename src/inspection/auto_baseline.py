@@ -64,8 +64,20 @@ class AutoBaseline:
 
             std = var ** 0.5
 
-            low = mean - 2.0 * std
-            high = mean + 2.0 * std
+            if feature == "dark_ratio":
+                margin = max(0.03, 2.5 * std)
+                low = max(0.0, min_v - margin)
+                high = min(1.0, max_v + margin)
+
+            elif feature == "blob_count":
+                margin = max(1.0, round(2.0 * std))
+                low = max(0.0, min_v - margin)
+                high = max_v + margin
+
+            else:
+                margin = max(0.03, 2.5 * std)
+                low = min_v - margin
+                high = max_v + margin
 
             if roi not in result:
                 result[roi] = {}
