@@ -189,10 +189,21 @@ class VisionApp:
         st = self.state
 
         if not st.last_overall_ok:
-            return False
-        if not st.last_results:
+            print("[BASELINE UPDATE] skipped: last result is not OK")
             return False
 
+        if not st.last_results:
+            print("[BASELINE UPDATE] skipped: no last_results")
+            return False
+
+        # 기존 baseline 파일을 새 객체로 안전하게 로드
+        updater = AutoBaseline(self.baseline_path)
+        ok_load = updater.load()
+        if not ok_load:
+            print(f"[BASELINE UPDATE] skipped: baseline file not found -> {self.baseline_path}")
+            return False
+
+        updated_count = 0
         max_count = int(self.runtime_cfg.get("baseline_max_count", 200))
 
         for roi_id, res in st.last_results.items():
@@ -202,20 +213,33 @@ class VisionApp:
             if roi_name in ("ROI2", "ROI3", "ROI4", "ROI5"):
                 v = metrics.get("dark_ratio", None)
                 if v is not None:
-                    self.baseline.update_from_ok_result(
+                    updater.update_from_ok_result(
                         roi_name, "dark_ratio", v, max_count=max_count
                     )
+                    updated_count += 1
 
             elif roi_name == "ROI6":
                 v = metrics.get("blob_count", None)
                 if v is None:
                     v = metrics.get("blob", None)
                 if v is not None:
-                    self.baseline.update_from_ok_result(
+                    updater.update_from_ok_result(
                         roi_name, "blob_count", v, max_count=max_count
                     )
+                    updated_count += 1
 
-        self.baseline.save()
+        if updated_count <= 0:
+            print("[BASELINE UPDATE] skipped: no valid metrics extracted")
+            return False
+
+        # stats가 비어 있으면 절대 저장 금지
+        if not updater.stats:
+            print("[BASELINE UPDATE] skipped: updater.stats empty")
+            return False
+
+        updater.save()
+        self.baseline = updater
+        print(f"[BASELINE UPDATE] updated features = {updated_count}")
         return True
     
     def _load_alignment_template(self):
@@ -393,10 +417,6 @@ class VisionApp:
         st = self.state
 
         if key in (ord('u'), ord('U')):
-            ok = self.baseline.load()
-            if not ok:
-                st.status = "No baseline file"
-                return
             if self._update_baseline_from_ok_results():
                 st.status = "Baseline updated from OK result"
             else:
