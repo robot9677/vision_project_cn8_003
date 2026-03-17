@@ -36,8 +36,8 @@ class CameraGST:
         denoise_method: str = 'hotpixel',   # 'none','median','nlmeans','hotpixel'
         median_ksize: int = 8,
         nlm_h: float = 2.0,
-        hp_collect_frames: int = 50,
-        hp_thresh: float = 30.0,
+        hp_collect_frames: int = 10,
+        hp_thresh: float = 10.0,
     ):
         self.gst = gst_pipeline
         self.cap = None
@@ -218,7 +218,7 @@ class CameraGST:
             frame = cv2.addWeighted(frame, 1.15, blur, -0.15, 0)
         except Exception as e:
             print("[DBG CAMERA] sharpen error:", e)
-            
+
         return frame
 
     def release(self):
