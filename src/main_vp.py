@@ -196,10 +196,8 @@ class VisionApp:
             print("[BASELINE UPDATE] skipped: no last_results")
             return False
 
-        # 기존 baseline 파일을 새 객체로 안전하게 로드
         updater = AutoBaseline(self.baseline_path)
-        ok_load = updater.load()
-        if not ok_load:
+        if not updater.load():
             print(f"[BASELINE UPDATE] skipped: baseline file not found -> {self.baseline_path}")
             return False
 
@@ -232,7 +230,6 @@ class VisionApp:
             print("[BASELINE UPDATE] skipped: no valid metrics extracted")
             return False
 
-        # stats가 비어 있으면 절대 저장 금지
         if not updater.stats:
             print("[BASELINE UPDATE] skipped: updater.stats empty")
             return False
