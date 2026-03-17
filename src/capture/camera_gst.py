@@ -28,7 +28,7 @@ class CameraGST:
     def __init__(
         self,
         gst_pipeline: str,
-        auto_brightness: bool = True,
+        auto_brightness: bool = False,
         target_mean: float = 105.0,
         demosaic_cache: bool = True,
         patterns=None,
