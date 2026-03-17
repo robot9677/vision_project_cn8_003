@@ -345,7 +345,7 @@ class Inspector:
             if not b_ok:
                 final_ok = False
                 reason = b_reason
-                
+
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
             if not auto_mode:
@@ -590,48 +590,48 @@ class Inspector:
             pass
 
     def _check_baseline(self, roi_id, metrics):
-    if not self.baseline:
-        return True, None
-
-    roi_name = f"ROI{roi_id}"
-    if roi_name not in self.baseline:
-        return True, None
-
-    data = self.baseline[roi_name]
-
-    # ROI2~5
-    if "dark_ratio" in data:
-        v = metrics.get("dark_ratio")
-        if v is None:
+        if not self.baseline:
             return True, None
 
-        low = data["dark_ratio"]["low"]
-        high = data["dark_ratio"]["high"]
-
-        if v < low:
-            return False, "BASELINE_LOW"
-        if v > high:
-            return False, "BASELINE_HIGH"
-
-        return True, None
-
-    # ROI6
-    if "blob_count" in data:
-        v = metrics.get("blob_count")
-        if v is None:
-            v = metrics.get("blob")
-
-        if v is None:
+        roi_name = f"ROI{roi_id}"
+        if roi_name not in self.baseline:
             return True, None
 
-        low = data["blob_count"]["low"]
-        high = data["blob_count"]["high"]
+        data = self.baseline[roi_name]
 
-        if v < low:
-            return False, "BASELINE_LOW"
-        if v > high:
-            return False, "BASELINE_HIGH"
+        # ROI2~5
+        if "dark_ratio" in data:
+            v = metrics.get("dark_ratio")
+            if v is None:
+                return True, None
+
+            low = data["dark_ratio"]["low"]
+            high = data["dark_ratio"]["high"]
+
+            if v < low:
+                return False, "BASELINE_LOW"
+            if v > high:
+                return False, "BASELINE_HIGH"
+
+            return True, None
+
+        # ROI6
+        if "blob_count" in data:
+            v = metrics.get("blob_count")
+            if v is None:
+                v = metrics.get("blob")
+
+            if v is None:
+                return True, None
+
+            low = data["blob_count"]["low"]
+            high = data["blob_count"]["high"]
+
+            if v < low:
+                return False, "BASELINE_LOW"
+            if v > high:
+                return False, "BASELINE_HIGH"
+
+            return True, None
 
         return True, None
-
-    return True, None
