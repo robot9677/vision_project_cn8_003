@@ -29,12 +29,12 @@ class CameraGST:
         self,
         gst_pipeline: str,
         auto_brightness: bool = False,
-        target_mean: float = 105.0,
+        target_mean: float = 112.0,
         demosaic_cache: bool = True,
         patterns=None,
         # denoise/hotpixel options
         denoise_method: str = 'median',   # 'none','median','nlmeans','hotpixel'
-        median_ksize: int = 9,
+        median_ksize: int = 3,
         nlm_h: float = 2.0,
         hp_collect_frames: int = 10,
         hp_thresh: float = 10.0,
