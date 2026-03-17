@@ -39,16 +39,7 @@ class CameraGST:
         hp_collect_frames: int = 10,
         hp_thresh: float = 10.0,
     ):
-        print(
-            "[CAM CFG]",
-            f"auto_brightness={self.auto_brightness}, "
-            f"target_mean={self.target_mean}, "
-            f"denoise_method={self.denoise_method}, "
-            f"median_ksize={self.median_ksize}, "
-            f"nlm_h={self.nlm_h}, "
-            f"hp_collect_frames={self.hp_collect_frames}, "
-            f"hp_thresh={self.hp_thresh}"
-        )
+
         self.gst = gst_pipeline
         self.cap = None
 
@@ -72,6 +63,16 @@ class CameraGST:
         self._hp_accum = None
         self._hp_count = 0
         self._hp_map = None  # boolean mask where True -> hot pixel
+        print(
+            "[CAM CFG]",
+            f"auto_brightness={self.auto_brightness}, "
+            f"target_mean={self.target_mean}, "
+            f"denoise_method={self.denoise_method}, "
+            f"median_ksize={self.median_ksize}, "
+            f"nlm_h={self.nlm_h}, "
+            f"hp_collect_frames={self.hp_collect_frames}, "
+            f"hp_thresh={self.hp_thresh}"
+        )
 
     def open(self):
         if self.cap is not None:
