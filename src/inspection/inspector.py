@@ -33,9 +33,12 @@ class Inspector:
         self.roi_mgr = roi_mgr
         self.recipe_path = recipe_path
         self.logs_root = logs_root
-        auto_path = os.path.join(os.path.dirname(recipe_path), "recipe_auto.json")
-        self.recipe = load_recipe(auto_path if os.path.exists(auto_path) else recipe_path)
-        print("[RECIPE]", "AUTO" if os.path.exists(auto_path) else "STATIC", (auto_path if os.path.exists(auto_path) else recipe_path))
+        baseline_path = os.path.join(os.path.dirname(recipe_path), "baseline_profile.json")
+        self.recipe = load_recipe(baseline_path if os.path.exists(baseline_path) else recipe_path)
+
+        print("[RECIPE]","BASELINE" if os.path.exists(baseline_path) else "STATIC",
+            (baseline_path if os.path.exists(baseline_path) else recipe_path),
+        )
         self.mean_filters = {}
         self.runtime_cfg = runtime_cfg or {}
         self.debug_view_enabled = bool(self.runtime_cfg.get("debug_view_enabled", True))

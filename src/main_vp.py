@@ -181,7 +181,7 @@ class VisionApp:
         cv2.resizeWindow(self.win, WIDTH, HEIGHT)
         cv2.setMouseCallback(self.win, self._mouse_router)
         self.UICmd = UICmd
-        self.baseline_path = os.path.join(RECIPES_DIR, "recipe_auto.json")
+        self.baseline_path = os.path.join(RECIPES_DIR, "baseline_profile.json")
         self.baseline = AutoBaseline(self.baseline_path)
         self.baseline_debug = False
 
