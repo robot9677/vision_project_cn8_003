@@ -28,13 +28,13 @@ class CameraGST:
     def __init__(
         self,
         gst_pipeline: str,
-        auto_brightness: bool = False,
-        target_mean: float = 150.0,
+        auto_brightness: bool = True,
+        target_mean: float = 112.0,
         demosaic_cache: bool = True,
         patterns=None,
         # denoise/hotpixel options
         denoise_method: str = 'median',   # 'none','median','nlmeans','hotpixel'
-        median_ksize: int = 5,
+        median_ksize: int = 3,
         nlm_h: float = 2.0,
         hp_collect_frames: int = 10,
         hp_thresh: float = 10.0,
