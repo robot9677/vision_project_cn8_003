@@ -35,7 +35,7 @@ class CameraGST:
         # denoise/hotpixel options
         denoise_method: str = 'hotpixel',   # 'none','median','nlmeans','hotpixel'
         median_ksize: int = 8,
-        nlm_h: float = 8.0,
+        nlm_h: float = 2.0,
         hp_collect_frames: int = 50,
         hp_thresh: float = 30.0,
     ):
