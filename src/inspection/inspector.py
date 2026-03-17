@@ -339,6 +339,16 @@ class Inspector:
             metrics["dangle"] = float(dangle)
             metrics["trk_score"] = float(trk_score)
 
+            # tracking 품질 체크
+            if metrics.get("trk_score", 1.0) < 0.9:
+                results[key] = ROIResult(
+                    roi_id=roi_id,
+                    ok=False,
+                    reason="TRACK_FAIL",
+                    metrics=metrics
+                )
+                continue
+
             # === baseline check 추가 ===
             b_ok, b_reason = self._check_baseline(roi_id, metrics)
 
