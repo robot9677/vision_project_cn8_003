@@ -203,9 +203,10 @@ class CameraGST:
                 mean_val = float(gray.mean()) if gray is not None else 0.0
                 if mean_val > 0:
                     alpha = (self.target_mean / (mean_val + 1e-6))
-                    alpha = max(1.0, min(alpha, 2.0))   # do NOT darken: clamp min to 1.0
-                    if abs(alpha - 1.0) > 0.01:
-                        frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=0)
+                    alpha = max(1.0, min(alpha, 1.35))
+                    beta = 6
+                    if abs(alpha - 1.0) > 0.01 or beta != 0:
+                        frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
         except Exception as e:
             print("[DBG CAMERA] simple postproc error:", e)
 
@@ -225,8 +226,8 @@ class CameraGST:
 
         # --- light sharpen ---
         try:
-            blur = cv2.GaussianBlur(frame, (0, 0), 1.0)
-            frame = cv2.addWeighted(frame, 1.15, blur, -0.15, 0)
+            blur = cv2.GaussianBlur(frame, (0, 0), 0.8)
+            frame = cv2.addWeighted(frame, 1.22, blur, -0.22, 0)
         except Exception as e:
             print("[DBG CAMERA] sharpen error:", e)
 
