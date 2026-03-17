@@ -204,7 +204,7 @@ class CameraGST:
                 if mean_val > 0:
                     alpha = (self.target_mean / (mean_val + 1e-6))
                     alpha = max(1.0, min(alpha, 1.35))
-                    beta = 6
+                    beta = 3
                     if abs(alpha - 1.0) > 0.01 or beta != 0:
                         frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
         except Exception as e:
