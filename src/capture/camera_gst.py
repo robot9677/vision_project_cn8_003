@@ -33,11 +33,11 @@ class CameraGST:
         demosaic_cache: bool = True,
         patterns=None,
         # denoise/hotpixel options
-        denoise_method: str = 'nlmeans',   # 'none','median','nlmeans','hotpixel'
-        median_ksize: int = 5,
-        nlm_h: float = 4.0,
-        hp_collect_frames: int = 30,
-        hp_thresh: float = 20.0,
+        denoise_method: str = 'hotpixel',   # 'none','median','nlmeans','hotpixel'
+        median_ksize: int = 3,
+        nlm_h: float = 8.0,
+        hp_collect_frames: int = 50,
+        hp_thresh: float = 30.0,
     ):
         self.gst = gst_pipeline
         self.cap = None

@@ -150,7 +150,7 @@ class VisionApp:
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
         selected_recipe_path = recipe_candidate if os.path.exists(recipe_candidate) else DEFAULT_RECIPE_PATH
-        self.cam = CameraGST(GST_PIPELINE,auto_brightness=False,denoise_method='none',)
+        self.cam = CameraGST(GST_PIPELINE)
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
         try:
             self.roi_mgr.load(ROI_PATH)
