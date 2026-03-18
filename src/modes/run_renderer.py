@@ -81,12 +81,7 @@ def draw_run_tracking(
 
     try:
         if aligner is not None and frame_gray8 is not None:
-            if hasattr(roi_mgr, "list"):
-                rois_src = roi_mgr.list()
-            elif hasattr(roi_mgr, "get_rois"):
-                rois_src = roi_mgr.get_rois()
-            else:
-                rois_src = []
+            rois_src = list(getattr(roi_mgr, "rois", []))
 
             align_result = aligner.estimate(frame_gray8, roi_mgr)
             moved = aligner.apply_to_rois(rois_src, align_result)
