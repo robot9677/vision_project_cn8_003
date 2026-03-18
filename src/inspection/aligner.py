@@ -8,16 +8,12 @@ from .roi_tracker import ROITracker
 
 class MultiAnchorAligner:
     """
-    Generalized 0..N anchor aligner.
+    0..N anchor aligner with hold/grace tracking state.
 
-    - 0 anchors  -> fixed ROI fallback
-    - 1 anchor   -> global pose align
-    - N anchors  -> per-group pose align
-
-    Notes:
-    - This version keeps the existing template-match tracker engine.
-    - Each anchor owns one ROITracker and one template.
-    - Targets can be 'all' or a list of ROI ids.
+    핵심:
+    - last pose 유지
+    - grace_frames 동안은 low score여도 즉시 fixed_roi 복귀 안 함
+    - 다음 검색 중심은 원래 ROI가 아니라 last pose 반영 위치 기준
     """
 
     def __init__(
@@ -88,6 +84,16 @@ class MultiAnchorAligner:
                 "angle_range": float(raw.get("angle_range", default_angle_range)),
                 "angle_step": float(raw.get("angle_step", default_angle_step)),
                 "tracker": tracker,
+
+                # tracking state
+                "last_pose": {
+                    "dx": 0,
+                    "dy": 0,
+                    "dangle": 0.0,
+                    "score": 0.0,
+                },
+                "fail_count": 0,
+                "has_lock": False,
             }
             self._anchors.append(entry)
 
@@ -104,18 +110,20 @@ class MultiAnchorAligner:
 
         return {
             "enabled": True,
-            "min_score": 0.85,
+            "min_score": 0.82,
+            "grace_frames": 8,
             "fallback_mode": "fixed_roi",
             "anchors": [],
         }
 
     def _get_min_score(self) -> float:
-        align_cfg = self._get_align_cfg()
-        return float(align_cfg.get("min_score", 0.85))
+        return float(self._get_align_cfg().get("min_score", 0.82))
+
+    def _get_grace_frames(self) -> int:
+        return int(self._get_align_cfg().get("grace_frames", 8))
 
     def _get_fallback_mode(self) -> str:
-        align_cfg = self._get_align_cfg()
-        return str(align_cfg.get("fallback_mode", "fixed_roi"))
+        return str(self._get_align_cfg().get("fallback_mode", "fixed_roi"))
 
     def is_enabled(self) -> bool:
         align_cfg = self._get_align_cfg()
@@ -126,6 +134,9 @@ class MultiAnchorAligner:
     def reset_templates(self):
         for a in self._anchors:
             a["tracker"].set_template(None)
+            a["last_pose"] = {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}
+            a["fail_count"] = 0
+            a["has_lock"] = False
 
     def _resolve_template_path(self, raw_path: Optional[str]) -> Optional[str]:
         if not raw_path:
@@ -199,6 +210,35 @@ class MultiAnchorAligner:
             "fallback_mode": self._get_fallback_mode(),
         }
 
+    def _make_hold_pose(self, anchor_id: str, pose: Dict[str, Any], all_roi_ids: List[int], reason: str) -> Dict[str, Any]:
+        per_roi = {}
+        for rid in all_roi_ids:
+            per_roi[int(rid)] = {
+                "dx": int(pose.get("dx", 0)),
+                "dy": int(pose.get("dy", 0)),
+                "dangle": float(pose.get("dangle", 0.0)),
+                "score": float(pose.get("score", 0.0)),
+                "anchor_id": anchor_id,
+                "fallback": False,
+                "reason": reason,
+            }
+
+        return {
+            "enabled": self.is_enabled(),
+            "anchors": [],
+            "per_roi": per_roi,
+            "global": {
+                "ok": True,
+                "dx": int(pose.get("dx", 0)),
+                "dy": int(pose.get("dy", 0)),
+                "dangle": float(pose.get("dangle", 0.0)),
+                "score": float(pose.get("score", 0.0)),
+                "fallback": False,
+                "reason": reason,
+            },
+            "fallback_mode": self._get_fallback_mode(),
+        }
+
     def estimate(self, frame_gray8, roi_mgr) -> Dict[str, Any]:
         result = {
             "enabled": self.is_enabled(),
@@ -224,8 +264,10 @@ class MultiAnchorAligner:
         self.ensure_runtime_templates(frame_gray8, roi_mgr)
 
         min_score = self._get_min_score()
+        grace_frames = self._get_grace_frames()
         best_global = None
         any_success = False
+        any_hold = False
 
         for a in self._anchors:
             if not a.get("enabled", True):
@@ -247,70 +289,158 @@ class MultiAnchorAligner:
                 })
                 continue
 
-            rx = int(roi.get("x", 0))
-            ry = int(roi.get("y", 0))
-            rw = int(roi.get("w", 0))
-            rh = int(roi.get("h", 0))
-            ra = float(roi.get("angle", 0.0))
+            base_x = int(roi.get("x", 0))
+            base_y = int(roi.get("y", 0))
+            base_w = int(roi.get("w", 0))
+            base_h = int(roi.get("h", 0))
+            base_a = float(roi.get("angle", 0.0))
+
+            # 핵심: 직전 성공 pose를 적용한 위치를 다음 검색 중심으로 사용
+            last_pose = a.get("last_pose", {})
+            search_x = base_x + int(last_pose.get("dx", 0))
+            search_y = base_y + int(last_pose.get("dy", 0))
+            search_a = base_a + float(last_pose.get("dangle", 0.0))
 
             nrx, nry, _, _, na, score = tracker.track_pose(
                 frame_gray8,
-                rx, ry, rw, rh,
-                angle=ra,
+                search_x, search_y, base_w, base_h,
+                angle=search_a,
                 angle_range=float(a.get("angle_range", 4.0)),
                 angle_step=float(a.get("angle_step", 1.0)),
             )
 
-            dx = int(nrx - rx)
-            dy = int(nry - ry)
-            dangle = float(na - ra)
+            # base 기준 pose로 환산
+            dx = int(nrx - base_x)
+            dy = int(nry - base_y)
+            dangle = float(na - base_a)
             score = float(score)
+
             ok = score >= min_score
+            if ok:
+                a["last_pose"] = {
+                    "dx": dx,
+                    "dy": dy,
+                    "dangle": dangle,
+                    "score": score,
+                }
+                a["fail_count"] = 0
+                a["has_lock"] = True
 
-            anchor_pose = {
-                "id": a["id"],
-                "roi_id": a["roi_id"],
-                "ok": bool(ok),
-                "dx": dx,
-                "dy": dy,
-                "dangle": dangle,
-                "score": score,
-                "reason": "OK" if ok else "LOW_SCORE",
-            }
-            result["anchors"].append(anchor_pose)
+                anchor_pose = {
+                    "id": a["id"],
+                    "roi_id": a["roi_id"],
+                    "ok": True,
+                    "dx": dx,
+                    "dy": dy,
+                    "dangle": dangle,
+                    "score": score,
+                    "reason": "OK",
+                }
+                result["anchors"].append(anchor_pose)
+                print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
 
-            if not ok:
-                print(f"[DBG ALIGN] {a['id']} ok=False (LOW_SCORE {score:.3f} < {min_score:.3f})")
+                any_success = True
+                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+                for rid in targets:
+                    prev = result["per_roi"].get(int(rid))
+                    if prev is None or score > float(prev.get("score", -1.0)):
+                        result["per_roi"][int(rid)] = {
+                            "dx": dx,
+                            "dy": dy,
+                            "dangle": dangle,
+                            "score": score,
+                            "anchor_id": a["id"],
+                            "fallback": False,
+                            "reason": "OK",
+                        }
+
+                if best_global is None or score > float(best_global.get("score", -1.0)):
+                    best_global = anchor_pose
                 continue
 
-            print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
+            # low score
+            a["fail_count"] = int(a.get("fail_count", 0)) + 1
+            fail_count = a["fail_count"]
+            has_lock = bool(a.get("has_lock", False))
 
-            any_success = True
-            targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+            # grace frames 동안은 마지막 성공 pose 유지
+            if has_lock and fail_count <= grace_frames:
+                hold_pose = a["last_pose"]
+                hdx = int(hold_pose.get("dx", 0))
+                hdy = int(hold_pose.get("dy", 0))
+                hda = float(hold_pose.get("dangle", 0.0))
+                hsc = float(hold_pose.get("score", 0.0))
 
-            for rid in targets:
-                prev = result["per_roi"].get(int(rid))
-                if prev is None or score > float(prev.get("score", -1.0)):
-                    result["per_roi"][int(rid)] = {
-                        "dx": dx,
-                        "dy": dy,
-                        "dangle": dangle,
-                        "score": score,
-                        "anchor_id": a["id"],
-                        "fallback": False,
-                        "reason": "OK",
+                result["anchors"].append({
+                    "id": a["id"],
+                    "roi_id": a["roi_id"],
+                    "ok": True,
+                    "dx": hdx,
+                    "dy": hdy,
+                    "dangle": hda,
+                    "score": hsc,
+                    "reason": f"HOLD({fail_count}/{grace_frames})",
+                })
+
+                print(
+                    f"[DBG ALIGN] {a['id']} hold=True "
+                    f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
+                    f"low_sc={score:.3f} fail={fail_count}/{grace_frames}"
+                )
+
+                any_hold = True
+                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+                for rid in targets:
+                    prev = result["per_roi"].get(int(rid))
+                    if prev is None or hsc > float(prev.get("score", -1.0)):
+                        result["per_roi"][int(rid)] = {
+                            "dx": hdx,
+                            "dy": hdy,
+                            "dangle": hda,
+                            "score": hsc,
+                            "anchor_id": a["id"],
+                            "fallback": False,
+                            "reason": f"HOLD({fail_count}/{grace_frames})",
+                        }
+
+                if best_global is None or hsc > float(best_global.get("score", -1.0)):
+                    best_global = {
+                        "id": a["id"],
+                        "roi_id": a["roi_id"],
+                        "ok": True,
+                        "dx": hdx,
+                        "dy": hdy,
+                        "dangle": hda,
+                        "score": hsc,
+                        "reason": f"HOLD({fail_count}/{grace_frames})",
                     }
+                continue
 
-            if best_global is None or score > float(best_global.get("score", -1.0)):
-                best_global = anchor_pose
+            # grace 초과 시에만 fallback
+            a["has_lock"] = False
+            a["last_pose"] = {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}
 
-        if not any_success:
+            result["anchors"].append({
+                "id": a["id"],
+                "roi_id": a["roi_id"],
+                "ok": False,
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": score,
+                "reason": f"LOW_SCORE({fail_count}>{grace_frames})",
+            })
+
+            print(
+                f"[DBG ALIGN] {a['id']} ok=False "
+                f"(LOW_SCORE {score:.3f} < {min_score:.3f}, fail={fail_count}/{grace_frames})"
+            )
+
+        if not any_success and not any_hold:
             fallback_mode = self._get_fallback_mode()
-
             if fallback_mode == "fixed_roi":
                 print("[FALLBACK] fixed_roi")
                 return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
-
             print(f"[FALLBACK] unsupported fallback_mode={fallback_mode}, use fixed_roi")
             return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
 
@@ -333,7 +463,7 @@ class MultiAnchorAligner:
                 "dangle": float(best_global.get("dangle", 0.0)),
                 "score": float(best_global.get("score", 0.0)),
                 "fallback": False,
-                "reason": "OK",
+                "reason": str(best_global.get("reason", "OK")),
             }
 
         return result
