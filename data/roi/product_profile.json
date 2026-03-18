@@ -22,8 +22,8 @@
     "grace_frames": 15,
     "fallback_mode": "hold",
     "smooth": {
-      "max_step_x": 10,
-      "max_step_y": 10
+      "max_step_x": 18,
+      "max_step_y": 18
     },
     "anchors": [
       {
