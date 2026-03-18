@@ -93,10 +93,6 @@ class MultiAnchorAligner:
                 "enable_rotation": bool(raw.get("enable_rotation", False)),
                 "max_abs_angle": float(raw.get("max_abs_angle", 8.0)),
                 "tracker": tracker,
-                "log_last_state": None,
-                "log_last_dx": None,
-                "log_last_dy": None,
-                "log_last_score_band": None,
                 "log_state": None,
                 "log_score_band": None,
                 "last_output_dx": 0,
@@ -418,7 +414,7 @@ class MultiAnchorAligner:
                 })
 
                 self._last_global_state = "TRACKING"
-                if self._should_log_anchor(a, "HOLD", hdx, hdy, score):
+                if fail_count == 1 and self._should_log_anchor(a, "HOLD", hdx, hdy, score):
                     print(
                         f"[DBG ALIGN] {a['id']} hold=True "
                         f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
