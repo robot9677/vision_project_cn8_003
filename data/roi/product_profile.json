@@ -27,17 +27,12 @@
     },
     "anchors": [
       {
-        "id": "anchor_main",
-        "roi_id": 1,
-        "targets": "all",
-
-        "search_margin_x": 80,
-        "search_margin_y": 120,
-
-        "enable_rotation": false,
-
-        "wide_reacquire_margin_x": 240,
-        "wide_reacquire_margin_y": 360
+        "id": "anchor1",
+        "roi_id": 2
+      },
+      {
+        "id": "anchor2",
+        "roi_id": 3
       }
     ]
   }
