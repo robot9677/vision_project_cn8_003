@@ -170,6 +170,10 @@ class MultiAnchorAligner:
     def load_templates_from_disk(self) -> int:
         loaded = 0
         for a in self._anchors:
+            src_mode = a.get("template_source", "file_or_runtime")
+            if src_mode == "roi_runtime":
+                continue
+
             path = self._resolve_template_path(a.get("template_path"))
             if not path or not os.path.exists(path):
                 continue
