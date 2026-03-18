@@ -69,6 +69,8 @@ class MultiAnchorAligner:
 
             tracker = ROITracker(
                 search_margin=int(raw.get("search_margin", default_search_margin)),
+                search_margin_x=int(raw.get("search_margin_x", raw.get("search_margin", default_search_margin))),
+                search_margin_y=int(raw.get("search_margin_y", raw.get("search_margin", default_search_margin))),
                 thr=float(raw.get("thr", default_thr)),
                 reacquire_margin=int(raw.get("reacquire_margin", default_reacquire_margin)),
                 reacquire_scale=float(raw.get("reacquire_scale", default_reacquire_scale)),
@@ -81,8 +83,10 @@ class MultiAnchorAligner:
                 "targets": targets,
                 "template_path": raw.get("template_path"),
                 "template_source": str(raw.get("template_source", "file_or_runtime")),
-                "angle_range": float(raw.get("angle_range", default_angle_range)),
-                "angle_step": float(raw.get("angle_step", default_angle_step)),
+                "angle_range": float(raw.get("angle_range", 0.0)),
+                "angle_step": float(raw.get("angle_step", 1.0)),
+                "enable_rotation": bool(raw.get("enable_rotation", False)),
+                "max_abs_angle": float(raw.get("max_abs_angle", 8.0)),
                 "tracker": tracker,
 
                 # tracking state
@@ -305,8 +309,11 @@ class MultiAnchorAligner:
                 frame_gray8,
                 search_x, search_y, base_w, base_h,
                 angle=search_a,
-                angle_range=float(a.get("angle_range", 4.0)),
+                angle_range=float(a.get("angle_range", 0.0)),
                 angle_step=float(a.get("angle_step", 1.0)),
+                base_angle=base_a,
+                enable_rotation=bool(a.get("enable_rotation", False)),
+                max_abs_angle=float(a.get("max_abs_angle", 8.0)),
             )
 
             # base 기준 pose로 환산

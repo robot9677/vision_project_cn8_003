@@ -7,12 +7,17 @@ class ROITracker:
     def __init__(
         self,
         search_margin=20,
+        search_margin_x=None,
+        search_margin_y=None,
         method=cv2.TM_CCOEFF_NORMED,
         thr=0.6,
         reacquire_margin=None,
         reacquire_scale=0.5,
     ):
         self.search_margin = int(search_margin)
+        self.search_margin_x = int(search_margin_x) if search_margin_x is not None else int(search_margin)
+        self.search_margin_y = int(search_margin_y) if search_margin_y is not None else int(search_margin)
+
         self.reacquire_margin = int(reacquire_margin) if reacquire_margin is not None else int(self.search_margin * 3)
         self.reacquire_scale = float(reacquire_scale)
         self.method = method
@@ -59,11 +64,18 @@ class ROITracker:
         if self.template is None:
             return None, None
 
+        if isinstance(margin, (tuple, list)) and len(margin) >= 2:
+            mx = int(margin[0])
+            my = int(margin[1])
+        else:
+            mx = int(margin)
+            my = int(margin)
+
         H, W = frame_gray8.shape[:2]
-        sx = max(0, int(x - margin))
-        sy = max(0, int(y - margin))
-        ex = min(W, int(x + w + margin))
-        ey = min(H, int(y + h + margin))
+        sx = max(0, int(x - mx))
+        sy = max(0, int(y - my))
+        ex = min(W, int(x + w + mx))
+        ey = min(H, int(y + h + my))
 
         search = frame_gray8[sy:ey, sx:ex]
         th, tw = self.template.shape[:2]
@@ -101,30 +113,27 @@ class ROITracker:
         if self.template is None:
             return x, y, w, h
 
-        # 1차: 근거리 탐색
         pos1, score1 = self._match_window(
             frame_gray8, x, y, w, h,
-            margin=self.search_margin,
+            margin=(self.search_margin_x, self.search_margin_y),
             scale=1.0,
         )
 
         if pos1 is not None and score1 is not None and score1 >= self.thr:
             return pos1
 
-        # 2차: 재획득 탐색
         pos2, score2 = self._match_window(
             frame_gray8, x, y, w, h,
-            margin=self.reacquire_margin,
+            margin=(self.reacquire_margin, self.reacquire_margin),
             scale=self.reacquire_scale,
         )
 
         if pos2 is not None and score2 is not None and score2 >= self.thr:
             rx, ry, _, _ = pos2
 
-            # 재획득 후보 정밀 검증
             pos3, score3 = self._match_window(
                 frame_gray8, rx, ry, w, h,
-                margin=self.search_margin,
+                margin=(self.search_margin_x, self.search_margin_y),
                 scale=1.0,
             )
 
@@ -137,8 +146,7 @@ class ROITracker:
 
             return x, y, w, h
 
-        return x, y, w, h
-    
+        return x, y, w, h    
     
     def _rotate_keep_size(self, img: np.ndarray, angle: float) -> np.ndarray:
         h, w = img.shape[:2]
@@ -151,42 +159,58 @@ class ROITracker:
             borderMode=cv2.BORDER_REPLICATE,
         )
 
-    def track_pose(self, frame_gray8: np.ndarray, x, y, w, h, angle=0.0, angle_range=4.0, angle_step=1.0):
+    def track_pose(
+        self,
+        frame_gray8: np.ndarray,
+        x, y, w, h,
+        angle=0.0,
+        angle_range=0.0,
+        angle_step=1.0,
+        base_angle=0.0,
+        enable_rotation=False,
+        max_abs_angle=8.0,
+    ):
         if self.template is None:
-            return x, y, w, h, float(angle), 0.0
-
-        best = (x, y, w, h, float(angle))
-        best_score = -1.0
-
-        angles = np.arange(-angle_range, angle_range + 0.001, angle_step, dtype=np.float32)
+            return x, y, w, h, float(base_angle), 0.0
 
         H, W = frame_gray8.shape[:2]
-        sx = max(0, int(x - self.search_margin))
-        sy = max(0, int(y - self.search_margin))
-        ex = min(W, int(x + w + self.search_margin))
-        ey = min(H, int(y + h + self.search_margin))
+        sx = max(0, int(x - self.search_margin_x))
+        sy = max(0, int(y - self.search_margin_y))
+        ex = min(W, int(x + w + self.search_margin_x))
+        ey = min(H, int(y + h + self.search_margin_y))
         search = frame_gray8[sy:ey, sx:ex]
 
         if search.size == 0:
-            return x, y, w, h, float(angle), 0.0
+            return x, y, w, h, float(base_angle), 0.0
 
         th, tw = self.template.shape[:2]
+        if search.shape[0] < th or search.shape[1] < tw:
+            return x, y, w, h, float(base_angle), 0.0
 
-        for da in angles:
-            tmpl = self._rotate_keep_size(self.template, float(da))
-            if search.shape[0] < th or search.shape[1] < tw:
-                continue
+        if not enable_rotation:
+            res = cv2.matchTemplate(search, self.template, self.method)
+            _, maxv, _, maxloc = cv2.minMaxLoc(res)
+            nx = sx + int(maxloc[0])
+            ny = sy + int(maxloc[1])
+            return nx, ny, w, h, float(base_angle), float(maxv)
 
+        # 회전은 누적 angle 기준이 아니라 base_angle 기준 절대각 탐색
+        best = (x, y, w, h, float(base_angle))
+        best_score = -1.0
+
+        a0 = max(-float(max_abs_angle), float(base_angle) - float(angle_range))
+        a1 = min(+float(max_abs_angle), float(base_angle) + float(angle_range))
+        angles = np.arange(a0, a1 + 0.001, angle_step, dtype=np.float32)
+
+        for abs_angle in angles:
+            tmpl = self._rotate_keep_size(self.template, float(abs_angle - float(base_angle)))
             res = cv2.matchTemplate(search, tmpl, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
             if maxv > best_score:
                 nx = sx + int(maxloc[0])
                 ny = sy + int(maxloc[1])
-                best = (nx, ny, w, h, float(angle) + float(da))
+                best = (nx, ny, w, h, float(abs_angle))
                 best_score = float(maxv)
 
-        if best_score >= self.thr:
-            return best[0], best[1], best[2], best[3], best[4], float(best_score)
-
-        return x, y, w, h, float(angle), float(best_score)
+        return best[0], best[1], best[2], best[3], best[4], float(best_score)
