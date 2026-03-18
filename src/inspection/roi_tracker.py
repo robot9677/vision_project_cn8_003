@@ -27,7 +27,11 @@ class ROITracker:
         self.template_alpha = 0.03
         self.update_thr = max(self.thr, 0.90)
         self.enable_template_update = False
-
+        self.wide_reacquire_margin_x = int(self.search_margin_x * 3)
+        self.wide_reacquire_margin_y = int(self.search_margin_y * 3)
+        self.wide_reacquire_scale = 0.4
+        self.wide_reacquire_thr = max(0.65, self.thr - 0.1)
+        
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
             self.template = None
@@ -213,4 +217,32 @@ class ROITracker:
                 best = (nx, ny, w, h, float(abs_angle))
                 best_score = float(maxv)
 
-        return best[0], best[1], best[2], best[3], best[4], float(best_score)
+        # ---------- 1차 실패 후 wide reacquire ----------
+        pos_wide, score_wide = self._match_window(
+            frame_gray8,
+            x, y, w, h,
+            margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
+            scale=self.wide_reacquire_scale,
+        )
+
+        if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
+            rx, ry, _, _ = pos_wide
+
+            # refine (정밀 재확인)
+            pos_refine, score_refine = self._match_window(
+                frame_gray8,
+                rx, ry, w, h,
+                margin=(self.search_margin_x, self.search_margin_y),
+                scale=1.0,
+            )
+
+            if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
+                nx, ny, _, _ = pos_refine
+
+                print(f"[TRK] wide_reacquire score={score_wide:.3f} refine={score_refine:.3f}")
+                return nx, ny, w, h, base_angle, float(score_refine)
+
+            # refine 실패해도 일단 wide 위치 사용
+            nx, ny, _, _ = pos_wide
+            print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f}")
+            return nx, ny, w, h, base_angle, float(score_wide)

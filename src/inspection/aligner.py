@@ -76,6 +76,9 @@ class MultiAnchorAligner:
                 reacquire_scale=float(raw.get("reacquire_scale", default_reacquire_scale)),
             )
 
+            tracker.wide_reacquire_margin_x = int(raw.get("wide_reacquire_margin_x", tracker.search_margin_x * 3))
+            tracker.wide_reacquire_margin_y = int(raw.get("wide_reacquire_margin_y", tracker.search_margin_y * 3))
+            
             entry = {
                 "id": anchor_id,
                 "roi_id": roi_id,

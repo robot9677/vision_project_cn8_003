@@ -25,18 +25,15 @@
       {
         "id": "anchor_main",
         "roi_id": 1,
-        "enabled": true,
         "targets": "all",
-        "template_path": "data/roi/align_template.png",
-        "template_source": "file_or_runtime",
 
         "search_margin_x": 80,
         "search_margin_y": 120,
 
         "enable_rotation": false,
-        "angle_range": 0.0,
-        "angle_step": 1.0,
-        "max_abs_angle": 8.0
+
+        "wide_reacquire_margin_x": 240,
+        "wide_reacquire_margin_y": 360
       }
     ]
   }
