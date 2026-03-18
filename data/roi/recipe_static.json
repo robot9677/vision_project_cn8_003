@@ -11,18 +11,6 @@
       "max_mean": 255.0
     },
 
-    "ROI2": {
-      "type": "mean_threshold",
-      "min_mean": 0.0,
-      "max_mean": 255.0
-    },
-
-    "ROI3": {
-      "type": "mean_threshold",
-      "min_mean": 0.0,
-      "max_mean": 255.0
-    },
-
     "ROI4": {
       "type": "toolchain",
       "tools": [
