@@ -343,7 +343,7 @@ class MultiAnchorAligner:
             if score < (min_score + 0.03):
                 if abs(dx - a.get("last_output_dx", 0)) > 8 or abs(dy - a.get("last_output_dy", 0)) > 8:
                     ok = False
-                    
+
             if ok:
                 a["last_pose"] = {
                     "dx": dx,
@@ -470,11 +470,35 @@ class MultiAnchorAligner:
 
         if not any_success and not any_hold:
             fallback_mode = self._get_fallback_mode()
-            if fallback_mode == "fixed_roi":
-                if self._last_global_state != "FALLBACK":
-                    print("[FALLBACK] fixed_roi")
-                self._last_global_state = "FALLBACK"
-                return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
+
+            if fallback_mode == "hold":
+                per_roi = {}
+                for rid in all_roi_ids:
+                    per_roi[int(rid)] = {
+                        "dx": 0,
+                        "dy": 0,
+                        "dangle": 0.0,
+                        "score": 0.0,
+                        "anchor_id": None,
+                        "fallback": False,
+                        "reason": "HOLD_NO_SUCCESS",
+                    }
+                result["per_roi"] = per_roi
+                result["global"] = {
+                    "ok": False,
+                    "dx": 0,
+                    "dy": 0,
+                    "dangle": 0.0,
+                    "score": 0.0,
+                    "fallback": False,
+                    "reason": "HOLD_NO_SUCCESS",
+                }
+                return result
+
+            if self._last_global_state != "FALLBACK":
+                print("[FALLBACK] fixed_roi")
+            self._last_global_state = "FALLBACK"
+            return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
 
         for rid in all_roi_ids:
             result["per_roi"].setdefault(int(rid), {

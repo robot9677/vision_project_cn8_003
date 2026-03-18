@@ -89,7 +89,7 @@ def draw_run_tracking(
             any_ok = any(bool(a.get("ok")) for a in (align_result.get("anchors") or []))
             smoothed, stable = stabilizer.update(moved)
 
-            state.tracking_stable = bool(any_ok and stable)
+            state.tracking_stable = bool(any_ok)
             if state.tracking_stable:
                 state.stable_frame_count += 1
             else:
@@ -118,7 +118,7 @@ def draw_run_tracking(
 
                 state.last_snapshot_time = time.time()
 
-            draw_roi_overlay(vis, moved, state.last_results, roi_label_pos)
+            draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos)
         else:
             overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
             state.tracking_stable = False
