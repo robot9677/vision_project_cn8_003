@@ -31,12 +31,22 @@ class ROITracker:
         self.wide_reacquire_margin_y = int(self.search_margin_y * 3)
         self.wide_reacquire_scale = 0.4
         self.wide_reacquire_thr = max(0.65, self.thr - 0.1)
-        
+
+    def _prep_track_img(self, img):
+        if img is None or img.size == 0:
+            return img
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        img = clahe.apply(img)
+        return img
+            
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
             self.template = None
         else:
-            self.template = tmpl_gray8.copy()
+            self.template = self._prep_track_img(tmpl_gray8.copy())
             
     def update_template(self, new_crop: np.ndarray, score: float):
         if not self.enable_template_update:
@@ -174,9 +184,12 @@ class ROITracker:
         enable_rotation=False,
         max_abs_angle=8.0,
     ):
+        
         if self.template is None:
             return x, y, w, h, float(base_angle), 0.0
-
+        
+        frame_gray8 = self._prep_track_img(frame_gray8)
+        
         H, W = frame_gray8.shape[:2]
         sx = max(0, int(x - self.search_margin_x))
         sy = max(0, int(y - self.search_margin_y))
@@ -246,3 +259,4 @@ class ROITracker:
             nx, ny, _, _ = pos_wide
             print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f}")
             return nx, ny, w, h, base_angle, float(score_wide)
+        
