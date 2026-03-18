@@ -226,6 +226,17 @@ class Inspector:
         H, W = frame_gray8.shape[:2]
 
         for roi in getattr(self.roi_mgr, "rois", []):
+            recipe_overrides = self.recipe.get("overrides", {})
+            anchor_roi_ids = {int(a.get("roi_id", 0)) for a in getattr(self.aligner, "_anchors", [])}
+
+            for roi in getattr(self.roi_mgr, "rois", []):
+                roi_id = roi.get("id")
+                key = str(roi_id)
+
+                # align 전용 anchor ROI는 검사하지 않음
+                if int(roi_id) in anchor_roi_ids and f"ROI{roi_id}" not in recipe_overrides:
+                    continue
+                
             roi_id = roi.get("id")
             key = str(roi_id)
 
