@@ -345,12 +345,13 @@ class Inspector:
             metrics["trk_score"] = float(pose.get("score", trk_score))
             metrics["align_anchor_id"] = pose.get("anchor_id")
 
-            # === baseline check 추가 ===
-            b_ok, b_reason = self._check_baseline(roi_id, metrics)
+            # anchor ROI는 baseline도 제외
+            if roi_id not in anchor_roi_ids:
+                b_ok, b_reason = self._check_baseline(roi_id, metrics)
 
-            if not b_ok:
-                final_ok = False
-                reason = b_reason
+                if not b_ok:
+                    final_ok = False
+                    reason = b_reason
 
             results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
