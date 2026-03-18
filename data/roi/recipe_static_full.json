@@ -12,15 +12,37 @@
     },
 
     "ROI2": {
-      "type": "mean_threshold",
-      "min_mean": 0.0,
-      "max_mean": 255.0
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.03,
+            "max_ratio": 0.35,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
     },
 
     "ROI3": {
-      "type": "mean_threshold",
-      "min_mean": 0.0,
-      "max_mean": 255.0
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.dark_ratio",
+          "params": {
+            "thresh_mode": "mean_offset",
+            "offset": -4,
+            "min_ratio": 0.03,
+            "max_ratio": 0.35,
+            "blur": 3,
+            "invert": false
+          }
+        }
+      ]
     },
 
     "ROI4": {
