@@ -20,7 +20,12 @@ class MultiAnchorAligner:
     - Targets can be 'all' or a list of ROI ids.
     """
 
-    def __init__(self, runtime_cfg: Optional[Dict[str, Any]] = None, product_profile: Optional[Dict[str, Any]] = None, project_root: Optional[str] = None):
+    def __init__(
+        self,
+        runtime_cfg: Optional[Dict[str, Any]] = None,
+        product_profile: Optional[Dict[str, Any]] = None,
+        project_root: Optional[str] = None,
+    ):
         self.runtime_cfg = runtime_cfg or {}
         self.product_profile = product_profile or {}
         self.project_root = project_root
@@ -60,6 +65,7 @@ class MultiAnchorAligner:
             anchor_id = str(raw.get("id") or f"anchor_{roi_id}_{idx + 1}")
             enabled = bool(raw.get("enabled", True))
             targets = raw.get("targets", "all")
+
             if isinstance(targets, list):
                 targets = [int(v) for v in targets]
             elif targets != "all":
@@ -91,10 +97,25 @@ class MultiAnchorAligner:
         from_profile = self.product_profile.get("align")
         if isinstance(from_profile, dict):
             return from_profile
+
         from_runtime = self.runtime_cfg.get("align")
         if isinstance(from_runtime, dict):
             return from_runtime
-        return {"enabled": True, "fallback_mode": "fixed_roi", "anchors": []}
+
+        return {
+            "enabled": True,
+            "min_score": 0.85,
+            "fallback_mode": "fixed_roi",
+            "anchors": [],
+        }
+
+    def _get_min_score(self) -> float:
+        align_cfg = self._get_align_cfg()
+        return float(align_cfg.get("min_score", 0.85))
+
+    def _get_fallback_mode(self) -> str:
+        align_cfg = self._get_align_cfg()
+        return str(align_cfg.get("fallback_mode", "fixed_roi"))
 
     def is_enabled(self) -> bool:
         align_cfg = self._get_align_cfg()
@@ -122,33 +143,77 @@ class MultiAnchorAligner:
             path = self._resolve_template_path(a.get("template_path"))
             if not path or not os.path.exists(path):
                 continue
+
             tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if tpl is None or tpl.size == 0:
                 continue
+
             a["tracker"].set_template(tpl)
             loaded += 1
+
         return loaded
 
     def ensure_runtime_templates(self, frame_gray8, roi_mgr):
         if frame_gray8 is None or roi_mgr is None:
             return
+
         for a in self._anchors:
             tracker = a["tracker"]
             if tracker.template is not None:
                 continue
+
             src_mode = a.get("template_source", "file_or_runtime")
             if src_mode not in ("roi_runtime", "file_or_runtime", "auto"):
                 continue
+
             crop = roi_mgr.crop(frame_gray8, a["roi_id"])
             if crop is not None and crop.size > 0:
                 tracker.set_template(crop)
+
+    def _make_fallback_pose(self, all_roi_ids: List[int], reason: str) -> Dict[str, Any]:
+        per_roi = {}
+        for rid in all_roi_ids:
+            per_roi[int(rid)] = {
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": 0.0,
+                "anchor_id": None,
+                "fallback": True,
+                "reason": reason,
+            }
+
+        return {
+            "enabled": self.is_enabled(),
+            "anchors": [],
+            "per_roi": per_roi,
+            "global": {
+                "ok": False,
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": 0.0,
+                "fallback": True,
+                "reason": reason,
+            },
+            "fallback_mode": self._get_fallback_mode(),
+        }
 
     def estimate(self, frame_gray8, roi_mgr) -> Dict[str, Any]:
         result = {
             "enabled": self.is_enabled(),
             "anchors": [],
             "per_roi": {},
-            "global": {"ok": False, "dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0},
+            "global": {
+                "ok": False,
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": 0.0,
+                "fallback": False,
+                "reason": "",
+            },
+            "fallback_mode": self._get_fallback_mode(),
         }
 
         if (not result["enabled"]) or frame_gray8 is None or roi_mgr is None:
@@ -158,7 +223,9 @@ class MultiAnchorAligner:
         all_roi_ids = [int(r.get("id")) for r in rois]
         self.ensure_runtime_templates(frame_gray8, roi_mgr)
 
+        min_score = self._get_min_score()
         best_global = None
+        any_success = False
 
         for a in self._anchors:
             if not a.get("enabled", True):
@@ -166,10 +233,17 @@ class MultiAnchorAligner:
 
             roi = roi_mgr.get(a["roi_id"])
             tracker = a["tracker"]
+
             if roi is None or tracker.template is None:
                 result["anchors"].append({
-                    "id": a["id"], "roi_id": a["roi_id"], "ok": False,
-                    "dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0,
+                    "id": a["id"],
+                    "roi_id": a["roi_id"],
+                    "ok": False,
+                    "dx": 0,
+                    "dy": 0,
+                    "dangle": 0.0,
+                    "score": 0.0,
+                    "reason": "NO_TEMPLATE_OR_ROI",
                 })
                 continue
 
@@ -186,10 +260,12 @@ class MultiAnchorAligner:
                 angle_range=float(a.get("angle_range", 4.0)),
                 angle_step=float(a.get("angle_step", 1.0)),
             )
+
             dx = int(nrx - rx)
             dy = int(nry - ry)
             dangle = float(na - ra)
-            ok = float(score) >= float(tracker.thr)
+            score = float(score)
+            ok = score >= min_score
 
             anchor_pose = {
                 "id": a["id"],
@@ -198,40 +274,78 @@ class MultiAnchorAligner:
                 "dx": dx,
                 "dy": dy,
                 "dangle": dangle,
-                "score": float(score),
+                "score": score,
+                "reason": "OK" if ok else "LOW_SCORE",
             }
             result["anchors"].append(anchor_pose)
 
-            if ok:
-                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
-                for rid in targets:
-                    prev = result["per_roi"].get(int(rid))
-                    if prev is None or float(score) > float(prev.get("score", -1.0)):
-                        result["per_roi"][int(rid)] = {
-                            "dx": dx,
-                            "dy": dy,
-                            "dangle": dangle,
-                            "score": float(score),
-                            "anchor_id": a["id"],
-                        }
+            if not ok:
+                print(f"[DBG ALIGN] {a['id']} ok=False (LOW_SCORE {score:.3f} < {min_score:.3f})")
+                continue
 
-                if best_global is None or float(score) > float(best_global.get("score", -1.0)):
-                    best_global = anchor_pose
+            print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
+
+            any_success = True
+            targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+
+            for rid in targets:
+                prev = result["per_roi"].get(int(rid))
+                if prev is None or score > float(prev.get("score", -1.0)):
+                    result["per_roi"][int(rid)] = {
+                        "dx": dx,
+                        "dy": dy,
+                        "dangle": dangle,
+                        "score": score,
+                        "anchor_id": a["id"],
+                        "fallback": False,
+                        "reason": "OK",
+                    }
+
+            if best_global is None or score > float(best_global.get("score", -1.0)):
+                best_global = anchor_pose
+
+        if not any_success:
+            fallback_mode = self._get_fallback_mode()
+
+            if fallback_mode == "fixed_roi":
+                print("[FALLBACK] fixed_roi")
+                return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
+
+            print(f"[FALLBACK] unsupported fallback_mode={fallback_mode}, use fixed_roi")
+            return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
 
         for rid in all_roi_ids:
-            result["per_roi"].setdefault(int(rid), {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0, "anchor_id": None})
+            result["per_roi"].setdefault(int(rid), {
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": 0.0,
+                "anchor_id": None,
+                "fallback": True,
+                "reason": "UNASSIGNED_USE_FIXED",
+            })
 
         if best_global is not None:
-            result["global"] = dict(best_global)
+            result["global"] = {
+                "ok": True,
+                "dx": int(best_global.get("dx", 0)),
+                "dy": int(best_global.get("dy", 0)),
+                "dangle": float(best_global.get("dangle", 0.0)),
+                "score": float(best_global.get("score", 0.0)),
+                "fallback": False,
+                "reason": "OK",
+            }
 
         return result
 
     def apply_to_rois(self, rois: List[Dict[str, Any]], align_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         moved = []
         per_roi = align_result.get("per_roi") or {}
+
         for r in rois:
             rid = int(r.get("id", 0))
             pose = per_roi.get(rid, {})
+
             moved.append({
                 "id": r.get("id"),
                 "name": r.get("name", ""),
@@ -241,4 +355,5 @@ class MultiAnchorAligner:
                 "h": int(r.get("h", 0)),
                 "angle": float(r.get("angle", 0.0) + pose.get("dangle", 0.0)),
             })
+
         return moved
