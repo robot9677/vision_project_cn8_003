@@ -28,7 +28,6 @@ class MultiAnchorAligner:
         self._anchors: List[Dict[str, Any]] = []
         self.primary_tracker: Optional[ROITracker] = None
         self.refresh_config()
-        self._last_log_state = {}
         self._last_global_state = None
 
     def refresh_config(self):
@@ -463,10 +462,6 @@ class MultiAnchorAligner:
                 "reason": f"LOW_SCORE({fail_count}>{grace_frames})",
             })
 
-            if self._last_global_state != "FALLBACK":
-                print("[FALLBACK] fixed_roi")
-                self._last_global_state = "FALLBACK"
-
         if not any_success and not any_hold:
             fallback_mode = self._get_fallback_mode()
             if fallback_mode == "fixed_roi":
@@ -518,51 +513,7 @@ class MultiAnchorAligner:
             })
 
         return moved
-    def _score_band(self, score: float) -> str:
-        if score >= 0.95:
-            return "S"
-        if score >= 0.90:
-            return "A"
-        if score >= 0.85:
-            return "B"
-        if score >= 0.80:
-            return "C"
-        return "D"
 
-    def _should_log(self, anchor: Dict[str, Any], state: str, dx: int, dy: int, score: float) -> bool:
-        prev_state = anchor.get("log_last_state")
-        prev_dx = anchor.get("log_last_dx")
-        prev_dy = anchor.get("log_last_dy")
-        prev_band = anchor.get("log_last_score_band")
-
-        band = self._score_band(float(score))
-
-        # 상태 바뀌면 출력
-        if prev_state != state:
-            anchor["log_last_state"] = state
-            anchor["log_last_dx"] = dx
-            anchor["log_last_dy"] = dy
-            anchor["log_last_score_band"] = band
-            return True
-
-        # 위치가 꽤 바뀌면 출력
-        if prev_dx is None or prev_dy is None or abs(dx - prev_dx) >= 8 or abs(dy - prev_dy) >= 8:
-            anchor["log_last_state"] = state
-            anchor["log_last_dx"] = dx
-            anchor["log_last_dy"] = dy
-            anchor["log_last_score_band"] = band
-            return True
-
-        # score band 바뀌면 출력
-        if prev_band != band:
-            anchor["log_last_state"] = state
-            anchor["log_last_dx"] = dx
-            anchor["log_last_dy"] = dy
-            anchor["log_last_score_band"] = band
-            return True
-
-        return False
-    
     def _score_band(self, score: float) -> str:
         s = float(score)
         if s >= 0.95:
