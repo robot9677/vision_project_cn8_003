@@ -33,7 +33,8 @@
         "targets": "all",
         "enable_rotation": false,
         "search_margin_x": 80,
-        "search_margin_y": 80
+        "search_margin_y": 80,
+        "template_source": "roi_runtime"
       }
     ]
   }
