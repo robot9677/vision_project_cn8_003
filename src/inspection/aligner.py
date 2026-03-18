@@ -338,6 +338,12 @@ class MultiAnchorAligner:
             score = float(score)
 
             ok = score >= min_score
+
+            # 낮은 score인데 큰 이동이면 무시
+            if score < (min_score + 0.03):
+                if abs(dx - a.get("last_output_dx", 0)) > 8 or abs(dy - a.get("last_output_dy", 0)) > 8:
+                    ok = False
+                    
             if ok:
                 a["last_pose"] = {
                     "dx": dx,
