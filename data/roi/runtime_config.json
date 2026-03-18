@@ -20,7 +20,7 @@
   "tracker_angle_step": 1.0,
   "align": {
     "enabled": true,
-    "min_score": 0.78,
+    "min_score": 0.83,
     "grace_frames": 8,
     "fallback_mode": "fixed_roi"
   }
