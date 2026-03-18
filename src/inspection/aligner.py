@@ -189,13 +189,13 @@ class MultiAnchorAligner:
 
         for a in self._anchors:
             tracker = a["tracker"]
-            # 항상 최신 ROI로 템플릿 갱신 (디버깅용)
-            crop = roi_mgr.crop(frame_gray8, a["roi_id"])
-            if crop is not None and crop.size > 0:
-                tracker.set_template(crop)
 
             src_mode = a.get("template_source", "file_or_runtime")
             if src_mode not in ("roi_runtime", "file_or_runtime", "auto"):
+                continue
+
+            # 템플릿이 없을 때만 1회 생성
+            if tracker.template is not None:
                 continue
 
             crop = roi_mgr.crop(frame_gray8, a["roi_id"])
