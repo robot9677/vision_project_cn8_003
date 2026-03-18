@@ -21,6 +21,10 @@
     "min_score": 0.78,
     "grace_frames": 8,
     "fallback_mode": "fixed_roi",
+    "smooth": {
+      "max_step_x": 18,
+      "max_step_y": 18
+    },
     "anchors": [
       {
         "id": "anchor_main",

@@ -97,6 +97,12 @@ class MultiAnchorAligner:
                 "log_last_dx": None,
                 "log_last_dy": None,
                 "log_last_score_band": None,
+                "log_state": None,
+                "log_score_band": None,
+                "last_output_dx": 0,
+                "last_output_dy": 0,
+                "last_output_dangle": 0.0,
+                "stable_count": 0,
 
                 # tracking state
                 "last_pose": {
@@ -150,6 +156,11 @@ class MultiAnchorAligner:
             a["last_pose"] = {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}
             a["fail_count"] = 0
             a["has_lock"] = False
+            a["last_output_dx"] = 0
+            a["last_output_dy"] = 0
+            a["last_output_dangle"] = 0.0
+            a["log_state"] = None
+            a["log_score_band"] = None
 
     def _resolve_template_path(self, raw_path: Optional[str]) -> Optional[str]:
         if not raw_path:
@@ -342,6 +353,9 @@ class MultiAnchorAligner:
                 a["fail_count"] = 0
                 a["has_lock"] = True
 
+                dx, dy, dangle = self._clamp_step(a, dx, dy, dangle)
+                self._commit_output_pose(a, dx, dy, dangle)
+
                 anchor_pose = {
                     "id": a["id"],
                     "roi_id": a["roi_id"],
@@ -353,7 +367,8 @@ class MultiAnchorAligner:
                     "reason": "OK",
                 }
                 result["anchors"].append(anchor_pose)
-                if self._should_log(a, "OK", dx, dy, score):
+                self._last_global_state = "TRACKING"
+                if self._should_log_anchor(a, "OK", dx, dy, score):
                     print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
 
                 any_success = True
@@ -388,6 +403,9 @@ class MultiAnchorAligner:
                 hda = float(hold_pose.get("dangle", 0.0))
                 hsc = float(hold_pose.get("score", 0.0))
 
+                hdx, hdy, hda = self._clamp_step(a, hdx, hdy, hda)
+                self._commit_output_pose(a, hdx, hdy, hda)
+
                 result["anchors"].append({
                     "id": a["id"],
                     "roi_id": a["roi_id"],
@@ -399,7 +417,8 @@ class MultiAnchorAligner:
                     "reason": f"HOLD({fail_count}/{grace_frames})",
                 })
 
-                if self._should_log(a, "HOLD", hdx, hdy, score):
+                self._last_global_state = "TRACKING"
+                if self._should_log_anchor(a, "HOLD", hdx, hdy, score):
                     print(
                         f"[DBG ALIGN] {a['id']} hold=True "
                         f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
@@ -448,18 +467,17 @@ class MultiAnchorAligner:
                 "reason": f"LOW_SCORE({fail_count}>{grace_frames})",
             })
 
-            if self._should_log({"log_last_state": None, "log_last_dx": None, "log_last_dy": None, "log_last_score_band": None}, "FALLBACK", 0, 0, 0.0):
+            if self._last_global_state != "FALLBACK":
                 print("[FALLBACK] fixed_roi")
                 self._last_global_state = "FALLBACK"
 
         if not any_success and not any_hold:
-            self._last_global_state = "TRACKING"
             fallback_mode = self._get_fallback_mode()
             if fallback_mode == "fixed_roi":
-                print("[FALLBACK] fixed_roi")
+                if self._last_global_state != "FALLBACK":
+                    print("[FALLBACK] fixed_roi")
+                self._last_global_state = "FALLBACK"
                 return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
-            print(f"[FALLBACK] unsupported fallback_mode={fallback_mode}, use fixed_roi")
-            return self._make_fallback_pose(all_roi_ids, "LOW_SCORE_ALL")
 
         for rid in all_roi_ids:
             result["per_roi"].setdefault(int(rid), {
@@ -548,3 +566,62 @@ class MultiAnchorAligner:
             return True
 
         return False
+    
+    def _score_band(self, score: float) -> str:
+        s = float(score)
+        if s >= 0.95:
+            return "S"
+        if s >= 0.90:
+            return "A"
+        if s >= 0.85:
+            return "B"
+        if s >= 0.80:
+            return "C"
+        return "D"
+
+    def _should_log_anchor(self, anchor: Dict[str, Any], state: str, dx: int, dy: int, score: float) -> bool:
+        prev_state = anchor.get("log_state")
+        prev_band = anchor.get("log_score_band")
+        band = self._score_band(score)
+
+        if prev_state != state or prev_band != band:
+            anchor["log_state"] = state
+            anchor["log_score_band"] = band
+            return True
+
+        return False
+
+    def _clamp_step(self, anchor: Dict[str, Any], dx: int, dy: int, dangle: float):
+        max_step_x = 18
+        max_step_y = 18
+        max_step_angle = 0.0
+
+        prev_dx = int(anchor.get("last_output_dx", 0))
+        prev_dy = int(anchor.get("last_output_dy", 0))
+        prev_da = float(anchor.get("last_output_dangle", 0.0))
+
+        ddx = dx - prev_dx
+        ddy = dy - prev_dy
+        dda = dangle - prev_da
+
+        if ddx > max_step_x:
+            dx = prev_dx + max_step_x
+        elif ddx < -max_step_x:
+            dx = prev_dx - max_step_x
+
+        if ddy > max_step_y:
+            dy = prev_dy + max_step_y
+        elif ddy < -max_step_y:
+            dy = prev_dy - max_step_y
+
+        if dda > max_step_angle:
+            dangle = prev_da + max_step_angle
+        elif dda < -max_step_angle:
+            dangle = prev_da - max_step_angle
+
+        return int(dx), int(dy), float(dangle)
+
+    def _commit_output_pose(self, anchor: Dict[str, Any], dx: int, dy: int, dangle: float):
+        anchor["last_output_dx"] = int(dx)
+        anchor["last_output_dy"] = int(dy)
+        anchor["last_output_dangle"] = float(dangle)
