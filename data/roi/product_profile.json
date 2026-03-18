@@ -18,7 +18,7 @@
   },
   "align": {
     "enabled": true,
-    "min_score": 0.83,
+    "min_score": 0.80,
     "grace_frames": 8,
     "fallback_mode": "fixed_roi",
     "smooth": {
@@ -27,12 +27,14 @@
     },
     "anchors": [
       {
-        "id": "anchor1",
-        "roi_id": 2
+        "id": "anchor2",
+        "roi_id": 2,
+        "enabled": true
       },
       {
-        "id": "anchor2",
-        "roi_id": 3
+        "id": "anchor3",
+        "roi_id": 3,
+        "enabled": true
       }
     ]
   }
