@@ -483,15 +483,51 @@ class MultiAnchorAligner:
                         "fallback": False,
                         "reason": "HOLD_NO_SUCCESS",
                     }
+
+                gdx = 0
+                gdy = 0
+                gda = 0.0
+                gsc = 0.0
+                gid = None
+
+                for a in self._anchors:
+                    if not a.get("enabled", True):
+                        continue
+
+                    adx = int(a.get("last_output_dx", 0))
+                    ady = int(a.get("last_output_dy", 0))
+                    ada = float(a.get("last_output_dangle", 0.0))
+                    asc = float(a.get("last_pose", {}).get("score", 0.0))
+
+                    targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+                    for rid in targets:
+                        per_roi[int(rid)] = {
+                            "dx": adx,
+                            "dy": ady,
+                            "dangle": ada,
+                            "score": asc,
+                            "anchor_id": a.get("id"),
+                            "fallback": False,
+                            "reason": "HOLD_NO_SUCCESS",
+                        }
+
+                    if asc >= gsc:
+                        gdx = adx
+                        gdy = ady
+                        gda = ada
+                        gsc = asc
+                        gid = a.get("id")
+
                 result["per_roi"] = per_roi
                 result["global"] = {
                     "ok": False,
-                    "dx": 0,
-                    "dy": 0,
-                    "dangle": 0.0,
-                    "score": 0.0,
+                    "dx": gdx,
+                    "dy": gdy,
+                    "dangle": gda,
+                    "score": gsc,
                     "fallback": False,
                     "reason": "HOLD_NO_SUCCESS",
+                    "anchor_id": gid,
                 }
                 return result
 
