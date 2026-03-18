@@ -339,11 +339,6 @@ class MultiAnchorAligner:
 
             ok = score >= min_score
 
-            # 낮은 score인데 큰 이동이면 무시
-            if score < (min_score + 0.03):
-                if abs(dx - a.get("last_output_dx", 0)) > 8 or abs(dy - a.get("last_output_dy", 0)) > 8:
-                    ok = False
-
             if ok:
                 a["last_pose"] = {
                     "dx": dx,
@@ -605,8 +600,8 @@ class MultiAnchorAligner:
         return False
 
     def _clamp_step(self, anchor: Dict[str, Any], dx: int, dy: int, dangle: float):
-        max_step_x = 10
-        max_step_y = 10
+        max_step_x = 18
+        max_step_y = 18
         max_step_angle = 0.0
 
         prev_dx = int(anchor.get("last_output_dx", 0))
