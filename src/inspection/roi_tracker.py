@@ -209,6 +209,33 @@ class ROITracker:
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
             nx = sx + int(maxloc[0])
             ny = sy + int(maxloc[1])
+
+            if float(maxv) >= self.thr:
+                return nx, ny, w, h, float(base_angle), float(maxv)
+
+            pos_wide, score_wide = self._match_window(
+                frame_gray8,
+                x, y, w, h,
+                margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
+                scale=self.wide_reacquire_scale,
+            )
+
+            if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
+                rx, ry, _, _ = pos_wide
+                pos_refine, score_refine = self._match_window(
+                    frame_gray8,
+                    rx, ry, w, h,
+                    margin=(self.search_margin_x, self.search_margin_y),
+                    scale=1.0,
+                )
+
+                if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
+                    nx2, ny2, _, _ = pos_refine
+                    return nx2, ny2, w, h, float(base_angle), float(score_refine)
+
+                nx2, ny2, _, _ = pos_wide
+                return nx2, ny2, w, h, float(base_angle), float(score_wide)
+
             return nx, ny, w, h, float(base_angle), float(maxv)
 
         # 회전은 누적 angle 기준이 아니라 base_angle 기준 절대각 탐색
