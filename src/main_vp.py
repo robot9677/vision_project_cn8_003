@@ -251,10 +251,6 @@ class VisionApp:
                 print(f"[INFO] alignment template loaded: {loaded}")
             elif os.path.exists(TEMPLATE_PATH):
                 tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
-                trk = getattr(self.inspector, "tracker", None)
-                if tpl is not None and trk is not None and hasattr(trk, "set_template"):
-                    trk.set_template(tpl)
-                    print("[INFO] alignment template loaded into tracker.")
         except Exception as e:
             print("[WARN] failed to load alignment template:", e)
 
@@ -326,6 +322,7 @@ class VisionApp:
                 ok_tpl = self.roi_mgr.save_alignment_template(frame_gray8, TEMPLATE_PATH, roi_id=1 if self.roi_mgr.get(1) else None)
                 if ok_tpl:
                     self._load_alignment_template()
+                    self.inspector.aligner.reset_templates()
                     st.status = "Saved ROI + Template"
                 else:
                     st.status = "Saved ROI"
