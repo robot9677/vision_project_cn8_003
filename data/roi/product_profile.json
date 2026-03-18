@@ -30,7 +30,11 @@
         "id": "anchor2",
         "roi_id": 2,
         "enabled": true,
-        "target":"all"
+        "targets": "all",
+        "enable_rotation": true,
+        "angle_range": 4.0,
+        "angle_step": 1.0,
+        "max_abs_angle": 6.0
       }
     ]
   }
