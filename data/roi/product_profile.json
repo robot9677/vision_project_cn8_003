@@ -29,12 +29,8 @@
       {
         "id": "anchor2",
         "roi_id": 2,
-        "enabled": true
-      },
-      {
-        "id": "anchor3",
-        "roi_id": 3,
-        "enabled": true
+        "enabled": true,
+        "target":"all"
       }
     ]
   }
