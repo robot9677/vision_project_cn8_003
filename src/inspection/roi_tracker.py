@@ -189,7 +189,7 @@ class ROITracker:
             return x, y, w, h, float(base_angle), 0.0
         
         frame_gray8 = self._prep_track_img(frame_gray8)
-        
+
         H, W = frame_gray8.shape[:2]
         sx = max(0, int(x - self.search_margin_x))
         sy = max(0, int(y - self.search_margin_y))
@@ -259,4 +259,6 @@ class ROITracker:
             nx, ny, _, _ = pos_wide
             print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f}")
             return nx, ny, w, h, base_angle, float(score_wide)
+        
+        return x, y, w, h, float(base_angle), 0.0
         
