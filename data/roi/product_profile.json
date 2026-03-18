@@ -18,7 +18,7 @@
   },
   "align": {
     "enabled": true,
-    "min_score": 0.80,
+    "min_score": 0.78,
     "grace_frames": 8,
     "fallback_mode": "fixed_roi",
     "anchors": [

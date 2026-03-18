@@ -28,6 +28,8 @@ class MultiAnchorAligner:
         self._anchors: List[Dict[str, Any]] = []
         self.primary_tracker: Optional[ROITracker] = None
         self.refresh_config()
+        self._last_log_state = {}
+        self._last_global_state = None
 
     def refresh_config(self):
         self._anchors = []
@@ -78,7 +80,7 @@ class MultiAnchorAligner:
 
             tracker.wide_reacquire_margin_x = int(raw.get("wide_reacquire_margin_x", tracker.search_margin_x * 3))
             tracker.wide_reacquire_margin_y = int(raw.get("wide_reacquire_margin_y", tracker.search_margin_y * 3))
-            
+
             entry = {
                 "id": anchor_id,
                 "roi_id": roi_id,
@@ -91,6 +93,10 @@ class MultiAnchorAligner:
                 "enable_rotation": bool(raw.get("enable_rotation", False)),
                 "max_abs_angle": float(raw.get("max_abs_angle", 8.0)),
                 "tracker": tracker,
+                "log_last_state": None,
+                "log_last_dx": None,
+                "log_last_dy": None,
+                "log_last_score_band": None,
 
                 # tracking state
                 "last_pose": {
@@ -347,7 +353,8 @@ class MultiAnchorAligner:
                     "reason": "OK",
                 }
                 result["anchors"].append(anchor_pose)
-                print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
+                if self._should_log(a, "OK", dx, dy, score):
+                    print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
 
                 any_success = True
                 targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
@@ -392,12 +399,12 @@ class MultiAnchorAligner:
                     "reason": f"HOLD({fail_count}/{grace_frames})",
                 })
 
-                print(
-                    f"[DBG ALIGN] {a['id']} hold=True "
-                    f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
-                    f"low_sc={score:.3f} fail={fail_count}/{grace_frames}"
-                )
-
+                if self._should_log(a, "HOLD", hdx, hdy, score):
+                    print(
+                        f"[DBG ALIGN] {a['id']} hold=True "
+                        f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
+                        f"low_sc={score:.3f} fail={fail_count}/{grace_frames}"
+                    )
                 any_hold = True
                 targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
                 for rid in targets:
@@ -441,12 +448,12 @@ class MultiAnchorAligner:
                 "reason": f"LOW_SCORE({fail_count}>{grace_frames})",
             })
 
-            print(
-                f"[DBG ALIGN] {a['id']} ok=False "
-                f"(LOW_SCORE {score:.3f} < {min_score:.3f}, fail={fail_count}/{grace_frames})"
-            )
+            if self._should_log({"log_last_state": None, "log_last_dx": None, "log_last_dy": None, "log_last_score_band": None}, "FALLBACK", 0, 0, 0.0):
+                print("[FALLBACK] fixed_roi")
+                self._last_global_state = "FALLBACK"
 
         if not any_success and not any_hold:
+            self._last_global_state = "TRACKING"
             fallback_mode = self._get_fallback_mode()
             if fallback_mode == "fixed_roi":
                 print("[FALLBACK] fixed_roi")
@@ -497,3 +504,47 @@ class MultiAnchorAligner:
             })
 
         return moved
+    def _score_band(self, score: float) -> str:
+        if score >= 0.95:
+            return "S"
+        if score >= 0.90:
+            return "A"
+        if score >= 0.85:
+            return "B"
+        if score >= 0.80:
+            return "C"
+        return "D"
+
+    def _should_log(self, anchor: Dict[str, Any], state: str, dx: int, dy: int, score: float) -> bool:
+        prev_state = anchor.get("log_last_state")
+        prev_dx = anchor.get("log_last_dx")
+        prev_dy = anchor.get("log_last_dy")
+        prev_band = anchor.get("log_last_score_band")
+
+        band = self._score_band(float(score))
+
+        # 상태 바뀌면 출력
+        if prev_state != state:
+            anchor["log_last_state"] = state
+            anchor["log_last_dx"] = dx
+            anchor["log_last_dy"] = dy
+            anchor["log_last_score_band"] = band
+            return True
+
+        # 위치가 꽤 바뀌면 출력
+        if prev_dx is None or prev_dy is None or abs(dx - prev_dx) >= 8 or abs(dy - prev_dy) >= 8:
+            anchor["log_last_state"] = state
+            anchor["log_last_dx"] = dx
+            anchor["log_last_dy"] = dy
+            anchor["log_last_score_band"] = band
+            return True
+
+        # score band 바뀌면 출력
+        if prev_band != band:
+            anchor["log_last_state"] = state
+            anchor["log_last_dx"] = dx
+            anchor["log_last_dy"] = dy
+            anchor["log_last_score_band"] = band
+            return True
+
+        return False
