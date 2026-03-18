@@ -233,7 +233,8 @@ class Inspector:
             key = str(roi_id)
 
             # align 전용 anchor ROI는 검사하지 않음
-            if roi_id in anchor_roi_ids and f"ROI{roi_id}" not in recipe_overrides:
+            # anchor는 무조건 검사 제외
+            if roi_id in anchor_roi_ids:
                 continue
 
             pose = (align_result or {}).get("per_roi", {}).get(int(roi_id), {})
