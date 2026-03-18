@@ -1,24 +1,33 @@
 {
   "product_name": "vision_inspection_basic",
   "recipe_name": "presence_basic",
-
   "enable_modules": {
     "enhance": true,
     "measure": true,
     "locate": true,
     "identify": false,
-    "__comment":"indetify : false 는 barcode/OCR 사용안한다는 의미",
+    "__comment": "auto_inspect : true 는 자동 검사 장비를 의미",
     "pose_check": true,
-    "__comment":"pose_check: true 는 자세 가이드 사용 장비를 의미",
     "tracker": true,
-    "__comment":"tracker : true 는 유동(hand held) 검사 장비를 의미",
-    "auto_inspect": true,
-    "__comment":"auto_inspect : true 는 자동 검사 장비를 의미"
-  }, 
-
+    "auto_inspect": true
+  },
   "ui": {
     "show_pose_guide": true,
     "show_sample_hint": true,
     "show_dev_hud": true
+  },
+  "align": {
+    "enabled": true,
+    "fallback_mode": "fixed_roi",
+    "anchors": [
+      {
+        "id": "anchor_main",
+        "roi_id": 1,
+        "enabled": true,
+        "targets": "all",
+        "template_path": "data/roi/align_template.png",
+        "template_source": "file_or_runtime"
+      }
+    ]
   }
 }

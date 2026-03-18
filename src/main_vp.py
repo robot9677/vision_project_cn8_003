@@ -147,6 +147,7 @@ class VisionApp:
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
+        self.runtime_cfg["_product_profile"] = self.product_profile
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
         selected_recipe_path = recipe_candidate if os.path.exists(recipe_candidate) else DEFAULT_RECIPE_PATH
@@ -242,7 +243,13 @@ class VisionApp:
     
     def _load_alignment_template(self):
         try:
-            if os.path.exists(TEMPLATE_PATH):
+            aligner = getattr(self.inspector, "aligner", None)
+            loaded = 0
+            if aligner is not None and hasattr(aligner, "load_templates_from_disk"):
+                loaded = int(aligner.load_templates_from_disk() or 0)
+            if loaded > 0:
+                print(f"[INFO] alignment template loaded: {loaded}")
+            elif os.path.exists(TEMPLATE_PATH):
                 tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
                 trk = getattr(self.inspector, "tracker", None)
                 if tpl is not None and trk is not None and hasattr(trk, "set_template"):
@@ -295,6 +302,8 @@ class VisionApp:
             if st.edit_mode:
                 if trk is not None and hasattr(trk, "set_template"):
                     trk.set_template(None)
+                if getattr(self.inspector, "aligner", None) is not None:
+                    self.inspector.aligner.reset_templates()
             else:
                 self._load_alignment_template()
         except Exception as e:

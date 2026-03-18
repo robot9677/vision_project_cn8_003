@@ -23,6 +23,9 @@ def load_runtime_config(path):
         "tracker_thr": 0.70,
         "tracker_reacquire_margin": 220,
         "tracker_reacquire_scale": 0.5,
+        "tracker_angle_range": 4.0,
+        "tracker_angle_step": 1.0,
+        "align": {"enabled": True, "fallback_mode": "fixed_roi"},
         "autotune_target_mean": 50.0,
         "autotune_margin": 10.0,
     }

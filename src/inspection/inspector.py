@@ -12,6 +12,7 @@ from .analyzers import run_analyzer
 from .preprocess import normalize_by_roi
 from .temporal import TemporalMeanFilter
 from .roi_tracker import ROITracker
+from .aligner import MultiAnchorAligner
 # add near top of file
 from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
@@ -45,6 +46,11 @@ class Inspector:
             thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
             reacquire_margin=int(self.runtime_cfg.get("tracker_reacquire_margin", 220)),
             reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
+        )
+        self.aligner = MultiAnchorAligner(
+            runtime_cfg=self.runtime_cfg,
+            product_profile=(self.runtime_cfg.get("_product_profile") or {}),
+            project_root=os.path.abspath(os.path.join(os.path.dirname(recipe_path), "..", "..")),
         )
         self.debug_images = {}
         self.debug_tiles = {}
@@ -181,54 +187,41 @@ class Inspector:
         ref = self.roi_mgr.get(1)
         norm_gain = 1.0
         dx = dy = 0
+        dangle = 0.0
+        trk_score = 0.0
+        align_result = None
 
-        # 1) ref 기반 정규화 + ref 위치 추적(Δ 계산)
+        # 1) ref 기반 정규화 후 align 단계 수행
         if ref is not None:
             ref_id = ref["id"]
-            rx, ry, rw, rh = ref["x"], ref["y"], ref["w"], ref["h"]
-
-            # template은 "정규화 전 원본"에서 확보
             ref_crop_raw = self.roi_mgr.crop(frame_gray8, ref_id)
-            
-            if self.tracker.template is None:
-                self.tracker.set_template(ref_crop_raw)
 
-            # 정규화
             use_normalize = bool(self.runtime_cfg.get("normalize_enabled", False))
-
-            if (
-                use_normalize
-                and ref_crop_raw is not None
-                and ref_crop_raw.size > 0
-            ):
+            if use_normalize and ref_crop_raw is not None and ref_crop_raw.size > 0:
                 target_mean = float(self.runtime_cfg.get("normalize_target_mean", 50.0))
                 frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=target_mean)
             else:
                 norm_gain = 1.0
 
-            # ref만 추적해서 Δ 계산(정규화된 프레임에서)
-            use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
+        use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
+        if use_tracker and getattr(self, "aligner", None) is not None:
+            align_result = self.aligner.estimate(frame_gray8, self.roi_mgr)
+            g = align_result.get("global") or {}
+            dx = int(g.get("dx", 0))
+            dy = int(g.get("dy", 0))
+            dangle = float(g.get("dangle", 0.0))
+            trk_score = float(g.get("score", 0.0))
+            if not auto_mode:
+                anchors = align_result.get("anchors") or []
+                if anchors:
+                    dbg = " ".join(
+                        f"{a.get('id')}[ok={a.get('ok')} dx={a.get('dx')} dy={a.get('dy')} da={a.get('dangle'):.2f} sc={a.get('score'):.3f}]"
+                        for a in anchors
+                    )
+                    print(f"[DBG ALIGN] {dbg}")
+        else:
+            align_result = {"per_roi": {}, "global": {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}}
 
-            dangle = 0.0
-
-            if use_tracker:
-                na = float(ref.get("angle", 0.0))
-                nrx, nry, _, _, na, trk_score = self.tracker.track_pose(
-                    frame_gray8,
-                    rx, ry, rw, rh,
-                    angle=float(ref.get("angle", 0.0)),
-                    angle_range=float(self.runtime_cfg.get("tracker_angle_range", 4.0)),
-                    angle_step=float(self.runtime_cfg.get("tracker_angle_step", 1.0)),
-                )
-                dx, dy = int(nrx - rx), int(nry - ry)
-                dangle = float(na - float(ref.get("angle", 0.0)))
-
-                if not auto_mode:
-                    print(f"[DBG TRK] dx={dx} dy={dy} dangle={dangle:.2f}")
-            else:
-                dx, dy = 0, 0
-                dangle = 0.0
-                    
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
 
@@ -236,7 +229,12 @@ class Inspector:
             roi_id = roi.get("id")
             key = str(roi_id)
 
-            crop = self._crop_rotated(frame_gray8, roi, dx=dx, dy=dy, dangle=dangle)
+            pose = (align_result or {}).get("per_roi", {}).get(int(roi_id), {})
+            roi_dx = int(pose.get("dx", 0))
+            roi_dy = int(pose.get("dy", 0))
+            roi_dangle = float(pose.get("dangle", 0.0))
+
+            crop = self._crop_rotated(frame_gray8, roi, dx=roi_dx, dy=roi_dy, dangle=roi_dangle)
             
             if crop is None or crop.size == 0:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
@@ -334,10 +332,11 @@ class Inspector:
                 reason = "OK" if final_ok else (reason or "FAIL")
 
             metrics["norm_gain"] = float(norm_gain)
-            metrics["dx"] = dx
-            metrics["dy"] = dy
-            metrics["dangle"] = float(dangle)
-            metrics["trk_score"] = float(trk_score)
+            metrics["dx"] = roi_dx
+            metrics["dy"] = roi_dy
+            metrics["dangle"] = float(roi_dangle)
+            metrics["trk_score"] = float(pose.get("score", trk_score))
+            metrics["align_anchor_id"] = pose.get("anchor_id")
 
             # === baseline check 추가 ===
             b_ok, b_reason = self._check_baseline(roi_id, metrics)
@@ -515,7 +514,8 @@ class Inspector:
     
     def reset_tracker_template(self):
         self.tracker.template = None
-        # print("[RESET] tracker template cleared")
+        if getattr(self, "aligner", None) is not None:
+            self.aligner.reset_templates()
 
     def log_result(self, overall_ok, results):
         os.makedirs(self.logs_root, exist_ok=True)
