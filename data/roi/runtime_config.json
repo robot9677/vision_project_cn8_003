@@ -21,6 +21,6 @@
   "stabilizer": {
   "window": 3,
   "move_thresh_px": 2,
-  "alpha": 0.85
+  "alpha": 0.35
   }
 }
