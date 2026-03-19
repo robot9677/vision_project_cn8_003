@@ -343,7 +343,16 @@ class MultiAnchorAligner:
             dangle = float(na - base_a)
             score = float(score)
 
-            ok = score >= min_score
+            lock_thr = float(min_score)
+            hold_thr = float(self._get_align_cfg().get("hold_min_score", lock_thr - 0.06))
+
+            was_locked = bool(a.get("has_lock", False))
+
+            ok = False
+            if score >= lock_thr:
+                ok = True
+            elif was_locked and score >= hold_thr:
+                ok = True
 
             if ok:
                 raw_dx = int(dx)

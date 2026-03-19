@@ -239,10 +239,6 @@ class ROITracker:
                     nx2, ny2, _, _ = pos_refine
                     return nx2, ny2, w, h, float(base_angle), float(score_refine)
 
-                if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
-                    nx2, ny2, _, _ = pos_refine
-                    return nx2, ny2, w, h, float(base_angle), float(score_refine)
-
                 # refine 실패 시 wide 좌표 바로 채택하지 말고 hold
                 return x, y, w, h, float(base_angle), float(score_wide)
 
