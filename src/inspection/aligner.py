@@ -606,9 +606,12 @@ class MultiAnchorAligner:
         return False
 
     def _clamp_step(self, anchor: Dict[str, Any], dx: int, dy: int, dangle: float):
-        max_step_x = 18
-        max_step_y = 18
-        max_step_angle = 0.0
+        align_cfg = self._get_align_cfg()
+        smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
+
+        max_step_x = int(smooth_cfg.get("max_step_x", 9999))
+        max_step_y = int(smooth_cfg.get("max_step_y", 9999))
+        max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
 
         prev_dx = int(anchor.get("last_output_dx", 0))
         prev_dy = int(anchor.get("last_output_dy", 0))
