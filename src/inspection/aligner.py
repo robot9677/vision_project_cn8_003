@@ -346,17 +346,22 @@ class MultiAnchorAligner:
             ok = score >= min_score
 
             if ok:
+                raw_dx = int(dx)
+                raw_dy = int(dy)
+                raw_dangle = float(dangle)
+
+                a["fail_count"] = 0
+                a["has_lock"] = True
+
+                dx, dy, dangle = self._clamp_step(a, raw_dx, raw_dy, raw_dangle)
+                self._commit_output_pose(a, dx, dy, dangle)
+
                 a["last_pose"] = {
                     "dx": dx,
                     "dy": dy,
                     "dangle": dangle,
                     "score": score,
                 }
-                a["fail_count"] = 0
-                a["has_lock"] = True
-
-                dx, dy, dangle = self._clamp_step(a, dx, dy, dangle)
-                self._commit_output_pose(a, dx, dy, dangle)
 
                 anchor_pose = {
                     "id": a["id"],
