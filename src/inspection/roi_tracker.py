@@ -184,7 +184,13 @@ class ROITracker:
         enable_rotation=False,
         max_abs_angle=8.0,
     ):
-        
+        print(
+            f"[DBG TRK] x={x} y={y} "
+            f"local={float(maxv):.3f} "
+            f"wide={float(score_wide) if score_wide is not None else -1:.3f} "
+            f"refine={float(score_refine) if 'score_refine' in locals() and score_refine is not None else -1:.3f} "
+            f"thr={self.thr:.3f}"
+        )
         if self.template is None:
             return x, y, w, h, float(base_angle), 0.0
         
