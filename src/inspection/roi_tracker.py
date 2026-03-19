@@ -215,6 +215,7 @@ class ROITracker:
             nx = sx + int(maxloc[0])
             ny = sy + int(maxloc[1])
 
+            print(f"[DBG TRK] local score={float(maxv):.3f} thr={float(self.thr):.3f} pos=({nx},{ny})")
             if float(maxv) >= self.thr:
                 return nx, ny, w, h, float(base_angle), float(maxv)
 
@@ -241,6 +242,12 @@ class ROITracker:
                 nx2, ny2, _, _ = pos_wide
                 return nx2, ny2, w, h, float(base_angle), float(score_wide)
 
+            print(
+                f"[DBG TRK] local={float(maxv):.3f} "
+                f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
+                f"wide_thr={float(self.wide_reacquire_thr):.3f} "
+                f"return_local=({nx},{ny})"
+            )
             return nx, ny, w, h, float(base_angle), float(maxv)
 
         # 회전은 누적 angle 기준이 아니라 base_angle 기준 절대각 탐색
