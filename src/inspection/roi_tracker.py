@@ -30,7 +30,7 @@ class ROITracker:
         self.wide_reacquire_margin_x = int(self.search_margin_x * 3)
         self.wide_reacquire_margin_y = int(self.search_margin_y * 3)
         self.wide_reacquire_scale = 0.4
-        self.wide_reacquire_thr = max(0.65, self.thr - 0.1)
+        self.wide_reacquire_thr = max(0.60, self.thr - 0.1)
 
     def _prep_track_img(self, img):
         if img is None or img.size == 0:
@@ -248,7 +248,8 @@ class ROITracker:
                 f"wide_thr={float(self.wide_reacquire_thr):.3f} "
                 f"return_local=({nx},{ny})"
             )
-            return nx, ny, w, h, float(base_angle), float(maxv)
+            best_low = float(score_wide) if score_wide is not None else float(maxv)
+            return x, y, w, h, float(base_angle), best_low
 
         # 회전은 누적 angle 기준이 아니라 base_angle 기준 절대각 탐색
         best = (x, y, w, h, float(base_angle))
