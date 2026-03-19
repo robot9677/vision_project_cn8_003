@@ -239,16 +239,47 @@ class ROITracker:
                     nx2, ny2, _, _ = pos_refine
                     return nx2, ny2, w, h, float(base_angle), float(score_refine)
 
-                nx2, ny2, _, _ = pos_wide
-                return nx2, ny2, w, h, float(base_angle), float(score_wide)
+                if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
+                    nx2, ny2, _, _ = pos_refine
+                    return nx2, ny2, w, h, float(base_angle), float(score_refine)
+
+                # refine 실패 시 wide 좌표 바로 채택하지 말고 hold
+                return x, y, w, h, float(base_angle), float(score_wide)
+
+            # ---------- 2차 실패 후 full-frame reacquire ----------
+            pos_global, score_global = self._match_window(
+                frame_gray8,
+                0, 0, W - tw, H - th,
+                margin=(0, 0),
+                scale=0.35,
+            )
+
+            if pos_global is not None and score_global is not None and score_global >= 0.45:
+                gx, gy, _, _ = pos_global
+
+                pos_refine2, score_refine2 = self._match_window(
+                    frame_gray8,
+                    gx, gy, w, h,
+                    margin=(self.search_margin_x, self.search_margin_y),
+                    scale=1.0,
+                )
+
+                if pos_refine2 is not None and score_refine2 is not None and score_refine2 >= 0.55:
+                    nx3, ny3, _, _ = pos_refine2
+                    print(f"[DBG TRK] global_reacquire score={score_global:.3f} refine={score_refine2:.3f} pos=({nx3},{ny3})")
+                    return nx3, ny3, w, h, float(base_angle), float(score_refine2)
 
             print(
                 f"[DBG TRK] local={float(maxv):.3f} "
                 f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
-                f"wide_thr={float(self.wide_reacquire_thr):.3f} "
-                f"return_local=({nx},{ny})"
+                f"global={float(score_global) if score_global is not None else -1.0:.3f} "
+                f"return_hold=({x},{y})"
             )
-            best_low = float(score_wide) if score_wide is not None else float(maxv)
+            best_low = max(
+                float(maxv) if maxv is not None else 0.0,
+                float(score_wide) if score_wide is not None else 0.0,
+                float(score_global) if score_global is not None else 0.0,
+            )
             return x, y, w, h, float(base_angle), best_low
 
         # 회전은 누적 angle 기준이 아니라 base_angle 기준 절대각 탐색
