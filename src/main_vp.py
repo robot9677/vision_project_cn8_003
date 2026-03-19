@@ -191,15 +191,12 @@ class VisionApp:
         align_cfg = self.product_profile.get("align", {}) or {}
         anchors = align_cfg.get("anchors") or []
         for a in anchors:
-            if not isinstance(a, dict):
-                continue
-            if not bool(a.get("enabled", True)):
-                continue
-            roi_id = a.get("roi_id")
-            if roi_id is not None:
-                return int(roi_id)
+            if isinstance(a, dict) and bool(a.get("enabled", True)):
+                roi_id = a.get("roi_id")
+                if roi_id is not None:
+                    return int(roi_id)
         return self.roi_mgr.selected_id
-
+    
     def _update_baseline_from_ok_results(self):
         st = self.state
 
@@ -331,19 +328,16 @@ class VisionApp:
         st = self.state
         try:
             self.roi_mgr.save(ROI_PATH)
-            try:
-                anchor_roi_id = self._get_primary_anchor_roi_id()
-                ok_tpl = self.roi_mgr.save_alignment_template(
-                    frame_gray8, TEMPLATE_PATH, roi_id=anchor_roi_id
-                )
-                if ok_tpl:
-                    if getattr(self.inspector, "aligner", None) is not None:
-                        self.inspector.aligner.reset_templates()
-                    self._load_alignment_template()
-                    st.status = "Saved ROI + Template"
-                else:
-                    st.status = "Saved ROI"
-            except Exception as e:
+            anchor_roi_id = self._get_primary_anchor_roi_id()
+            ok_tpl = self.roi_mgr.save_alignment_template(
+                frame_gray8, TEMPLATE_PATH, roi_id=anchor_roi_id
+            )
+            if ok_tpl:
+                if getattr(self.inspector, "aligner", None) is not None:
+                    self.inspector.aligner.reset_templates()
+                self._load_alignment_template()
+                st.status = f"Saved ROI + Align Template (ROI{anchor_roi_id})"
+            else:
                 st.status = "Saved ROI"
         except Exception as e:
             st.status = f"Save failed: {e}"
@@ -446,6 +440,10 @@ class VisionApp:
         
         if key in (ord('l'), ord('L')):
             self._handle_baseline_key(frame_gray8)
+            return
+        
+        if (not st.edit_mode) and key in (ord('t'), ord('T')):
+            self._save_roi_and_template(frame_gray8)
             return
         
         consumed, sample_msg = handle_sample_keys(
