@@ -170,7 +170,13 @@ class VisionApp:
         )
         self.editor.on_select_changed = self.inspector.reset_tracker_template
 
-        self.stabilizer = Stabilizer(window=5, move_thresh_px=3, alpha=0.7)
+        stab_cfg = self.runtime_cfg.get("stabilizer", {})
+
+        self.stabilizer = Stabilizer(
+            window=int(stab_cfg.get("window", 5)),
+            move_thresh_px=float(stab_cfg.get("move_thresh_px", 3)),
+            alpha=float(stab_cfg.get("alpha", 0.7)),
+        )
 
         self.state = AppState(last_buttons=[])
         self.state.auto_inspect = bool(self.runtime_cfg.get("enable_auto_inspect", True))

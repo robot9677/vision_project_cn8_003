@@ -18,10 +18,9 @@
   "autotune_margin": 10.0,
   "tracker_angle_range": 4.0,
   "tracker_angle_step": 1.0,
-  "align": {
-    "enabled": true,
-    "min_score": 0.73,
-    "grace_frames": 15,
-    "fallback_mode": "hold"
+  "stabilizer": {
+  "window": 3,
+  "move_thresh_px": 2,
+  "alpha": 0.85
   }
 }
