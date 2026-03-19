@@ -30,7 +30,7 @@ class ROITracker:
         self.wide_reacquire_margin_x = int(self.search_margin_x * 3)
         self.wide_reacquire_margin_y = int(self.search_margin_y * 3)
         self.wide_reacquire_scale = 0.4
-        self.wide_reacquire_thr = max(0.55, self.thr - 0.1)
+        self.wide_reacquire_thr = max(0.50, self.thr - 0.1)
 
     def _prep_track_img(self, img):
         if img is None or img.size == 0:
