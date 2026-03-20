@@ -356,16 +356,45 @@ class ROITracker:
                 scale=1.0,
             )
 
-            if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
-                nx, ny, _, _ = pos_refine
+            # 회전 탐색 결과가 충분히 좋으면 먼저 채택
+            if best_score >= self.thr:
+                bx, by, _, _, ba = best
+                return bx, by, w, h, float(ba), float(best_score)
 
-                print(f"[TRK] wide_reacquire score={score_wide:.3f} refine={score_refine:.3f}")
-                return nx, ny, w, h, base_angle, float(score_refine)
+            # 회전 탐색은 했지만 임계 미만이면, best 위치 기준으로 wide reacquire 시도
+            bx, by, _, _, ba = best
 
-            # refine 실패해도 일단 wide 위치 사용
-            nx, ny, _, _ = pos_wide
-            print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f}")
-            return nx, ny, w, h, base_angle, float(score_wide)
+            pos_wide, score_wide = self._match_window(
+                frame_gray8,
+                bx, by, w, h,
+                margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
+                scale=self.wide_reacquire_scale,
+            )
+
+            if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
+                rx, ry, _, _ = pos_wide
+                pos_refine, score_refine = self._match_window(
+                    frame_gray8,
+                    rx, ry, w, h,
+                    margin=(self.search_margin_x, self.search_margin_y),
+                    scale=1.0,
+                )
+
+                if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
+                    nx, ny, _, _ = pos_refine
+                    print(f"[TRK] wide_reacquire score={score_wide:.3f} refine={score_refine:.3f} angle={ba:.2f}")
+                    return nx, ny, w, h, float(ba), float(score_refine)
+
+                print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f} angle={ba:.2f}")
+                return bx, by, w, h, float(ba), float(score_wide)
+
+            print(
+                "[DBG TRK] "
+                f"local={float(best_score):.3f} "
+                f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
+                f"out=({int(bx)}, {int(by)}) angle={float(ba):.2f}"
+            )
+            return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
         
 
         print(
