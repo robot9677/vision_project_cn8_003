@@ -306,9 +306,6 @@ class ROITracker:
                 return x, y, w, h, float(base_angle), float(score_wide)
 
             # ---------- 2차 실패 후 full-frame reacquire ----------
-            pos_global, score_global = self._match_window(
-            # ---------- 2차 실패 후 full-frame reacquire ----------
-                        # ---------- 2차 실패 후 full-frame reacquire ----------
             score_global = None
 
             self._global_reacquire_tick += 1
@@ -358,19 +355,7 @@ class ROITracker:
         a0 = max(-float(max_abs_angle), float(base_angle) - float(angle_range))
         a1 = min(+float(max_abs_angle), float(base_angle) + float(angle_range))
         angles = np.arange(a0, a1 + 0.001, angle_step, dtype=np.float32)
-
-        if maxv < self.thr:
-            if search_g_cached is None:
-                search_g_cached = self._grad_img(search)
-
-            tmpl_g = self._grad_img(tmpl)
-
-            res_g = cv2.matchTemplate(search_g_cached, tmpl_g, cv2.TM_CCOEFF_NORMED)
-            _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
-
-            if score_g > maxv:
-                maxv = score_g
-                maxloc = loc_g
+        search_g_cached = None
 
         for abs_angle in angles:
             tmpl = self._rotate_keep_size(self.template, float(abs_angle - float(base_angle)))
@@ -378,17 +363,12 @@ class ROITracker:
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
             if maxv < self.thr:
-                def _grad(img):
-                    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
-                    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
-                    mag = cv2.magnitude(gx, gy)
-                    mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-                    return mag.astype("uint8")
+                if search_g_cached is None:
+                    search_g_cached = self._grad_img(search)
 
-                search_g = _grad(search)
-                tmpl_g = _grad(tmpl)
+                tmpl_g = self._grad_img(tmpl)
 
-                res_g = cv2.matchTemplate(search_g, tmpl_g, cv2.TM_CCOEFF_NORMED)
+                res_g = cv2.matchTemplate(search_g_cached, tmpl_g, cv2.TM_CCOEFF_NORMED)
                 _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
 
                 if score_g > maxv:
