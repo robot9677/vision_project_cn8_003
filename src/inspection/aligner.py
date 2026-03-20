@@ -385,7 +385,7 @@ class MultiAnchorAligner:
                     jump_a > max_step_angle * 2
                 )
 
-                if suspicious_jump and score < jump_guard_score:
+                if suspicious_jump:
                     ok = False
                 else:
                     a["fail_count"] = 0
