@@ -351,13 +351,24 @@ class MultiAnchorAligner:
 
             ok = False
             anchor_pose = None
-            
+
             if score >= lock_thr:
                 ok = True
             elif was_locked and score >= hold_thr:
                 ok = True
 
             if ok:
+                # --- 강제 점프 차단 (여기 추가) ---
+                prev_dx = int(a.get("last_output_dx", 0))
+                prev_dy = int(a.get("last_output_dy", 0))
+
+                jump_x = abs(dx - prev_dx)
+                jump_y = abs(dy - prev_dy)
+
+                if jump_x > 80 or jump_y > 80:
+                    ok = False
+                    continue
+
                 raw_dx = int(dx)
                 raw_dy = int(dy)
                 raw_dangle = float(dangle)
