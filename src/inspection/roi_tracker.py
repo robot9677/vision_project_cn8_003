@@ -356,14 +356,13 @@ class ROITracker:
                 scale=1.0,
             )
 
-            # 회전 탐색 결과가 충분히 좋으면 먼저 채택
+            # 회전 탐색 결과가 충분하면 바로 채택
             if best_score >= self.thr:
                 bx, by, _, _, ba = best
                 return bx, by, w, h, float(ba), float(best_score)
 
-            # 회전 탐색은 했지만 임계 미만이면, best 위치 기준으로 wide reacquire 시도
+            # best 기준으로만 wide reacquire 1회
             bx, by, _, _, ba = best
-
             pos_wide, score_wide = self._match_window(
                 frame_gray8,
                 bx, by, w, h,
@@ -395,16 +394,3 @@ class ROITracker:
                 f"out=({int(bx)}, {int(by)}) angle={float(ba):.2f}"
             )
             return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
-        
-
-        print(
-            "[DBG TRK] "
-            f"stage={dbg_stage} "
-            f"local={float(maxv) if maxv is not None else -1.0:.3f} "
-            f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
-            f"refine={float(score_refine) if score_refine is not None else -1.0:.3f} "
-            f"thr={float(self.thr):.3f} "
-            f"out=({int(x)}, {int(y)})"
-        )
-        return x, y, w, h, float(base_angle), 0.0
-        
