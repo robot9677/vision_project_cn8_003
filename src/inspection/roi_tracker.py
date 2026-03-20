@@ -357,12 +357,11 @@ class ROITracker:
             )
 
             # 회전 탐색 결과가 충분하면 바로 채택
+            bx, by, _, _, ba = best
             if best_score >= self.thr:
-                bx, by, _, _, ba = best
                 return bx, by, w, h, float(ba), float(best_score)
 
             # best 기준으로만 wide reacquire 1회
-            bx, by, _, _, ba = best
             pos_wide, score_wide = self._match_window(
                 frame_gray8,
                 bx, by, w, h,
