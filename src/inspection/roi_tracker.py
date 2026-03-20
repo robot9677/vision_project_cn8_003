@@ -313,6 +313,24 @@ class ROITracker:
             res = cv2.matchTemplate(search, tmpl, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
+            if maxv < self.thr:
+                def _grad(img):
+                    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
+                    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
+                    mag = cv2.magnitude(gx, gy)
+                    mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+                    return mag.astype("uint8")
+
+                search_g = _grad(search)
+                tmpl_g = _grad(tmpl)
+
+                res_g = cv2.matchTemplate(search_g, tmpl_g, cv2.TM_CCOEFF_NORMED)
+                _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
+
+                if score_g > maxv:
+                    maxv = score_g
+                    maxloc = loc_g
+
             if maxv > best_score:
                 nx = sx + int(maxloc[0])
                 ny = sy + int(maxloc[1])
