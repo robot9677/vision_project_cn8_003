@@ -213,10 +213,9 @@ class ROITracker:
             res = cv2.matchTemplate(search, self.template, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
-            tracker_cfg = self.runtime_cfg.get("tracker", {})
-            use_fb = bool(tracker_cfg.get("use_gradient_fallback", False))
-            fb_thr = float(tracker_cfg.get("fallback_score_thr", 0.62))
-
+            tracker_cfg = {}
+            use_fb = True
+            fb_thr = 0.62
             if use_fb and maxv < self.thr:
                 def _grad(img):
                     gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
