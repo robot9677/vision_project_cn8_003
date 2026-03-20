@@ -337,42 +337,23 @@ class ROITracker:
                 best = (nx, ny, w, h, float(abs_angle))
                 best_score = float(maxv)
 
-        # ---------- 1차 실패 후 wide reacquire ----------
+        # ---------- rotation finalize (정상 구조) ----------
+        bx, by, _, _, ba = best
+
+        # 1) 회전 탐색 결과가 충분하면 바로 채택
+        if best_score >= self.thr:
+            return bx, by, w, h, float(ba), float(best_score)
+
+        # 2) best 기준으로만 wide reacquire 1회
         pos_wide, score_wide = self._match_window(
             frame_gray8,
-            x, y, w, h,
+            bx, by, w, h,
             margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
             scale=self.wide_reacquire_scale,
         )
 
         if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
-            rx, ry, _, _ = pos_wide
+            return bx, by, w, h, float(ba), float(score_wide)
 
-            # refine (정밀 재확인)
-            pos_refine, score_refine = self._match_window(
-                frame_gray8,
-                rx, ry, w, h,
-                margin=(self.search_margin_x, self.search_margin_y),
-                scale=1.0,
-            )
-
-            # ---------- rotation finalize (정상 구조) ----------
-            bx, by, _, _, ba = best
-
-            # 1) 회전 탐색 결과가 충분하면 바로 채택
-            if best_score >= self.thr:
-                return bx, by, w, h, float(ba), float(best_score)
-
-            # 2) best 기준으로만 wide reacquire 1회
-            pos_wide, score_wide = self._match_window(
-                frame_gray8,
-                bx, by, w, h,
-                margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
-                scale=self.wide_reacquire_scale,
-            )
-
-            if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
-                return bx, by, w, h, float(ba), float(score_wide)
-
-            # 3) 끝까지 실패해도 best 반환
-            return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
+        # 3) 끝까지 실패해도 best 반환
+        return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
