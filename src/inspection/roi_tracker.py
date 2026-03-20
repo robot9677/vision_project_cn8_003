@@ -239,10 +239,11 @@ class ROITracker:
             frame_gray8 = cv2.cvtColor(frame_gray8, cv2.COLOR_BGR2GRAY)
 
         H, W = frame_gray8.shape[:2]
-        sx = max(0, int(x - self.search_margin_x))
-        sy = max(0, int(y - self.search_margin_y))
-        ex = min(W, int(x + w + self.search_margin_x))
-        ey = min(H, int(y + h + self.search_margin_y))
+        sx = max(0, int(x + vx - self.search_margin_x))
+        sy = max(0, int(y + vy - self.search_margin_y))
+        ex = min(W, int(x + vx + w + self.search_margin_x))
+        ey = min(H, int(y + vy + h + self.search_margin_y))
+
         search = frame_gray8[sy:ey, sx:ex]
 
         if search.size == 0:
@@ -278,7 +279,10 @@ class ROITracker:
             ny = sy + int(maxloc[1])
 
             self._dbg_print(f"[DBG TRK] local score={float(maxv):.3f} "f"thr={float(self.thr):.3f} pos=({nx},{ny})")
+
             if float(maxv) >= self.thr:
+                self._prev_x = nx
+                self._prev_y = ny
                 return nx, ny, w, h, float(base_angle), float(maxv)
 
             pos_wide, score_wide = self._match_window(
