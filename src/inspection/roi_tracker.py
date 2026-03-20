@@ -34,22 +34,59 @@ class ROITracker:
         self.wide_reacquire_scale = 0.4
         self.wide_reacquire_thr = max(0.50, self.thr - 0.1)
 
-    def _prep_track_img(self, img):
+        tracker_cfg = self.runtime_cfg if isinstance(self.runtime_cfg, dict) else {}
+
+        # CLAHE 객체 재생성 방지
+        self._clahe = cv2.createCLAHE(
+            clipLimit=float(tracker_cfg.get("clahe_clip_limit", 2.0)),
+            tileGridSize=tuple(tracker_cfg.get("clahe_tile_grid", (8, 8))),
+        )
+
+        # template gradient 캐시
+        self.template_grad = None
+
+        # full-frame reacquire rate limit
+        self.global_reacquire_interval = max(1, int(tracker_cfg.get("global_reacquire_interval", 6)))
+        self._global_reacquire_tick = 0
+
+        # debug print rate limit
+        self.debug_print_interval = max(0.0, float(tracker_cfg.get("debug_print_interval", 0.25)))
+
+    def _prep_track_img(self, img, apply_clahe=True):
         if img is None or img.size == 0:
             return img
+
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        img = clahe.apply(img)
+        if apply_clahe and self._clahe is not None:
+            img = self._clahe.apply(img)
+
         return img
+
+    def _grad_img(self, img):
+        if img is None or img.size == 0:
+            return img
+        gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
+        mag = cv2.magnitude(gx, gy)
+        mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+        return mag.astype(np.uint8)
+
+    def _dbg_print(self, msg: str):
+        now = time.time()
+        if (now - float(self._dbg_ts)) >= self.debug_print_interval:
+            print(msg)
+            self._dbg_ts = now
             
     def set_template(self, tmpl_gray8: np.ndarray):
         if tmpl_gray8 is None or tmpl_gray8.size == 0:
             self.template = None
+            self.template_grad = None
         else:
-            self.template = self._prep_track_img(tmpl_gray8.copy())
-            
+            self.template = self._prep_track_img(tmpl_gray8.copy(), apply_clahe=True)
+            self.template_grad = self._grad_img(self.template)
+        
     def update_template(self, new_crop: np.ndarray, score: float):
         if not self.enable_template_update:
             return
@@ -195,7 +232,11 @@ class ROITracker:
         if self.template is None:
             return x, y, w, h, float(base_angle), 0.0
         
-        frame_gray8 = self._prep_track_img(frame_gray8)
+        if frame_gray8 is None or frame_gray8.size == 0:
+            return x, y, w, h, float(base_angle), 0.0
+
+        if len(frame_gray8.shape) == 3:
+            frame_gray8 = cv2.cvtColor(frame_gray8, cv2.COLOR_BGR2GRAY)
 
         H, W = frame_gray8.shape[:2]
         sx = max(0, int(x - self.search_margin_x))
@@ -206,6 +247,8 @@ class ROITracker:
 
         if search.size == 0:
             return x, y, w, h, float(base_angle), 0.0
+
+        search = self._prep_track_img(search, apply_clahe=True)
 
         th, tw = self.template.shape[:2]
         if search.shape[0] < th or search.shape[1] < tw:
@@ -218,16 +261,10 @@ class ROITracker:
             tracker_cfg = self.runtime_cfg if isinstance(self.runtime_cfg, dict) else {}
             use_fb = bool(tracker_cfg.get("use_gradient_fallback", True))
             fb_thr = float(tracker_cfg.get("fallback_score_thr", 0.62))
-            if use_fb and maxv < self.thr:
-                def _grad(img):
-                    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
-                    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
-                    mag = cv2.magnitude(gx, gy)
-                    mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-                    return mag.astype("uint8")
 
-                search_g = _grad(search)
-                templ_g = _grad(self.template)
+            if use_fb and maxv < self.thr:
+                search_g = self._grad_img(search)
+                templ_g = self.template_grad if self.template_grad is not None else self._grad_img(self.template)
 
                 res_g = cv2.matchTemplate(search_g, templ_g, cv2.TM_CCOEFF_NORMED)
                 _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
@@ -240,7 +277,8 @@ class ROITracker:
             nx = sx + int(maxloc[0])
             ny = sy + int(maxloc[1])
 
-            print(f"[DBG TRK] local score={float(maxv):.3f} thr={float(self.thr):.3f} pos=({nx},{ny})")
+            self._dbg_print(f"[DBG TRK] local score={float(maxv):.3f} "f"thr={float(self.thr):.3f} pos=({nx},{ny})"
+)
             if float(maxv) >= self.thr:
                 return nx, ny, w, h, float(base_angle), float(maxv)
 
@@ -269,28 +307,38 @@ class ROITracker:
 
             # ---------- 2차 실패 후 full-frame reacquire ----------
             pos_global, score_global = self._match_window(
-                frame_gray8,
-                0, 0, W, H,
-                margin=(0, 0),
-                scale=0.35,
-            )
+            # ---------- 2차 실패 후 full-frame reacquire ----------
+                        # ---------- 2차 실패 후 full-frame reacquire ----------
+            score_global = None
 
-            if pos_global is not None and score_global is not None and score_global >= 0.45:
-                gx, gy, _, _ = pos_global
-
-                pos_refine2, score_refine2 = self._match_window(
+            self._global_reacquire_tick += 1
+            if (self._global_reacquire_tick % self.global_reacquire_interval) == 0:
+                pos_global, score_global = self._match_window(
                     frame_gray8,
-                    gx, gy, w, h,
-                    margin=(self.search_margin_x, self.search_margin_y),
-                    scale=1.0,
+                    0, 0, W, H,
+                    margin=(0, 0),
+                    scale=0.35,
                 )
 
-                if pos_refine2 is not None and score_refine2 is not None and score_refine2 >= 0.55:
-                    nx3, ny3, _, _ = pos_refine2
-                    print(f"[DBG TRK] global_reacquire score={score_global:.3f} refine={score_refine2:.3f} pos=({nx3},{ny3})")
-                    return nx3, ny3, w, h, float(base_angle), float(score_refine2)
+                if pos_global is not None and score_global is not None and score_global >= 0.45:
+                    gx, gy, _, _ = pos_global
 
-            print(
+                    pos_refine2, score_refine2 = self._match_window(
+                        frame_gray8,
+                        gx, gy, w, h,
+                        margin=(self.search_margin_x, self.search_margin_y),
+                        scale=1.0,
+                    )
+
+                    if pos_refine2 is not None and score_refine2 is not None and score_refine2 >= 0.55:
+                        nx3, ny3, _, _ = pos_refine2
+                        self._dbg_print(
+                            f"[DBG TRK] global_reacquire score={score_global:.3f} "
+                            f"refine={score_refine2:.3f} pos=({nx3},{ny3})"
+                        )
+                        return nx3, ny3, w, h, float(base_angle), float(score_refine2)
+
+            self._dbg_print(
                 f"[DBG TRK] local={float(maxv):.3f} "
                 f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
                 f"global={float(score_global) if score_global is not None else -1.0:.3f} "
@@ -310,6 +358,19 @@ class ROITracker:
         a0 = max(-float(max_abs_angle), float(base_angle) - float(angle_range))
         a1 = min(+float(max_abs_angle), float(base_angle) + float(angle_range))
         angles = np.arange(a0, a1 + 0.001, angle_step, dtype=np.float32)
+
+        if maxv < self.thr:
+            if search_g_cached is None:
+                search_g_cached = self._grad_img(search)
+
+            tmpl_g = self._grad_img(tmpl)
+
+            res_g = cv2.matchTemplate(search_g_cached, tmpl_g, cv2.TM_CCOEFF_NORMED)
+            _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
+
+            if score_g > maxv:
+                maxv = score_g
+                maxloc = loc_g
 
         for abs_angle in angles:
             tmpl = self._rotate_keep_size(self.template, float(abs_angle - float(base_angle)))
