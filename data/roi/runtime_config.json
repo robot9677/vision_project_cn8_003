@@ -22,5 +22,9 @@
   "window": 3,
   "move_thresh_px": 2,
   "alpha": 0.35
+  },
+  "tracker": {
+  "use_gradient_fallback": true,
+  "fallback_score_thr": 0.62
   }
 }

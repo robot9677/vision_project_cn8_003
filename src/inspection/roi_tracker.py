@@ -212,6 +212,29 @@ class ROITracker:
         if not enable_rotation:
             res = cv2.matchTemplate(search, self.template, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
+
+            tracker_cfg = self.runtime_cfg.get("tracker", {})
+            use_fb = bool(tracker_cfg.get("use_gradient_fallback", False))
+            fb_thr = float(tracker_cfg.get("fallback_score_thr", 0.62))
+
+            if use_fb and maxv < self.thr:
+                def _grad(img):
+                    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
+                    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
+                    mag = cv2.magnitude(gx, gy)
+                    mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+                    return mag.astype("uint8")
+
+                search_g = _grad(frame_gray8)
+                templ_g = _grad(self.template)
+
+                res_g = cv2.matchTemplate(search_g, templ_g, cv2.TM_CCOEFF_NORMED)
+                _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
+
+                if score_g >= fb_thr:
+                    nxg, nyg = loc_g
+                    return nxg, nyg, w, h, float(base_angle), float(score_g)
+                
             nx = sx + int(maxloc[0])
             ny = sy + int(maxloc[1])
 
