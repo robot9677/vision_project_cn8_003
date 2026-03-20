@@ -277,8 +277,7 @@ class ROITracker:
             nx = sx + int(maxloc[0])
             ny = sy + int(maxloc[1])
 
-            self._dbg_print(f"[DBG TRK] local score={float(maxv):.3f} "f"thr={float(self.thr):.3f} pos=({nx},{ny})"
-)
+            self._dbg_print(f"[DBG TRK] local score={float(maxv):.3f} "f"thr={float(self.thr):.3f} pos=({nx},{ny})")
             if float(maxv) >= self.thr:
                 return nx, ny, w, h, float(base_angle), float(maxv)
 
