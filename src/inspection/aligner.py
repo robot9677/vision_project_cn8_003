@@ -360,30 +360,57 @@ class MultiAnchorAligner:
                 raw_dy = int(dy)
                 raw_dangle = float(dangle)
 
-                a["fail_count"] = 0
-                a["has_lock"] = True
+                prev_dx = int(a.get("last_output_dx", 0))
+                prev_dy = int(a.get("last_output_dy", 0))
+                prev_da = float(a.get("last_output_dangle", 0.0))
 
-                dx, dy, dangle = self._clamp_step(a, raw_dx, raw_dy, raw_dangle)
-                self._commit_output_pose(a, dx, dy, dangle)
+                jump_x = abs(raw_dx - prev_dx)
+                jump_y = abs(raw_dy - prev_dy)
+                jump_a = abs(raw_dangle - prev_da)
 
-                a["last_pose"] = {
-                    "dx": dx,
-                    "dy": dy,
-                    "dangle": dangle,
-                    "score": score,
-                }
+                align_cfg = self._get_align_cfg()
+                smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
 
-                anchor_pose = {
-                    "id": a["id"],
-                    "roi_id": a["roi_id"],
-                    "ok": True,
-                    "dx": dx,
-                    "dy": dy,
-                    "dangle": dangle,
-                    "score": score,
-                    "reason": "OK",
-                }
-                result["anchors"].append(anchor_pose)
+                max_step_x = int(smooth_cfg.get("max_step_x", 9999))
+                max_step_y = int(smooth_cfg.get("max_step_y", 9999))
+                max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
+
+                jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
+
+                suspicious_jump = (
+                    jump_x > max_step_x * 2 or
+                    jump_y > max_step_y * 2 or
+                    jump_a > max_step_angle * 2
+                )
+
+                if suspicious_jump and score < jump_guard_score:
+                    ok = False
+                else:
+                    a["fail_count"] = 0
+                    a["has_lock"] = True
+
+                    dx, dy, dangle = self._clamp_step(a, raw_dx, raw_dy, raw_dangle)
+                    self._commit_output_pose(a, dx, dy, dangle)
+
+                    a["last_pose"] = {
+                        "dx": dx,
+                        "dy": dy,
+                        "dangle": dangle,
+                        "score": score,
+                    }
+
+                    anchor_pose = {
+                        "id": a["id"],
+                        "roi_id": a["roi_id"],
+                        "ok": True,
+                        "dx": dx,
+                        "dy": dy,
+                        "dangle": dangle,
+                        "score": score,
+                        "reason": "OK",
+                    }
+                    result["anchors"].append(anchor_pose)
+                    
                 self._last_global_state = "TRACKING"
                 if self._should_log_anchor(a, "OK", dx, dy, score):
                     print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
