@@ -356,7 +356,7 @@ class ROITracker:
                 scale=1.0,
             )
 
-            # ---------- rotation path finalize ----------
+            # ---------- rotation finalize (정상 구조) ----------
             bx, by, _, _, ba = best
 
             # 1) 회전 탐색 결과가 충분하면 바로 채택
@@ -372,28 +372,7 @@ class ROITracker:
             )
 
             if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
-                rx, ry, _, _ = pos_wide
-
-                pos_refine, score_refine = self._match_window(
-                    frame_gray8,
-                    rx, ry, w, h,
-                    margin=(self.search_margin_x, self.search_margin_y),
-                    scale=1.0,
-                )
-
-                if pos_refine is not None and score_refine is not None and score_refine >= self.thr:
-                    nx, ny, _, _ = pos_refine
-                    print(f"[TRK] wide_reacquire score={score_wide:.3f} refine={score_refine:.3f} angle={ba:.2f}")
-                    return nx, ny, w, h, float(ba), float(score_refine)
-
-                print(f"[TRK] wide_reacquire (no refine) score={score_wide:.3f} angle={ba:.2f}")
                 return bx, by, w, h, float(ba), float(score_wide)
 
-            # 3) 끝까지 실패해도 best를 반환
-            print(
-                "[DBG TRK] "
-                f"local={float(best_score):.3f} "
-                f"wide={float(score_wide) if score_wide is not None else -1.0:.3f} "
-                f"out=({int(bx)}, {int(by)}) angle={float(ba):.2f}"
-            )
+            # 3) 끝까지 실패해도 best 반환
             return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
