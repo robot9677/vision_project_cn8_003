@@ -228,14 +228,16 @@ class Inspector:
         recipe_overrides = self.recipe.get("overrides", {})
         anchor_roi_ids = {int(a.get("roi_id", 0)) for a in getattr(self.aligner, "_anchors", [])}
 
+        profile_rois = (self.runtime_cfg.get("_product_profile", {}) or {}).get("rois") or []
+        roi_types = {
+            int(r.get("id")): str(r.get("type", "")).strip().lower()
+            for r in profile_rois
+            if r.get("id") is not None
+        }
+
         for roi in getattr(self.roi_mgr, "rois", []):
             roi_id = int(roi.get("id"))
             key = str(roi_id)
-
-            roi_types = {
-                int(r.get("id")): str(r.get("type", "")).lower()
-                for r in (self.runtime_cfg.get("_product_profile", {}).get("rois") or [])
-            }
 
             roi_type = roi_types.get(roi_id, "")
 

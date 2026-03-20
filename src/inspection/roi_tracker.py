@@ -13,6 +13,7 @@ class ROITracker:
         thr=0.6,
         reacquire_margin=None,
         reacquire_scale=0.5,
+        runtime_cfg=None,
     ):
         self.search_margin = int(search_margin)
         self.search_margin_x = int(search_margin_x) if search_margin_x is not None else int(search_margin)
@@ -22,6 +23,7 @@ class ROITracker:
         self.reacquire_scale = float(reacquire_scale)
         self.method = method
         self.thr = float(thr)
+        self.runtime_cfg = runtime_cfg or {}
         self.template = None
         self._dbg_ts = 0.0
         self.template_alpha = 0.03
@@ -213,9 +215,9 @@ class ROITracker:
             res = cv2.matchTemplate(search, self.template, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
-            tracker_cfg = {}
-            use_fb = True
-            fb_thr = 0.62
+            tracker_cfg = self.runtime_cfg if isinstance(self.runtime_cfg, dict) else {}
+            use_fb = bool(tracker_cfg.get("use_gradient_fallback", True))
+            fb_thr = float(tracker_cfg.get("fallback_score_thr", 0.62))
             if use_fb and maxv < self.thr:
                 def _grad(img):
                     gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
@@ -224,14 +226,15 @@ class ROITracker:
                     mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
                     return mag.astype("uint8")
 
-                search_g = _grad(frame_gray8)
+                search_g = _grad(search)
                 templ_g = _grad(self.template)
 
                 res_g = cv2.matchTemplate(search_g, templ_g, cv2.TM_CCOEFF_NORMED)
                 _, score_g, _, loc_g = cv2.minMaxLoc(res_g)
 
                 if score_g >= fb_thr:
-                    nxg, nyg = loc_g
+                    nxg = sx + int(loc_g[0])
+                    nyg = sy + int(loc_g[1])
                     return nxg, nyg, w, h, float(base_angle), float(score_g)
                 
             nx = sx + int(maxloc[0])
@@ -267,7 +270,7 @@ class ROITracker:
             # ---------- 2차 실패 후 full-frame reacquire ----------
             pos_global, score_global = self._match_window(
                 frame_gray8,
-                0, 0, W - tw, H - th,
+                0, 0, W, H,
                 margin=(0, 0),
                 scale=0.35,
             )

@@ -75,6 +75,7 @@ class MultiAnchorAligner:
                 thr=float(raw.get("thr", default_thr)),
                 reacquire_margin=int(raw.get("reacquire_margin", default_reacquire_margin)),
                 reacquire_scale=float(raw.get("reacquire_scale", default_reacquire_scale)),
+                runtime_cfg=(self.runtime_cfg.get("tracker", {}) if isinstance(self.runtime_cfg, dict) else {}),
             )
 
             tracker.wide_reacquire_margin_x = int(raw.get("wide_reacquire_margin_x", tracker.search_margin_x * 3))
