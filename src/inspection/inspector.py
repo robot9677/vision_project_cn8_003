@@ -232,9 +232,14 @@ class Inspector:
             roi_id = int(roi.get("id"))
             key = str(roi_id)
 
-            # align 전용 anchor ROI는 검사하지 않음
-            # anchor는 무조건 검사 제외
-            if roi_id in anchor_roi_ids:
+            roi_types = {
+                int(r.get("id")): str(r.get("type", "")).lower()
+                for r in (self.runtime_cfg.get("_product_profile", {}).get("rois") or [])
+            }
+
+            roi_type = roi_types.get(roi_id, "")
+
+            if roi_type != "inspect":
                 continue
 
             pose = (align_result or {}).get("per_roi", {}).get(int(roi_id), {})

@@ -43,5 +43,17 @@
         "template_path": "data/roi/align_template.png"
       }
     ]
+  },
+  "rois": [
+  {
+    "id": 1,
+    "name": "inspect_main",
+    "type": "inspect"
+  },
+  {
+    "id": 2,
+    "name": "anchor_center",
+    "type": "anchor"
   }
+]
 }
