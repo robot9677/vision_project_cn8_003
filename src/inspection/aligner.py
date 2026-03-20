@@ -387,6 +387,8 @@ class MultiAnchorAligner:
 
                 if suspicious_jump:
                     ok = False
+                    a["fail_count"] = int(a.get("fail_count", 0)) + 1
+                    continue
                 else:
                     a["fail_count"] = 0
                     a["has_lock"] = True
