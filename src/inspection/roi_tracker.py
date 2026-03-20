@@ -239,6 +239,8 @@ class ROITracker:
             frame_gray8 = cv2.cvtColor(frame_gray8, cv2.COLOR_BGR2GRAY)
 
         H, W = frame_gray8.shape[:2]
+        vx = x - getattr(self, "_prev_x", x)
+        vy = y - getattr(self, "_prev_y", y)
         sx = max(0, int(x + vx - self.search_margin_x))
         sy = max(0, int(y + vy - self.search_margin_y))
         ex = min(W, int(x + vx + w + self.search_margin_x))
