@@ -350,6 +350,8 @@ class MultiAnchorAligner:
             was_locked = bool(a.get("has_lock", False))
 
             ok = False
+            anchor_pose = None
+            
             if score >= lock_thr:
                 ok = True
             elif was_locked and score >= hold_thr:
@@ -409,8 +411,10 @@ class MultiAnchorAligner:
                         "score": score,
                         "reason": "OK",
                     }
-                    result["anchors"].append(anchor_pose)
-                    
+
+                    if anchor_pose is not None:
+                        result["anchors"].append(anchor_pose)
+
                 self._last_global_state = "TRACKING"
                 if self._should_log_anchor(a, "OK", dx, dy, score):
                     print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")

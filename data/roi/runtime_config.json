@@ -25,6 +25,7 @@
   },
   "tracker": {
   "use_gradient_fallback": true,
-  "fallback_score_thr": 0.62
+  "fallback_score_thr": 0.62,
+  "global_reacquire_interval": 2
   }
 }
