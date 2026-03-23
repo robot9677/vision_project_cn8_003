@@ -385,10 +385,8 @@ class MultiAnchorAligner:
                     jump_a > max_step_angle * 2
                 )
 
-                if suspicious_jump:
+                if suspicious_jump :
                     ok = False
-                    a["fail_count"] = int(a.get("fail_count", 0)) + 1
-                    continue
                 else:
                     a["fail_count"] = 0
                     a["has_lock"] = True
@@ -414,31 +412,31 @@ class MultiAnchorAligner:
                         "reason": "OK",
                     }
 
-                    if anchor_pose is not None:
-                        result["anchors"].append(anchor_pose)
+                    result["anchors"].append(anchor_pose)
 
-                self._last_global_state = "TRACKING"
-                if self._should_log_anchor(a, "OK", dx, dy, score):
-                    print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
+                    self._last_global_state = "TRACKING"
+                    if self._should_log_anchor(a, "OK", dx, dy, score):
+                        print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
 
-                any_success = True
-                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
-                for rid in targets:
-                    prev = result["per_roi"].get(int(rid))
-                    if prev is None or score > float(prev.get("score", -1.0)):
-                        result["per_roi"][int(rid)] = {
-                            "dx": dx,
-                            "dy": dy,
-                            "dangle": dangle,
-                            "score": score,
-                            "anchor_id": a["id"],
-                            "fallback": False,
-                            "reason": "OK",
-                        }
+                    any_success = True
+                    targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+                    for rid in targets:
+                        prev = result["per_roi"].get(int(rid))
+                        if prev is None or score > float(prev.get("score", -1.0)):
+                            result["per_roi"][int(rid)] = {
+                                "dx": dx,
+                                "dy": dy,
+                                "dangle": dangle,
+                                "score": score,
+                                "anchor_id": a["id"],
+                                "fallback": False,
+                                "reason": "OK",
+                            }
 
-                if best_global is None or score > float(best_global.get("score", -1.0)):
-                    best_global = anchor_pose
-                continue
+                    if best_global is None or score > float(best_global.get("score", -1.0)):
+                        best_global = anchor_pose
+
+                    continue
 
             # low score
             a["fail_count"] = int(a.get("fail_count", 0)) + 1
