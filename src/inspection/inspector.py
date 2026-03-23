@@ -7,7 +7,7 @@ from typing import Any, Dict, Tuple
 import cv2
 import numpy as np
 
-from .recipe import load_recipe, get_roi_cfg, get_inspection_cfgs, save_recipe
+from .recipe import load_recipe, get_roi_cfg, get_inspection_cfgs, has_explicit_inspections, has_inspection_for_roi, save_recipe
 from .analyzers import run_analyzer
 from .preprocess import normalize_by_roi
 from .temporal import TemporalMeanFilter
@@ -225,7 +225,6 @@ class Inspector:
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
 
-        recipe_overrides = self.recipe.get("overrides", {})
         anchor_roi_ids = {int(a.get("roi_id", 0)) for a in getattr(self.aligner, "_anchors", [])}
 
         profile_rois = (self.runtime_cfg.get("_product_profile", {}) or {}).get("rois") or []
@@ -235,14 +234,21 @@ class Inspector:
             if r.get("id") is not None
         }
 
+        use_explicit_inspections = has_explicit_inspections(self.recipe)
+
         for roi in getattr(self.roi_mgr, "rois", []):
             roi_id = int(roi.get("id"))
             key = str(roi_id)
 
             roi_type = roi_types.get(roi_id, "")
+            roi_has_job = has_inspection_for_roi(self.recipe, roi_id)
 
-            if roi_type != "inspect":
-                continue
+            if use_explicit_inspections:
+                if not roi_has_job:
+                    continue
+            else:
+                if roi_type != "inspect":
+                    continue
 
             pose = (align_result or {}).get("per_roi", {}).get(int(roi_id), {})
             roi_dx = int(pose.get("dx", 0))

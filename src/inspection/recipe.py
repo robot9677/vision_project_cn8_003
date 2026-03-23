@@ -86,6 +86,28 @@ def get_inspection_cfgs(recipe: Dict[str, Any], roi_id: Any) -> List[Dict[str, A
 
     return [get_roi_cfg(recipe, roi_id)]
 
+def has_explicit_inspections(recipe: Dict[str, Any]) -> bool:
+    inspections = recipe.get("inspections", [])
+    return isinstance(inspections, list) and len(inspections) > 0
+
+
+def has_inspection_for_roi(recipe: Dict[str, Any], roi_id: Any) -> bool:
+    rid_norm = _normalize_key(roi_id)
+
+    for item in recipe.get("inspections", []):
+        if not isinstance(item, dict):
+            continue
+        if not bool(item.get("enabled", True)):
+            continue
+
+        roi_key = item.get("roi_key")
+        if roi_key is None:
+            roi_key = _normalize_key(item.get("roi_id", ""))
+
+        if roi_key == rid_norm:
+            return True
+
+    return False
 
 def save_recipe(path: str, recipe: Dict[str, Any]) -> None:
     import os
