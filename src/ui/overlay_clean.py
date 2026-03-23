@@ -46,7 +46,16 @@ def draw_status_bar(img, text):
     draw_text(img, text, (cfg.MARGIN if hasattr(cfg, "MARGIN") else 8, int(bar_h/2)+6), color=cfg.COLOR_TEXT, scale=cfg.FONT_SCALE, thickness=cfg.FONT_THICK, align="lt")
 
 
-def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_selected=False, compact=False, **kwargs):
+def draw_rois(
+    img,
+    rois=None,
+    active_id=None,
+    roi_results=None,
+    show_only_selected=False,
+    compact=False,
+    show_metrics=False,
+    **kwargs,
+):
     """
     rois: list of dicts {'id':int, 'label':str, 'rect':(x,y,w,h)} OR objects with x,y,w,h,name,id
     active_id: roi id to highlight
@@ -139,8 +148,8 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
 
         line3 = "SELECTED" if (roi_id == active_id and not compact) else ""
 
-        # metric summary (optional)
-        if roi_results is not None:
+        # metric summary (DEV only)
+        if show_metrics and roi_results is not None:
             rv = roi_results.get(rid_str) if isinstance(roi_results, dict) else None
             if rv is None and isinstance(roi_results, dict):
                 rv = roi_results.get(roi_id)
@@ -150,8 +159,7 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                 def _fmt(k, v):
                     try:
                         fv = float(v)
-                        # key별 기본 포맷
-                        if k in ("score",):
+                        if k in ("score", "trk_score"):
                             return f"s:{fv:.2f}"
                         if k in ("white_ratio",):
                             return f"wr:{fv:.2f}"
@@ -161,21 +169,19 @@ def draw_rois(img, rois=None, active_id=None, roi_results=None, show_only_select
                             return f"m:{fv:.1f}"
                         return f"{k}:{fv:.2f}"
                     except Exception:
-                        # 문자열류(예: qr_data)
                         sv = str(v)
                         if k in ("qr_data", "barcode", "text"):
-                            sv = sv[:12]  # 너무 길면 잘라서
+                            sv = sv[:12]
                             return f"qr:{sv}"
                         return f"{k}:{sv[:12]}"
 
                 parts = []
                 if isinstance(metrics, dict):
-                    # 표시 우선순위
-                    order = ["mean", "score", "white_ratio", "edge_energy", "qr_data"]
+                    order = ["mean", "score", "trk_score", "white_ratio", "edge_energy", "qr_data"]
                     for k in order:
                         if k in metrics and metrics[k] is not None:
                             parts.append(_fmt(k, metrics[k]))
-                        if len(parts) >= 2:   # line2는 2개까지만
+                        if len(parts) >= 3:
                             break
 
                 if parts:

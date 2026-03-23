@@ -19,6 +19,8 @@ def _deep_merge_dict(base, override):
 
 def load_runtime_config(path):
     cfg = {
+        "dev_mode": True,
+        "dev_overlay_metrics": False,
         "enable_auto_inspect": True,
         "auto_inspect_interval": 0.5,
         "auto_inspect_avg5": False,

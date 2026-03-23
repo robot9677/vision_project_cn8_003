@@ -22,7 +22,7 @@ def roi_mgr_to_list(roi_mgr):
     ]
 
 
-def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
+def draw_roi_overlay(vis, moved, last_results, roi_label_pos, show_metrics=False):
     rois = []
 
     for mr in moved:
@@ -51,6 +51,7 @@ def draw_roi_overlay(vis, moved, last_results, roi_label_pos):
         active_id=None,
         roi_results=roi_results,
         compact=True,
+        show_metrics=show_metrics,
     )
 
 
@@ -69,6 +70,7 @@ def draw_run_tracking(
     snapshot_keep,
     prune_snapshots,
     roi_label_pos,
+    show_metrics=False,
 ):
     if (not runtime_cfg.get("enable_tracker", True)) or (not product_profile["modules"].get("tracker", True)):
         state.tracking_stable = False
@@ -118,7 +120,7 @@ def draw_run_tracking(
 
                 state.last_snapshot_time = time.time()
 
-            draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos)
+            draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos, show_metrics=show_metrics))
         else:
             overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
             state.tracking_stable = False
@@ -126,6 +128,6 @@ def draw_run_tracking(
 
     except Exception as e:
         print("[DBG] run-mode tracker overlay exception:", e)
-        overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
+        overlay.draw_rois(vis,rois=rois,active_id=None,roi_results=roi_results,compact=True,show_metrics=show_metrics)
         state.tracking_stable = False
         state.stable_frame_count = 0

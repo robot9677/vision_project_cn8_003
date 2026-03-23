@@ -411,8 +411,9 @@ class VisionApp:
                 ],
                 active_id=self.roi_mgr.selected_id,
                 roi_results=st.last_results,
+                show_metrics=bool(self.runtime_cfg.get("dev_mode", False))
+                and bool(self.runtime_cfg.get("dev_overlay_metrics", False)),
             )
-
             st.tracking_stable = True
             st.stable_frame_count = 999
 
@@ -432,8 +433,10 @@ class VisionApp:
                 snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
                 prune_snapshots=prune_snapshots,
                 roi_label_pos=roi_label_pos,
+                show_metrics=bool(self.runtime_cfg.get("dev_mode", False))
+                and bool(self.runtime_cfg.get("dev_overlay_metrics", False)),
             )
-
+            
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
 
