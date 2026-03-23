@@ -88,5 +88,37 @@
   },
   "decision": {
     "mode": "any_fail_is_ng"
-  }
+  },
+    "inspections": [
+    {
+      "id": "insp_roi1",
+      "enabled": true,
+      "roi_id": 1,
+      "type": "mean_threshold",
+      "params": {
+        "min_mean": 0.0,
+        "max_mean": 255.0
+      }
+    },
+    {
+      "id": "insp_roi2_dark_ratio",
+      "enabled": true,
+      "roi_id": 2,
+      "type": "toolchain",
+      "params": {
+        "tools": [
+          {
+            "tool": "measure.dark_ratio",
+            "params": {
+              "thresh_mode": "mean_offset",
+              "offset": -4,
+              "max_ratio": 0.24,
+              "blur": 3,
+              "invert": false
+            }
+          }
+        ]
+      }
+    }
+  ]
 }
