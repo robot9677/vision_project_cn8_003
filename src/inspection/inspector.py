@@ -354,7 +354,7 @@ class Inspector:
             last_metrics = {}
 
             for cfg in inspection_cfgs:
-                    job_ok, metrics, job_reason, roi_type = self._run_inspection_job(
+                job_ok, metrics, job_reason, roi_type = self._run_inspection_job(
                     crop=crop,
                     cfg=cfg,
                     recipe_default=self.recipe.get("default", {}),
