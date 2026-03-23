@@ -266,6 +266,8 @@ class Inspector:
             # cfg = get_roi_cfg(self.recipe, roi_id)
             # ok, metrics, reason = run_analyzer(crop, cfg)
 
+            inspection_cfgs = get_inspection_cfgs(self.recipe, roi_id)
+            cfg = inspection_cfgs[0] if inspection_cfgs else get_roi_cfg(self.recipe, roi_id)
             # === 분석 및 mean+score 기반 판정 통합 ===
             job_results = []
             merged_metrics = {}
