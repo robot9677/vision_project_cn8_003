@@ -65,6 +65,19 @@ JOB_EVALUATORS = {
     "score_threshold": _job_eval_score_threshold,
 }
 
+def _run_toolchain_job(crop, cfg):
+    return run_toolchain(crop, cfg)
+
+
+def _run_analyzer_job(crop, cfg):
+    return run_analyzer(crop, cfg)
+
+JOB_RUNNERS = {
+    "toolchain": _run_toolchain_job,
+    "mean_threshold": _run_analyzer_job,
+    "score_threshold": _run_analyzer_job,
+}
+
 class Inspector:
     def __init__(self, roi_mgr, recipe_path: str, logs_root: str, runtime_cfg=None):
         self.roi_mgr = roi_mgr
@@ -116,10 +129,9 @@ class Inspector:
         pose,
         trk_score,
     ):
-        if "tools" in cfg and cfg.get("tools"):
-            ok, metrics, reason = run_toolchain(crop, cfg)
-        else:
-            ok, metrics, reason = run_analyzer(crop, cfg)
+        job_type = (cfg.get("type") or "").strip().lower()
+        runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
+        ok, metrics, reason = runner(crop, cfg)
 
         if metrics is None:
             metrics = {}
