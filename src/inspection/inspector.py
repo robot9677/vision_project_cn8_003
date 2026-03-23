@@ -66,6 +66,78 @@ class Inspector:
         register_locate_tools()
         register_identify_tools()
 
+    def _run_inspection_job(
+        self,
+        crop,
+        cfg,
+        recipe_default,
+        runtime_cfg,
+        mean_filter,
+        norm_gain,
+        roi_dx,
+        roi_dy,
+        roi_dangle,
+        pose,
+        trk_score,
+    ):
+        if "tools" in cfg and cfg.get("tools"):
+            ok, metrics, reason = run_toolchain(crop, cfg)
+        else:
+            ok, metrics, reason = run_analyzer(crop, cfg)
+
+        if metrics is None:
+            metrics = {}
+
+        mean_raw = float(np.mean(crop))
+        metrics["mean_raw"] = mean_raw
+        metrics["mean"] = mean_filter.update(mean_raw)
+
+        need_score = str(cfg.get("type", "")).lower() in ("mean_score", "score_threshold", "texture_score")
+        if need_score:
+            try:
+                score = combined_score(crop)
+            except Exception:
+                score = 0.0
+            metrics["score"] = float(score)
+
+        default_min = float(recipe_default.get("min_mean", 0.0))
+        default_max = float(recipe_default.get("max_mean", 255.0))
+        default_score_thresh = float(recipe_default.get("score_threshold", 0.25))
+
+        min_mean = float(cfg.get("min_mean", default_min))
+        max_mean = float(cfg.get("max_mean", default_max))
+        score_thresh = float(cfg.get("score_threshold", default_score_thresh))
+
+        use_avg5 = bool(runtime_cfg.get("auto_inspect_avg5", False))
+        mean_val = float(metrics.get("mean", 0.0)) if use_avg5 else float(metrics.get("mean_raw", 0.0))
+        mean_ok = (min_mean <= mean_val <= max_mean)
+        score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
+
+        job_type = (cfg.get("type") or "").strip().lower()
+
+        if job_type == "toolchain":
+            job_ok = bool(ok)
+            job_reason = "OK" if job_ok else (reason or "FAIL")
+        elif job_type == "mean_threshold":
+            job_ok = bool(mean_ok)
+            job_reason = "OK" if job_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
+        elif job_type == "score_threshold":
+            job_ok = bool(score_ok)
+            job_reason = "OK" if job_ok else "LOW_SCORE"
+        else:
+            job_ok = bool(ok)
+            job_reason = "OK" if job_ok else (reason or "FAIL")
+
+        metrics["norm_gain"] = float(norm_gain)
+        metrics["dx"] = roi_dx
+        metrics["dy"] = roi_dy
+        metrics["dangle"] = float(roi_dangle)
+        metrics["trk_score"] = float(pose.get("score", trk_score))
+        metrics["align_anchor_id"] = pose.get("anchor_id")
+        metrics["inspection_id"] = cfg.get("id", "job")
+
+        return job_ok, metrics, job_reason, job_type
+
     def _get_mean_filter(self, roi_id):
         key = str(roi_id)
         if key not in self.mean_filters:
@@ -282,70 +354,30 @@ class Inspector:
             last_metrics = {}
 
             for cfg in inspection_cfgs:
+                    job_ok, metrics, job_reason, roi_type = self._run_inspection_job(
+                    crop=crop,
+                    cfg=cfg,
+                    recipe_default=self.recipe.get("default", {}),
+                    runtime_cfg=self.runtime_cfg,
+                    mean_filter=self._get_mean_filter(roi_id),
+                    norm_gain=norm_gain,
+                    roi_dx=roi_dx,
+                    roi_dy=roi_dy,
+                    roi_dangle=roi_dangle,
+                    pose=pose,
+                    trk_score=trk_score,
+                )
+
                 if "tools" in cfg and cfg.get("tools"):
-                    ok, metrics, reason = run_toolchain(crop, cfg)
                     if not auto_mode and roi_id == 1:
                         dbg_dir = os.path.join(self.logs_root, "_dbg")
                         os.makedirs(dbg_dir, exist_ok=True)
                         tool_img = metrics.get("_last_image")
                         if isinstance(tool_img, np.ndarray) and tool_img.size > 0:
                             cv2.imwrite(
-                                os.path.join(dbg_dir, f"roi1_{int(time.time()*1000)}_{'OK' if ok else 'NG'}.png"),
+                                os.path.join(dbg_dir, f"roi1_{int(time.time()*1000)}_{'OK' if job_ok else 'NG'}.png"),
                                 tool_img,
                             )
-                else:
-                    ok, metrics, reason = run_analyzer(crop, cfg)
-
-                if metrics is None:
-                    metrics = {}
-
-                mean_raw = float(np.mean(crop))
-                metrics["mean_raw"] = mean_raw
-                metrics["mean"] = self._get_mean_filter(roi_id).update(mean_raw)
-
-                need_score = str(cfg.get("type", "")).lower() in ("mean_score", "score_threshold", "texture_score")
-                if need_score:
-                    try:
-                        score = combined_score(crop)
-                    except Exception:
-                        score = 0.0
-                    metrics["score"] = float(score)
-
-                default_min = float(self.recipe.get("default", {}).get("min_mean", 0.0))
-                default_max = float(self.recipe.get("default", {}).get("max_mean", 255.0))
-                default_score_thresh = float(self.recipe.get("default", {}).get("score_threshold", 0.25))
-
-                min_mean = float(cfg.get("min_mean", default_min))
-                max_mean = float(cfg.get("max_mean", default_max))
-                score_thresh = float(cfg.get("score_threshold", default_score_thresh))
-
-                use_avg5 = bool(self.runtime_cfg.get("auto_inspect_avg5", False))
-                mean_val = float(metrics.get("mean", 0.0)) if use_avg5 else float(metrics.get("mean_raw", 0.0))
-                mean_ok = (min_mean <= mean_val <= max_mean)
-                score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
-
-                roi_type = (cfg.get("type") or "").strip().lower()
-
-                if roi_type == "toolchain":
-                    job_ok = bool(ok)
-                    job_reason = "OK" if job_ok else (reason or "FAIL")
-                elif roi_type == "mean_threshold":
-                    job_ok = bool(mean_ok)
-                    job_reason = "OK" if job_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
-                elif roi_type == "score_threshold":
-                    job_ok = bool(score_ok)
-                    job_reason = "OK" if job_ok else "LOW_SCORE"
-                else:
-                    job_ok = bool(ok)
-                    job_reason = "OK" if job_ok else (reason or "FAIL")
-
-                metrics["norm_gain"] = float(norm_gain)
-                metrics["dx"] = roi_dx
-                metrics["dy"] = roi_dy
-                metrics["dangle"] = float(roi_dangle)
-                metrics["trk_score"] = float(pose.get("score", trk_score))
-                metrics["align_anchor_id"] = pose.get("anchor_id")
-                metrics["inspection_id"] = cfg.get("id", f"ROI{roi_id}")
 
                 job_results.append(
                     {
