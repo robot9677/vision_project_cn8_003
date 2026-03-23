@@ -37,10 +37,10 @@
         "angle_range": 6.0,
         "angle_step": 1.0,
         "max_abs_angle": 8.0,
-        "search_margin_x": 250,
-        "search_margin_y": 250,
-        "wide_reacquire_margin_x": 400,
-        "wide_reacquire_margin_y": 400,
+        "search_margin_x": 80,
+        "search_margin_y": 80,
+        "wide_reacquire_margin_x": 200,
+        "wide_reacquire_margin_y": 200,
         "template_source": "file_or_runtime",
         "template_path": "data/roi/align_template.png"
       }

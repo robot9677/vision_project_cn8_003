@@ -317,11 +317,6 @@ class ROITracker:
                     margin=(0, 0),
                     scale=0.35,
                 )
-                self._dbg_print(
-                    f"[DBG TRK GLOBAL] tick={self._global_reacquire_tick} "
-                    f"global_score={float(score_global) if score_global is not None else -1.0:.3f}"
-                )
-
                 if pos_global is not None and score_global is not None and score_global >= 0.45:
                     gx, gy, _, _ = pos_global
 
@@ -367,12 +362,6 @@ class ROITracker:
             res = cv2.matchTemplate(search, tmpl, self.method)
             _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
-            self._dbg_print(
-                f"[DBG TRK LOCAL] in=({x},{y},{w},{h}) "
-                f"search=({sx},{sy})-({ex},{ey}) "
-                f"local_score={float(maxv):.3f} thr={float(self.thr):.3f} "
-                f"maxloc=({int(maxloc[0])},{int(maxloc[1])})"
-            )
             if maxv < self.thr:
                 if search_g_cached is None:
                     search_g_cached = self._grad_img(search)
@@ -405,12 +394,6 @@ class ROITracker:
             bx, by, w, h,
             margin=(self.wide_reacquire_margin_x, self.wide_reacquire_margin_y),
             scale=self.wide_reacquire_scale,
-        )
-        self._dbg_print(
-            f"[DBG TRK WIDE] base=({x},{y}) "
-            f"wide_score={float(score_wide) if score_wide is not None else -1.0:.3f} "
-            f"wide_thr={float(self.wide_reacquire_thr):.3f} "
-            f"wide_margin=({self.wide_reacquire_margin_x},{self.wide_reacquire_margin_y})"
         )
 
         if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
