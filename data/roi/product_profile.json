@@ -22,6 +22,7 @@
     "hold_min_score": 0.64,
     "grace_frames": 15,
     "fallback_mode": "hold",
+    "jump_guard_score": 0.82,
     "smooth": {
       "max_step_x": 120,
       "max_step_y": 120,
