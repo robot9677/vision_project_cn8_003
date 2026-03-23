@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import cv2
 
+from app.app_paths import TEMPLATE_PATH
 from .roi_tracker import ROITracker
 
 
@@ -42,7 +43,7 @@ class MultiAnchorAligner:
                     "roi_id": 1,
                     "enabled": True,
                     "targets": "all",
-                    "template_path": "data/roi/align_template.png",
+                    "template_path": TEMPLATE_PATH,
                     "template_source": "file_or_runtime",
                 }
             ]

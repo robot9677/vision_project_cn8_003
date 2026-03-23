@@ -380,7 +380,7 @@ class Inspector:
                     f"dangle={metrics.get('dangle')} "
                     f"trk_score={metrics.get('trk_score')}"
                 )
-                dbg_path = f"/home/robot96/vision_project/data/logs/roi{roi_id}_last.png"
+                dbg_path = os.path.join(self.logs_root, f"roi{roi_id}_last.png")
                 last_img = metrics.get("_last_image")
                 if not auto_mode and last_img is not None:
                     cv2.imwrite(dbg_path, last_img)

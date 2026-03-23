@@ -2,6 +2,21 @@ import os
 import json
 
 
+def _deep_merge_dict(base, override):
+    if not isinstance(base, dict):
+        base = {}
+    if not isinstance(override, dict):
+        return dict(base)
+
+    out = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge_dict(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def load_runtime_config(path):
     cfg = {
         "enable_auto_inspect": True,
@@ -25,7 +40,10 @@ def load_runtime_config(path):
         "tracker_reacquire_scale": 0.5,
         "tracker_angle_range": 4.0,
         "tracker_angle_step": 1.0,
-        "align": {"enabled": True, "fallback_mode": "fixed_roi"},
+        "align": {
+            "enabled": True,
+            "fallback_mode": "fixed_roi",
+        },
         "autotune_target_mean": 50.0,
         "autotune_margin": 10.0,
     }
@@ -35,7 +53,7 @@ def load_runtime_config(path):
             with open(path, "r", encoding="utf-8") as f:
                 user_cfg = json.load(f)
             if isinstance(user_cfg, dict):
-                cfg.update(user_cfg)
+                cfg = _deep_merge_dict(cfg, user_cfg)
     except Exception as e:
         print("[WARN] runtime config load failed:", e)
 
