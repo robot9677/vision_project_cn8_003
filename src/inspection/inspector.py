@@ -495,26 +495,6 @@ class Inspector:
                 results[key] = ROIResult(roi_id=roi_id, ok=False, reason="EMPTY_CROP", metrics={})
                 continue
 
-            if not auto_mode:
-                print(
-                    f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
-                    f"blob={metrics.get('blob_count')} "
-                    f"areas={metrics.get('blob_areas_kept')} "
-                    f"boxes={metrics.get('blob_boxes_kept')} "
-                    f"zone={metrics.get('count_zone')} "
-                    f"th={metrics.get('th_value')} "
-                    f"white_ratio={metrics.get('white_ratio')} "
-                    f"dark_ratio={metrics.get('dark_ratio')} "
-                    f"qr_detected={metrics.get('qr_detected')} "
-                    f"qr_text={metrics.get('qr_text')} "
-                    f"mean_raw={metrics.get('mean_raw')} "
-                    f"mean={metrics.get('mean')} "
-                    f"norm_gain={metrics.get('norm_gain')} "
-                    f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
-                    f"dangle={metrics.get('dangle')} "
-                    f"trk_score={metrics.get('trk_score')}"
-                )
-                
             if crop is None or crop.size == 0:
                 if not auto_mode:
                     print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
@@ -612,6 +592,8 @@ class Inspector:
                     f"th={metrics.get('th_value')} "
                     f"white_ratio={metrics.get('white_ratio')} "
                     f"dark_ratio={metrics.get('dark_ratio')} "
+                    f"qr_detected={metrics.get('qr_detected')} "
+                    f"qr_text={metrics.get('qr_text')} "
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "
