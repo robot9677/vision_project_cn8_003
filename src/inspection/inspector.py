@@ -20,7 +20,6 @@ from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
-from inspection.tools_identify import TOOLS_IDENTIFY
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
