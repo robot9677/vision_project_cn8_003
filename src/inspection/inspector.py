@@ -29,6 +29,42 @@ class ROIResult:
     reason: str
     metrics: Dict[str, Any]
 
+def _job_eval_toolchain(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    job_ok = bool(ok)
+    job_reason = "OK" if job_ok else (reason or "FAIL")
+    return job_ok, job_reason
+
+
+def _job_eval_mean_threshold(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    default_min = float(recipe_default.get("min_mean", 0.0))
+    default_max = float(recipe_default.get("max_mean", 255.0))
+
+    min_mean = float(cfg.get("min_mean", default_min))
+    max_mean = float(cfg.get("max_mean", default_max))
+
+    use_avg5 = bool(runtime_cfg.get("auto_inspect_avg5", False))
+    mean_val = float(metrics.get("mean", 0.0)) if use_avg5 else float(metrics.get("mean_raw", 0.0))
+
+    job_ok = (min_mean <= mean_val <= max_mean)
+    job_reason = "OK" if job_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
+    return bool(job_ok), job_reason
+
+
+def _job_eval_score_threshold(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    default_score_thresh = float(recipe_default.get("score_threshold", 0.25))
+    score_thresh = float(cfg.get("score_threshold", default_score_thresh))
+    score_val = float(metrics.get("score", 0.0))
+
+    job_ok = score_val >= score_thresh
+    job_reason = "OK" if job_ok else "LOW_SCORE"
+    return bool(job_ok), job_reason
+
+JOB_EVALUATORS = {
+    "toolchain": _job_eval_toolchain,
+    "mean_threshold": _job_eval_mean_threshold,
+    "score_threshold": _job_eval_score_threshold,
+}
+
 class Inspector:
     def __init__(self, roi_mgr, recipe_path: str, logs_root: str, runtime_cfg=None):
         self.roi_mgr = roi_mgr
@@ -100,33 +136,16 @@ class Inspector:
                 score = 0.0
             metrics["score"] = float(score)
 
-        default_min = float(recipe_default.get("min_mean", 0.0))
-        default_max = float(recipe_default.get("max_mean", 255.0))
-        default_score_thresh = float(recipe_default.get("score_threshold", 0.25))
-
-        min_mean = float(cfg.get("min_mean", default_min))
-        max_mean = float(cfg.get("max_mean", default_max))
-        score_thresh = float(cfg.get("score_threshold", default_score_thresh))
-
-        use_avg5 = bool(runtime_cfg.get("auto_inspect_avg5", False))
-        mean_val = float(metrics.get("mean", 0.0)) if use_avg5 else float(metrics.get("mean_raw", 0.0))
-        mean_ok = (min_mean <= mean_val <= max_mean)
-        score_ok = (float(metrics.get("score", 0.0)) >= float(score_thresh))
-
         job_type = (cfg.get("type") or "").strip().lower()
-
-        if job_type == "toolchain":
-            job_ok = bool(ok)
-            job_reason = "OK" if job_ok else (reason or "FAIL")
-        elif job_type == "mean_threshold":
-            job_ok = bool(mean_ok)
-            job_reason = "OK" if job_ok else ("LOW_MEAN" if mean_val < min_mean else "HIGH_MEAN")
-        elif job_type == "score_threshold":
-            job_ok = bool(score_ok)
-            job_reason = "OK" if job_ok else "LOW_SCORE"
-        else:
-            job_ok = bool(ok)
-            job_reason = "OK" if job_ok else (reason or "FAIL")
+        evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
+        job_ok, job_reason = evaluator(
+            ok=ok,
+            metrics=metrics,
+            reason=reason,
+            cfg=cfg,
+            recipe_default=recipe_default,
+            runtime_cfg=runtime_cfg,
+        )
 
         metrics["norm_gain"] = float(norm_gain)
         metrics["dx"] = roi_dx
