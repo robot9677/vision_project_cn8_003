@@ -120,7 +120,7 @@ def draw_run_tracking(
 
                 state.last_snapshot_time = time.time()
 
-            draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos, show_metrics=show_metrics))
+            draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos, show_metrics=show_metrics)
         else:
             overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
             state.tracking_stable = False
