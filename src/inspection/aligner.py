@@ -337,6 +337,14 @@ class MultiAnchorAligner:
                 enable_rotation=bool(a.get("enable_rotation", False)),
                 max_abs_angle=float(a.get("max_abs_angle", 8.0)),
             )
+            print(
+                f"[DBG ALIGN RAW] {a['id']} "
+                f"base=({base_x},{base_y}) "
+                f"search=({search_x},{search_y}) "
+                f"track=({nrx},{nry}) "
+                f"dx={int(nrx - base_x)} dy={int(nry - base_y)} "
+                f"da={float(na - base_a):.2f} score={float(score):.3f}"
+            )
 
             # base 기준 pose로 환산
             dx = int(nrx - base_x)
@@ -446,6 +454,15 @@ class MultiAnchorAligner:
             # grace frames 동안은 마지막 성공 pose 유지
             if has_lock and fail_count <= grace_frames:
                 hold_pose = a["last_pose"]
+
+                print(
+                    f"[DBG ALIGN HOLD] {a['id']} "
+                    f"fail={fail_count}/{grace_frames} "
+                    f"hold_pose=({int(hold_pose.get('dx', 0))},{int(hold_pose.get('dy', 0))},{float(hold_pose.get('dangle', 0.0)):.2f}) "
+                    f"hold_score={float(hold_pose.get('score', 0.0)):.3f} "
+                    f"last_output=({int(a.get('last_output_dx', 0))},{int(a.get('last_output_dy', 0))},{float(a.get('last_output_dangle', 0.0)):.2f}) "
+                    f"raw_score={float(score):.3f}"
+                )
                 hdx = int(hold_pose.get("dx", 0))
                 hdy = int(hold_pose.get("dy", 0))
                 hda = float(hold_pose.get("dangle", 0.0))
