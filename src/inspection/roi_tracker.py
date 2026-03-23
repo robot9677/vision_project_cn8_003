@@ -414,7 +414,8 @@ class ROITracker:
         )
 
         if pos_wide is not None and score_wide is not None and score_wide >= self.wide_reacquire_thr:
-            return bx, by, w, h, float(ba), float(score_wide)
+            wx, wy, _, _ = pos_wide
+            return wx, wy, w, h, float(ba), float(score_wide)
 
         # 3) 끝까지 실패해도 best 반환
         return bx, by, w, h, float(ba), float(best_score if best_score > 0 else 0.0)
