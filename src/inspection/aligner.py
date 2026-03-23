@@ -323,8 +323,16 @@ class MultiAnchorAligner:
 
             # 핵심: 직전 성공 pose를 적용한 위치를 다음 검색 중심으로 사용
             last_pose = a.get("last_pose", {})
-            search_x = base_x + int(last_pose.get("dx", 0))
-            search_y = base_y + int(last_pose.get("dy", 0))
+            fail_count = int(a.get("fail_count", 0))
+
+            # fail 누적되면 search를 원점으로 복귀
+            if fail_count >= 3:
+                search_x = base_x
+                search_y = base_y
+            else:
+                search_x = base_x + int(last_pose.get("dx", 0))
+                search_y = base_y + int(last_pose.get("dy", 0))
+                
             search_a = base_a + float(last_pose.get("dangle", 0.0))
 
             nrx, nry, _, _, na, score = tracker.track_pose(
