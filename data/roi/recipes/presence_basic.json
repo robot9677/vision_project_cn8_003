@@ -91,13 +91,22 @@
   },
     "inspections": [
     {
-      "id": "insp_roi1",
+      "id": "insp_roi1_presence",
       "enabled": true,
       "roi_id": 1,
-      "type": "mean_threshold",
+      "type": "presence",
       "params": {
-        "min_mean": 0.0,
-        "max_mean": 255.0
+        "blur_ksize": 3,
+        "threshold_mode": "mean_offset",
+        "offset": -8,
+        "invert": false,
+        "morph_open": 3,
+        "morph_close": 3,
+        "min_area": 40,
+        "min_ratio": 0.03,
+        "max_ratio": 0.60,
+        "min_count": 1,
+        "max_count": 20
       }
     },
     {

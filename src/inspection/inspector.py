@@ -21,6 +21,80 @@ from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
 
+def _run_presence_job(crop, cfg):
+    params = cfg if isinstance(cfg, dict) else {}
+
+    blur_ksize = int(params.get("blur_ksize", 3))
+    if blur_ksize < 1:
+        blur_ksize = 1
+    if blur_ksize % 2 == 0:
+        blur_ksize += 1
+
+    threshold_mode = str(params.get("threshold_mode", "fixed")).strip().lower()
+    threshold = float(params.get("threshold", 128))
+    offset = float(params.get("offset", 0.0))
+    invert = bool(params.get("invert", False))
+
+    morph_open = int(params.get("morph_open", 0))
+    morph_close = int(params.get("morph_close", 0))
+    min_area = int(params.get("min_area", 0))
+
+    img = crop
+    if blur_ksize > 1:
+        img = cv2.GaussianBlur(img, (blur_ksize, blur_ksize), 0)
+
+    mean_val = float(np.mean(img))
+
+    if threshold_mode == "mean_offset":
+        th_value = mean_val + offset
+    elif threshold_mode == "otsu":
+        th_value = 0.0
+    else:
+        th_value = threshold
+
+    th_flag = cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY
+
+    if threshold_mode == "otsu":
+        _ret, bw = cv2.threshold(img, 0, 255, th_flag | cv2.THRESH_OTSU)
+        th_value = float(_ret)
+    else:
+        _ret, bw = cv2.threshold(img, float(th_value), 255, th_flag)
+
+    if morph_open > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (morph_open, morph_open))
+        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, k)
+
+    if morph_close > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (morph_close, morph_close))
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, k)
+
+    num_labels, labels, stats, _centroids = cv2.connectedComponentsWithStats(bw, connectivity=8)
+
+    kept_area = 0
+    kept_count = 0
+    out = np.zeros_like(bw)
+
+    for i in range(1, num_labels):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < min_area:
+            continue
+        out[labels == i] = 255
+        kept_area += area
+        kept_count += 1
+
+    area_ratio = kept_area / float(out.shape[0] * out.shape[1]) if out.size > 0 else 0.0
+
+    metrics = {
+        "presence_area": int(kept_area),
+        "presence_count": int(kept_count),
+        "presence_ratio": float(area_ratio),
+        "th_value": float(th_value),
+        "_last_image": out,
+    }
+
+    ok = True
+    reason = "OK"
+    return ok, metrics, reason
 
 @dataclass
 class ROIResult:
@@ -59,10 +133,37 @@ def _job_eval_score_threshold(ok, metrics, reason, cfg, recipe_default, runtime_
     job_reason = "OK" if job_ok else "LOW_SCORE"
     return bool(job_ok), job_reason
 
+def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    min_ratio = float(cfg.get("min_ratio", 0.0))
+    max_ratio = float(cfg.get("max_ratio", 1.0))
+    min_count = int(cfg.get("min_count", 0))
+    max_count = int(cfg.get("max_count", 999999))
+
+    ratio = float(metrics.get("presence_ratio", 0.0))
+    count = int(metrics.get("presence_count", 0))
+
+    ratio_ok = (min_ratio <= ratio <= max_ratio)
+    count_ok = (min_count <= count <= max_count)
+
+    job_ok = ratio_ok and count_ok
+
+    if not ratio_ok:
+        if ratio < min_ratio:
+            return False, "PRESENCE_RATIO_LOW"
+        return False, "PRESENCE_RATIO_HIGH"
+
+    if not count_ok:
+        if count < min_count:
+            return False, "PRESENCE_COUNT_LOW"
+        return False, "PRESENCE_COUNT_HIGH"
+
+    return bool(job_ok), "OK"
+
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
     "mean_threshold": _job_eval_mean_threshold,
     "score_threshold": _job_eval_score_threshold,
+    "presence": _job_eval_presence,
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -76,6 +177,7 @@ JOB_RUNNERS = {
     "toolchain": _run_toolchain_job,
     "mean_threshold": _run_analyzer_job,
     "score_threshold": _run_analyzer_job,
+    "presence": _run_presence_job,
 }
 
 class Inspector:
