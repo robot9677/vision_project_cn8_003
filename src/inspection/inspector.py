@@ -180,11 +180,18 @@ def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
 
     return bool(job_ok), "OK"
 
+def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    detected = bool(metrics.get("qr_detected", False))
+    if detected:
+        return True, "OK"
+    return False, "QR_NOT_FOUND"
+
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
     "mean_threshold": _job_eval_mean_threshold,
     "score_threshold": _job_eval_score_threshold,
     "presence": _job_eval_presence,
+    "qr_presence": _job_eval_qr_presence,
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -489,7 +496,24 @@ class Inspector:
                 continue
 
             if not auto_mode:
-                print(f"[DBG INSPECT] ROI{roi_id} crop={None if crop is None else crop.shape}")
+                print(
+                    f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
+                    f"blob={metrics.get('blob_count')} "
+                    f"areas={metrics.get('blob_areas_kept')} "
+                    f"boxes={metrics.get('blob_boxes_kept')} "
+                    f"zone={metrics.get('count_zone')} "
+                    f"th={metrics.get('th_value')} "
+                    f"white_ratio={metrics.get('white_ratio')} "
+                    f"dark_ratio={metrics.get('dark_ratio')} "
+                    f"qr_detected={metrics.get('qr_detected')} "
+                    f"qr_text={metrics.get('qr_text')} "
+                    f"mean_raw={metrics.get('mean_raw')} "
+                    f"mean={metrics.get('mean')} "
+                    f"norm_gain={metrics.get('norm_gain')} "
+                    f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
+                    f"dangle={metrics.get('dangle')} "
+                    f"trk_score={metrics.get('trk_score')}"
+                )
                 dbg_raw_path = os.path.join(self.logs_root, f"roi{roi_id}_raw.png")
                 cv2.imwrite(dbg_raw_path, crop)
                 print(f"[DBG RAW SAVE] {dbg_raw_path}")
