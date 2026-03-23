@@ -376,10 +376,6 @@ class MultiAnchorAligner:
             if ok:
                 raw_dx = int(dx)
                 raw_dy = int(dy)
-                # 기준 ROI 대비 너무 먼 위치는 무조건 reject
-                if abs(raw_dx) > 150 or abs(raw_dy) > 80:
-                    ok = False
-                    
                 raw_dangle = float(dangle)
 
                 if fail_count >= 3:
@@ -391,14 +387,6 @@ class MultiAnchorAligner:
                     prev_dy = int(a.get("last_output_dy", 0))
                     prev_da = float(a.get("last_output_dangle", 0.0))
 
-                # 빠른 X 이동 중 세로 오점프 차단
-                if abs(raw_dy - prev_dy) > 30:
-                    ok = False
-
-                jump_x = abs(raw_dx - prev_dx)
-                jump_y = abs(raw_dy - prev_dy)
-                jump_a = abs(raw_dangle - prev_da)
-
                 align_cfg = self._get_align_cfg()
                 smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
 
@@ -406,15 +394,20 @@ class MultiAnchorAligner:
                 max_step_y = int(smooth_cfg.get("max_step_y", 9999))
                 max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
 
-                jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
+                jump_x = abs(raw_dx - prev_dx)
+                jump_y = abs(raw_dy - prev_dy)
+                jump_a = abs(raw_dangle - prev_da)
 
-                suspicious_jump = (
+                reject = (
+                    abs(raw_dx) > 150 or
+                    abs(raw_dy) > 80 or
+                    abs(raw_dy - prev_dy) > 30 or
                     jump_x > max_step_x or
                     jump_y > max_step_y or
                     jump_a > max_step_angle
                 )
 
-                if suspicious_jump :
+                if reject:
                     ok = False
                 else:
                     a["fail_count"] = 0
