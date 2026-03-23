@@ -514,9 +514,7 @@ class Inspector:
                     f"dangle={metrics.get('dangle')} "
                     f"trk_score={metrics.get('trk_score')}"
                 )
-                dbg_raw_path = os.path.join(self.logs_root, f"roi{roi_id}_raw.png")
-                cv2.imwrite(dbg_raw_path, crop)
-                print(f"[DBG RAW SAVE] {dbg_raw_path}")
+                
             if crop is None or crop.size == 0:
                 if not auto_mode:
                     print(f"[DBG INSPECT] ROI{roi_id} EMPTY_CROP")
