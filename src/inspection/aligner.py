@@ -469,7 +469,8 @@ class MultiAnchorAligner:
             has_lock = bool(a.get("has_lock", False))
 
             # grace frames 동안은 마지막 성공 pose 유지
-            if has_lock and fail_count <= grace_frames:
+            # hold는 아주 짧게만 허용하고, 그 뒤에는 즉시 lost/reacquire 모드로 전환
+            if has_lock and fail_count <= 2:
                 hold_pose = a["last_pose"]
 
                 print(
