@@ -332,7 +332,7 @@ class MultiAnchorAligner:
             else:
                 search_x = base_x + int(last_pose.get("dx", 0))
                 search_y = base_y + int(last_pose.get("dy", 0))
-                
+
             search_a = base_a + float(last_pose.get("dangle", 0.0))
 
             nrx, nry, _, _, na, score = tracker.track_pose(
@@ -378,9 +378,14 @@ class MultiAnchorAligner:
                 raw_dy = int(dy)
                 raw_dangle = float(dangle)
 
-                prev_dx = int(a.get("last_output_dx", 0))
-                prev_dy = int(a.get("last_output_dy", 0))
-                prev_da = float(a.get("last_output_dangle", 0.0))
+                if fail_count >= 3:
+                    prev_dx = 0
+                    prev_dy = 0
+                    prev_da = 0.0
+                else:
+                    prev_dx = int(a.get("last_output_dx", 0))
+                    prev_dy = int(a.get("last_output_dy", 0))
+                    prev_da = float(a.get("last_output_dangle", 0.0))
 
                 # 빠른 X 이동 중 세로 오점프 차단
                 if abs(raw_dy - prev_dy) > 30:
