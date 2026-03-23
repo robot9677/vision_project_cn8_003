@@ -110,23 +110,22 @@
       }
     },
     {
-      "id": "insp_roi2_dark_ratio",
+      "id": "insp_roi2_presence",
       "enabled": true,
       "roi_id": 2,
-      "type": "toolchain",
+      "type": "presence",
       "params": {
-        "tools": [
-          {
-            "tool": "measure.dark_ratio",
-            "params": {
-              "thresh_mode": "mean_offset",
-              "offset": -4,
-              "max_ratio": 0.24,
-              "blur": 3,
-              "invert": false
-            }
-          }
-        ]
+        "blur_ksize": 3,
+        "threshold_mode": "mean_offset",
+        "offset": 5,
+        "invert": false,
+        "morph_open": 3,
+        "morph_close": 3,
+        "min_area": 80,
+        "min_ratio": 0.05,
+        "max_ratio": 0.60,
+        "min_count": 1,
+        "max_count": 10
       }
     }
   ]
