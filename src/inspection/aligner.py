@@ -383,35 +383,21 @@ class MultiAnchorAligner:
                     "score": score,
                 }
 
-                anchor_pose = {
-                    "id": a["id"],
-                    "roi_id": a["roi_id"],
-                    "ok": True,
-                    "dx": dx,
-                    "dy": dy,
-                    "dangle": dangle,
-                    "score": score,
-                    "reason": "OK",
-                }
-                result["anchors"].append(anchor_pose)
+                anchor_pose = self._append_success_result(
+                    result=result,
+                    all_roi_ids=all_roi_ids,
+                    anchor=a,
+                    dx=dx,
+                    dy=dy,
+                    dangle=dangle,
+                    score=score,
+                )
+
                 self._last_global_state = "TRACKING"
                 if self._should_log_anchor(a, "OK", dx, dy, score):
                     print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
 
                 any_success = True
-                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
-                for rid in targets:
-                    prev = result["per_roi"].get(int(rid))
-                    if prev is None or score > float(prev.get("score", -1.0)):
-                        result["per_roi"][int(rid)] = {
-                            "dx": dx,
-                            "dy": dy,
-                            "dangle": dangle,
-                            "score": score,
-                            "anchor_id": a["id"],
-                            "fallback": False,
-                            "reason": "OK",
-                        }
 
                 if best_global is None or score > float(best_global.get("score", -1.0)):
                     best_global = anchor_pose
@@ -435,16 +421,17 @@ class MultiAnchorAligner:
                 hdx, hdy, hda = self._clamp_step(a, hdx, hdy, hda)
                 self._commit_output_pose(a, hdx, hdy, hda)
 
-                result["anchors"].append({
-                    "id": a["id"],
-                    "roi_id": a["roi_id"],
-                    "ok": True,
-                    "dx": hdx,
-                    "dy": hdy,
-                    "dangle": hda,
-                    "score": hsc,
-                    "reason": f"HOLD({fail_count}/{grace_frames})",
-                })
+                hold_global = self._append_hold_result(
+                    result=result,
+                    all_roi_ids=all_roi_ids,
+                    anchor=a,
+                    dx=hdx,
+                    dy=hdy,
+                    dangle=hda,
+                    score=hsc,
+                    fail_count=fail_count,
+                    grace_frames=grace_frames,
+                )
 
                 self._last_global_state = "TRACKING"
                 if fail_count == 1 and self._should_log_anchor(a, "HOLD", hdx, hdy, score):
@@ -454,31 +441,9 @@ class MultiAnchorAligner:
                         f"low_sc={score:.3f} fail={fail_count}/{grace_frames}"
                     )
                 any_hold = True
-                targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
-                for rid in targets:
-                    prev = result["per_roi"].get(int(rid))
-                    if prev is None or hsc > float(prev.get("score", -1.0)):
-                        result["per_roi"][int(rid)] = {
-                            "dx": hdx,
-                            "dy": hdy,
-                            "dangle": hda,
-                            "score": hsc,
-                            "anchor_id": a["id"],
-                            "fallback": False,
-                            "reason": f"HOLD({fail_count}/{grace_frames})",
-                        }
 
                 if best_global is None or hsc > float(best_global.get("score", -1.0)):
-                    best_global = {
-                        "id": a["id"],
-                        "roi_id": a["roi_id"],
-                        "ok": True,
-                        "dx": hdx,
-                        "dy": hdy,
-                        "dangle": hda,
-                        "score": hsc,
-                        "reason": f"HOLD({fail_count}/{grace_frames})",
-                    }
+                    best_global = hold_global
                 continue
 
             # grace 초과 시에만 fallback
@@ -632,6 +597,86 @@ class MultiAnchorAligner:
 
         return False
 
+    def _append_success_result(
+        self,
+        result: Dict[str, Any],
+        all_roi_ids: List[int],
+        anchor: Dict[str, Any],
+        dx: int,
+        dy: int,
+        dangle: float,
+        score: float,
+    ):
+        anchor_pose = {
+            "id": anchor["id"],
+            "roi_id": anchor["roi_id"],
+            "ok": True,
+            "dx": dx,
+            "dy": dy,
+            "dangle": dangle,
+            "score": score,
+            "reason": "OK",
+        }
+        result["anchors"].append(anchor_pose)
+
+        targets = all_roi_ids if anchor.get("targets") == "all" else list(anchor.get("targets") or [])
+        for rid in targets:
+            prev = result["per_roi"].get(int(rid))
+            if prev is None or score > float(prev.get("score", -1.0)):
+                result["per_roi"][int(rid)] = {
+                    "dx": dx,
+                    "dy": dy,
+                    "dangle": dangle,
+                    "score": score,
+                    "anchor_id": anchor["id"],
+                    "fallback": False,
+                    "reason": "OK",
+                }
+
+        return anchor_pose
+
+    def _append_hold_result(
+        self,
+        result: Dict[str, Any],
+        all_roi_ids: List[int],
+        anchor: Dict[str, Any],
+        dx: int,
+        dy: int,
+        dangle: float,
+        score: float,
+        fail_count: int,
+        grace_frames: int,
+    ):
+        reason = f"HOLD({fail_count}/{grace_frames})"
+
+        hold_pose = {
+            "id": anchor["id"],
+            "roi_id": anchor["roi_id"],
+            "ok": True,
+            "dx": dx,
+            "dy": dy,
+            "dangle": dangle,
+            "score": score,
+            "reason": reason,
+        }
+        result["anchors"].append(hold_pose)
+
+        targets = all_roi_ids if anchor.get("targets") == "all" else list(anchor.get("targets") or [])
+        for rid in targets:
+            prev = result["per_roi"].get(int(rid))
+            if prev is None or score > float(prev.get("score", -1.0)):
+                result["per_roi"][int(rid)] = {
+                    "dx": dx,
+                    "dy": dy,
+                    "dangle": dangle,
+                    "score": score,
+                    "anchor_id": anchor["id"],
+                    "fallback": False,
+                    "reason": reason,
+                }
+
+        return hold_pose
+    
     def _clamp_step(self, anchor: Dict[str, Any], dx: int, dy: int, dangle: float):
         align_cfg = self._get_align_cfg()
         smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
