@@ -380,9 +380,9 @@ class MultiAnchorAligner:
                 jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
 
                 suspicious_jump = (
-                    jump_x > max_step_x * 2 or
-                    jump_y > max_step_y * 2 or
-                    jump_a > max_step_angle * 2
+                    jump_x > max_step_x or
+                    jump_y > max_step_y or
+                    jump_a > max_step_angle
                 )
 
                 if suspicious_jump :
