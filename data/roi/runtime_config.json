@@ -1,6 +1,6 @@
 {
   "dev_mode": true,
-  "dev_overlay_metrics": false,
+  "dev_overlay_metrics": true,
   "run_mode": "held",
   "normalize_enabled": false,
   "normalize_target_mean": 60.0,
