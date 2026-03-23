@@ -111,7 +111,7 @@
     },
     {
       "id": "insp_roi2_presence",
-      "enabled": true,
+      "enabled": false,
       "roi_id": 2,
       "type": "presence",
       "params": {
@@ -127,6 +127,13 @@
         "min_count": 1,
         "max_count": 10
       }
+    },
+    {
+      "id": "insp_roi2_qr",
+      "enabled": true,
+      "roi_id": 2,
+      "type": "qr_presence",
+      "params": {}
     }
   ]
 }

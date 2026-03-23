@@ -20,6 +20,7 @@ from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
+from inspection.tools_identify import TOOLS_IDENTIFY
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -90,6 +91,27 @@ def _run_presence_job(crop, cfg):
         "presence_ratio": float(area_ratio),
         "th_value": float(th_value),
         "_last_image": out,
+    }
+
+    ok = True
+    reason = "OK"
+    return ok, metrics, reason
+
+def _run_qr_job(crop, cfg):
+    params = cfg if isinstance(cfg, dict) else {}
+
+    detector = cv2.QRCodeDetector()
+
+    data, points, straight = detector.detectAndDecode(crop)
+
+    detected = bool(data)
+    if not detected and points is not None:
+        detected = True
+
+    metrics = {
+        "qr_detected": bool(detected),
+        "qr_text": str(data or ""),
+        "_last_image": crop.copy(),
     }
 
     ok = True
@@ -178,6 +200,7 @@ JOB_RUNNERS = {
     "mean_threshold": _run_analyzer_job,
     "score_threshold": _run_analyzer_job,
     "presence": _run_presence_job,
+    "qr_presence": _run_qr_job,
 }
 
 class Inspector:
