@@ -376,6 +376,10 @@ class MultiAnchorAligner:
             if ok:
                 raw_dx = int(dx)
                 raw_dy = int(dy)
+                # 기준 ROI 대비 너무 먼 위치는 무조건 reject
+                if abs(raw_dx) > 150 or abs(raw_dy) > 80:
+                    ok = False
+                    
                 raw_dangle = float(dangle)
 
                 if fail_count >= 3:
