@@ -374,6 +374,10 @@ class MultiAnchorAligner:
                 prev_dy = int(a.get("last_output_dy", 0))
                 prev_da = float(a.get("last_output_dangle", 0.0))
 
+                # 빠른 X 이동 중 세로 오점프 차단
+                if abs(raw_dy - prev_dy) > 30:
+                    ok = False
+
                 jump_x = abs(raw_dx - prev_dx)
                 jump_y = abs(raw_dy - prev_dy)
                 jump_a = abs(raw_dangle - prev_da)
