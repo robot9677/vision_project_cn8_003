@@ -240,9 +240,16 @@ def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     return bool(job_ok), "OK"
 
 def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
-    detected = bool(metrics.get("qr_detected", False))
-    if detected:
+    qr_detected = bool(metrics.get("qr_detected", False))
+    qr_candidate = bool(metrics.get("qr_candidate", False))
+    qr_text = str(metrics.get("qr_text", "") or "").strip()
+
+    if qr_detected and qr_text:
         return True, "OK"
+
+    if qr_candidate:
+        return False, "QR_DETECTED_NO_DECODE"
+
     return False, "QR_NOT_FOUND"
 
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
