@@ -128,6 +128,13 @@ def draw_run_tracking(
 
     except Exception as e:
         print("[DBG] run-mode tracker overlay exception:", e)
-        overlay.draw_rois(vis,rois=rois,active_id=None,roi_results=roi_results,compact=True,show_metrics=show_metrics)
+        overlay.draw_rois(
+            vis,
+            rois=roi_mgr_to_list(roi_mgr),
+            active_id=roi_mgr.selected_id,
+            roi_results=state.last_results,
+            compact=True,
+            show_metrics=show_metrics,
+        )
         state.tracking_stable = False
         state.stable_frame_count = 0
