@@ -176,11 +176,11 @@ def draw_rois(
                 qr_overlay_text,
                 (qx, qy),
                 color=qr_overlay_color,
-                scale=roi_text_scale,
+                scale=roi_text_scale * 2.0,
                 thickness=roi_text_thickness,
                 align="lt",
             )
-            
+
         # prepare label lines
         line1 = f"{label}" if roi_id is not None else label
 

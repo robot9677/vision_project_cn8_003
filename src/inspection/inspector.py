@@ -282,6 +282,12 @@ def _run_qr_job(crop, cfg):
     reason = "OK"
     return ok, metrics, reason
 
+def _run_none_job(crop, cfg):
+    return True, {}, "OK"
+
+def _job_eval_none(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    return True, "OK"
+
 @dataclass
 class ROIResult:
     roi_id: Any
@@ -387,6 +393,7 @@ JOB_EVALUATORS = {
     "presence": _job_eval_presence,
     "qr_presence": _job_eval_qr_presence,
     "washer_presence": _job_eval_washer, 
+    "none": _job_eval_none,
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -403,6 +410,7 @@ JOB_RUNNERS = {
     "presence": _run_presence_job,
     "qr_presence": _run_qr_job,
     "washer_presence": run_washer_presence,
+    "none": _run_none_job,
 }
 
 class Inspector:
