@@ -137,8 +137,6 @@
     },
     {
       "id": "insp_washer",
-      "enabled": true,
-      "roi_id": 3,
       "type": "washer_presence",
       "params": {
         "blur": 3,
@@ -146,7 +144,8 @@
         "canny_high": 120,
         "band_top": 0.35,
         "band_bottom": 0.75,
-        "min_edge": 20
+        "min_edge": 100,
+        "min_mean": 38.0
       }
     }
   ]
