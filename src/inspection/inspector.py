@@ -21,6 +21,7 @@ from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
 from inspection.tools_measure_washer import run_washer_presence
+from pyzbar import pyzbar
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -172,6 +173,30 @@ def _run_qr_job(crop, cfg):
         return is_candidate, float(best_fill), int(best_area), int(best_box_area)
 
     base = crop
+    # 0) pyzbar decode 우선
+    try:
+        zbar_results = pyzbar.decode(base)
+    except Exception:
+        zbar_results = []
+
+    if zbar_results:
+        text = ""
+        try:
+            text = zbar_results[0].data.decode("utf-8").strip()
+        except Exception:
+            text = str(zbar_results[0].data)
+
+        return True, {
+            "qr_detected": True,
+            "qr_candidate": True,
+            "qr_text": text,
+            "qr_variant": "pyzbar_raw",
+            "qr_candidate_score": 1.0,
+            "qr_candidate_area": int(base.shape[0] * base.shape[1]),
+            "qr_candidate_box_area": int(base.shape[0] * base.shape[1]),
+            "_last_image": base,
+        }, "OK"
+    
     if base is None or base.size == 0:
         return False, {
             "qr_detected": False,
