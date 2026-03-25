@@ -264,8 +264,11 @@ def _run_qr_job(crop, cfg):
 def _run_none_job(crop, cfg):
     return True, {}, "OK"
 
-def _job_eval_none(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
-    return True, "OK"
+def _run_ocr_text(crop, cfg):
+    txt = _ocr_bottom_text_from_qr_crop(crop)
+    return True, {
+        "ocr_text": txt
+    }, "OK"
 
 @dataclass
 class ROIResult:
@@ -383,6 +386,27 @@ def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
 
     return False, "WASHER_MISSING"
 
+def _job_eval_none(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    return True, "OK"
+
+def _job_eval_ocr_text(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    ocr_text = str(metrics.get("ocr_text", "") or "").strip()
+
+    expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()
+    min_length = int(cfg.get("min_length", 1))
+
+    if not ocr_text:
+        return False, "NG: OCR FAIL"
+
+    if len(ocr_text) < min_length:
+        return False, "NG: OCR TOO SHORT"
+
+    if expected_prefix:
+        if not ocr_text.startswith(expected_prefix):
+            return False, "NG: OCR INVALID"
+
+    return True, f"OK: {ocr_text}"
+
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
     "mean_threshold": _job_eval_mean_threshold,
@@ -391,6 +415,7 @@ JOB_EVALUATORS = {
     "qr_presence": _job_eval_qr_presence,
     "washer_presence": _job_eval_washer, 
     "none": _job_eval_none,
+    "ocr_text": _job_eval_ocr_text,
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -408,6 +433,7 @@ JOB_RUNNERS = {
     "qr_presence": _run_qr_job,
     "washer_presence": run_washer_presence,
     "none": _run_none_job,
+    "ocr_text": _run_ocr_text,
 }
 
 class Inspector:

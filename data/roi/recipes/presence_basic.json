@@ -4,88 +4,6 @@
     "min_mean": 0.0,
     "max_mean": 255.0
   },
-  "overrides": {
-    "ROI2": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.dark_ratio",
-          "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "max_ratio": 0.24,
-            "blur": 3,
-            "invert": false
-          }
-        }
-      ]
-    },
-    "ROI3": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.dark_ratio",
-          "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "max_ratio": 0.25,
-            "blur": 3,
-            "invert": false
-          }
-        }
-      ]
-    },
-    "ROI4": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.dark_ratio",
-          "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "min_ratio": 0.10,
-            "blur": 3,
-            "invert": false
-          }
-        }
-      ]
-    },
-    "ROI5": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.dark_ratio",
-          "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "min_ratio": 0.10,
-            "blur": 3,
-            "invert": false
-          }
-        }
-      ]
-    },
-    "ROI6": {
-    "type": "toolchain",
-    "tools": [
-        {
-        "tool": "measure.presence_blob",
-        "params": {
-            "polarity": "bright",
-            "thresh_mode": "mean_offset",
-            "offset": 2,
-            "blur": 3,
-            "min_area": 6,
-            "min_count": 3,
-            "min_total_area": 40,
-            "open_kernel": 0,
-            "close_kernel": 0,
-            "debug_fill": true
-        }
-        }
-    ]
-    }
-  },
   "decision": {
     "mode": "any_fail_is_ng"
   },
@@ -142,19 +60,12 @@
       "expected_prefix": "T24"
     },
     {
-      "id": "insp_washer",
+      "id": "insp_roi3_ocr",
       "enabled": true,
       "roi_id": 3,
-      "type": "washer_presence",
-      "params": {
-        "blur": 3,
-        "canny_low": 40,
-        "canny_high": 120,
-        "band_top": 0.35,
-        "band_bottom": 0.75,
-        "min_edge": 165,
-        "min_mean": 39.0
-      }
+      "type": "ocr_text",
+      "expected_prefix": "T24",
+      "min_length": 6
     }
   ]
 }

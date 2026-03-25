@@ -169,8 +169,13 @@ def draw_rois(
                     qr_overlay_color = cfg.COLOR_NG
 
         if qr_overlay_text:
-            qx = int(x + 2)
-            qy = int(y + h + 12)
+            # ROI1 기준 위치 찾기
+            roi1 = next((r for r in rois if int(r.get("id", 0)) == 1), None)
+
+            if roi1:
+                rx1, ry1, rw1, rh1 = int(roi1["x"]), int(roi1["y"]), int(roi1["w"]), int(roi1["h"])
+                qx = rx1 + 2
+                qy = ry1 + rh1 + 18
             draw_text(
                 img,
                 qr_overlay_text,
