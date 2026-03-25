@@ -106,7 +106,6 @@ def _normalize_qr_text(s: str) -> str:
     return s
     
 def _run_qr_job(crop, cfg):
-    detector = cv2.QRCodeDetector()
 
     def _ocr_bottom_text_from_qr_crop(crop):
         if crop is None or crop.size == 0:
@@ -141,77 +140,6 @@ def _run_qr_job(crop, cfg):
         txt = _normalize_qr_text(txt)
         return txt
 
-    def _try_decode(img):
-        data, points, _straight = detector.detectAndDecode(img)
-        has_points = points is not None
-        has_text = bool(data)
-        return {
-            "has_text": bool(has_text),
-            "text": str(data or ""),
-            "has_points": bool(has_points),
-        }
-
-    def _estimate_qr_candidate(img):
-        if img is None or img.size == 0:
-            return False, 0.0, 0, 0
-
-        h, w = img.shape[:2]
-        if h < 24 or w < 24:
-            return False, 0.0, 0, 0
-
-        blur = cv2.GaussianBlur(img, (3, 3), 0)
-        gx = cv2.Sobel(blur, cv2.CV_32F, 1, 0, ksize=3)
-        gy = cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3)
-        mag = cv2.magnitude(gx, gy)
-        mag_u8 = np.clip(mag, 0, 255).astype(np.uint8)
-
-        _, bw = cv2.threshold(mag_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, k, iterations=1)
-        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, k, iterations=1)
-
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
-
-        best_fill = 0.0
-        best_area = 0
-        best_box_area = 0
-
-        img_area = float(h * w)
-
-        for i in range(1, num_labels):
-            x = int(stats[i, cv2.CC_STAT_LEFT])
-            y = int(stats[i, cv2.CC_STAT_TOP])
-            ww = int(stats[i, cv2.CC_STAT_WIDTH])
-            hh = int(stats[i, cv2.CC_STAT_HEIGHT])
-            area = int(stats[i, cv2.CC_STAT_AREA])
-
-            if ww < 12 or hh < 12:
-                continue
-
-            box_area = ww * hh
-            if box_area <= 0:
-                continue
-
-            aspect = ww / float(max(1, hh))
-            fill = area / float(box_area)
-            area_ratio = box_area / float(img_area)
-
-            if aspect < 0.7 or aspect > 1.3:
-                continue
-            if area_ratio < 0.08 or area_ratio > 0.85:
-                continue
-            if fill < 0.18 or fill > 0.75:
-                continue
-
-            if fill > best_fill:
-                best_fill = fill
-                best_area = area
-                best_box_area = box_area
-
-        is_candidate = best_box_area > 0
-        return is_candidate, float(best_fill), int(best_area), int(best_box_area)
-
     base = crop
     if base is None or base.size == 0:
         return False, {
@@ -229,7 +157,7 @@ def _run_qr_job(crop, cfg):
     h, w = base.shape[:2]
 
     # QR 본체 위주 crop
-    qr_crop = base[int(h * 0.05):int(h * 0.68), int(w * 0.18):int(w * 0.92)]
+    qr_crop = base  # 전체 ROI 그대로 사용
     if qr_crop is None or qr_crop.size == 0:
         qr_crop = base
 
@@ -319,74 +247,6 @@ def _run_qr_job(crop, cfg):
             "_last_image": crop,
         }, "QR_EMPTY"
 
-    variants = [
-        ("raw", base),
-        ("up2", cv2.resize(base, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)),
-        ("up3", cv2.resize(base, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)),
-    ]
-
-    eq = cv2.equalizeHist(base)
-    variants.append(
-        ("eq2", cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC))
-    )
-
-    blur = cv2.GaussianBlur(base, (3, 3), 0)
-    _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    variants.append(
-        ("otsu2", cv2.resize(otsu, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST))
-    )
-
-    otsu_inv = cv2.bitwise_not(otsu)
-    variants.append(
-        ("otsu_inv2", cv2.resize(otsu_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST))
-    )
-
-    best_img = base
-    best_name = "raw"
-    qr_detected = False
-    qr_candidate = False
-    qr_text = ""
-    candidate_score = 0.0
-    candidate_area = 0
-    candidate_box_area = 0
-
-    for name, img in variants:
-        res = _try_decode(img)
-
-        if res["has_text"]:
-            qr_detected = True
-            qr_candidate = True
-            qr_text = res["text"]
-            best_img = img
-            best_name = name
-            candidate_score = 1.0
-            break
-
-        if res["has_points"] and not qr_candidate:
-            qr_candidate = True
-            best_img = img
-            best_name = name
-            candidate_score = 0.95
-
-        cand, fill_score, area, box_area = _estimate_qr_candidate(img)
-        if cand and fill_score > candidate_score:
-            qr_candidate = True
-            best_img = img
-            best_name = name
-            candidate_score = float(fill_score)
-            candidate_area = int(area)
-            candidate_box_area = int(box_area)
-
-    metrics = {
-        "qr_detected": bool(qr_detected),
-        "qr_candidate": bool(qr_candidate),
-        "qr_text": str(qr_text or ""),
-        "qr_variant": best_name,
-        "qr_candidate_score": float(candidate_score),
-        "qr_candidate_area": int(candidate_area),
-        "qr_candidate_box_area": int(candidate_box_area),
-        "_last_image": best_img,
-    }
 
     ok = True
     reason = "OK"
