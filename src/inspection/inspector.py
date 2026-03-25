@@ -20,6 +20,7 @@ from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
+from inspection.tools_measure_washer import run_washer_presence
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -97,20 +98,67 @@ def _run_presence_job(crop, cfg):
     return ok, metrics, reason
 
 def _run_qr_job(crop, cfg):
-    params = cfg if isinstance(cfg, dict) else {}
-
     detector = cv2.QRCodeDetector()
 
-    data, points, straight = detector.detectAndDecode(crop)
+    def _try_decode(img):
+        data, points, _straight = detector.detectAndDecode(img)
+        detected = bool(data)
+        if not detected and points is not None:
+            detected = True
+        return detected, str(data or ""), points
 
-    detected = bool(data)
-    if not detected and points is not None:
-        detected = True
+    variants = []
+
+    base = crop
+    if base is None or base.size == 0:
+        return False, {"qr_detected": False, "qr_text": "", "_last_image": crop}, "QR_EMPTY"
+
+    # 1) 원본
+    variants.append(("raw", base))
+
+    # 2) 2배 확대
+    up2 = cv2.resize(base, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    variants.append(("up2", up2))
+
+    # 3) 3배 확대
+    up3 = cv2.resize(base, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+    variants.append(("up3", up3))
+
+    # 4) 히스토그램 평활화 + 확대
+    eq = cv2.equalizeHist(base)
+    eq2 = cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    variants.append(("eq2", eq2))
+
+    # 5) Gaussian blur 후 OTSU
+    blur = cv2.GaussianBlur(base, (3, 3), 0)
+    _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    otsu2 = cv2.resize(otsu, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
+    variants.append(("otsu2", otsu2))
+
+    # 6) 반전 OTSU + 확대
+    otsu_inv = cv2.bitwise_not(otsu)
+    otsu_inv2 = cv2.resize(otsu_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
+    variants.append(("otsu_inv2", otsu_inv2))
+
+    best_img = base
+    best_name = "raw"
+    qr_detected = False
+    qr_text = ""
+
+    for name, img in variants:
+        detected, text, points = _try_decode(img)
+        if detected:
+            qr_detected = True
+            qr_text = text
+            best_img = img
+            best_name = name
+            break
 
     metrics = {
-        "qr_detected": bool(detected),
-        "qr_text": str(data or ""),
-        "_last_image": crop.copy(),
+        "qr_detected": bool(qr_detected),
+        "qr_text": str(qr_text or ""),
+        "qr_variant": best_name,
+        "_last_image": best_img,
     }
 
     ok = True
@@ -186,12 +234,21 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
         return True, "OK"
     return False, "QR_NOT_FOUND"
 
+def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+    min_edge = int(cfg.get("min_edge", 30))
+    edge_count = int(metrics.get("edge_count", 0))
+
+    if edge_count >= min_edge:
+        return True, "OK"
+    return False, "WASHER_MISSING"
+
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
     "mean_threshold": _job_eval_mean_threshold,
     "score_threshold": _job_eval_score_threshold,
     "presence": _job_eval_presence,
     "qr_presence": _job_eval_qr_presence,
+    "washer_presence": _job_eval_washer, 
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -207,6 +264,7 @@ JOB_RUNNERS = {
     "score_threshold": _run_analyzer_job,
     "presence": _run_presence_job,
     "qr_presence": _run_qr_job,
+    "washer_presence": run_washer_presence,
 }
 
 class Inspector:
