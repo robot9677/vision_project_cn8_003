@@ -248,9 +248,18 @@ def _run_qr_job(crop, cfg):
         }, "QR_EMPTY"
 
 
-    ok = True
-    reason = "OK"
-    return ok, metrics, reason
+    return False, {
+        "qr_detected": False,
+        "qr_candidate": False,
+        "qr_text": "",
+        "qr_text_norm": "",
+        "qr_ocr_text": "",
+        "qr_variant": "pyzbar_fail",
+        "qr_candidate_score": 0.0,
+        "qr_candidate_area": 0,
+        "qr_candidate_box_area": 0,
+        "_last_image": base,
+    }, "NG: QR SCAN FAIL"
 
 def _run_none_job(crop, cfg):
     return True, {}, "OK"
