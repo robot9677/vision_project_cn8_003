@@ -462,6 +462,14 @@ class Inspector:
                 score = 0.0
             metrics["score"] = float(score)
 
+        metrics["norm_gain"] = float(norm_gain)
+        metrics["dx"] = roi_dx
+        metrics["dy"] = roi_dy
+        metrics["dangle"] = float(roi_dangle)
+        metrics["trk_score"] = float(pose.get("score", trk_score))
+        metrics["align_anchor_id"] = pose.get("anchor_id")
+        metrics["inspection_id"] = cfg.get("id", "job")
+
         job_type = (cfg.get("type") or "").strip().lower()
         evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
         job_ok, job_reason = evaluator(
@@ -472,14 +480,6 @@ class Inspector:
             recipe_default=recipe_default,
             runtime_cfg=runtime_cfg,
         )
-
-        metrics["norm_gain"] = float(norm_gain)
-        metrics["dx"] = roi_dx
-        metrics["dy"] = roi_dy
-        metrics["dangle"] = float(roi_dangle)
-        metrics["trk_score"] = float(pose.get("score", trk_score))
-        metrics["align_anchor_id"] = pose.get("anchor_id")
-        metrics["inspection_id"] = cfg.get("id", "job")
 
         # --- tracker 복구 ---
         if orig_margin is not None:
