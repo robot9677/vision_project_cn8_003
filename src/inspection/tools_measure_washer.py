@@ -31,13 +31,30 @@ def run_washer_presence(crop, cfg):
 
     edge_count = int(np.count_nonzero(band))
 
+    # --- 프로파일 생성 ---
+    profile = np.mean(img, axis=1)
+
+    peak_count = _count_peaks(profile)
+
     metrics = {
         "edge_count": edge_count,
-        "band_h": y2 - y1,
+        "peak_count": peak_count,
+        "profile_max": float(np.max(profile)),
         "_last_image": edges,
     }
 
     ok = True
     reason = "OK"
-
     return ok, metrics, reason
+
+def _count_peaks(profile, min_dist=5, th_ratio=0.3):
+    peaks = []
+    max_val = np.max(profile)
+    th = max_val * th_ratio
+
+    for i in range(1, len(profile)-1):
+        if profile[i] > profile[i-1] and profile[i] > profile[i+1] and profile[i] > th:
+            if not peaks or (i - peaks[-1]) > min_dist:
+                peaks.append(i)
+
+    return len(peaks)

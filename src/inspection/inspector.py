@@ -237,17 +237,21 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     edge_count = int(metrics.get("edge_count", 0))
     mean_raw = float(metrics.get("mean_raw", 0.0))
+    peak_count = int(metrics.get("peak_count", 0))
 
     min_edge = int(cfg.get("min_edge", 100))
     min_mean = float(cfg.get("min_mean", 38.0))
+    min_peak = int(cfg.get("min_peak", 2))
 
-    if edge_count >= min_edge and mean_raw >= min_mean:
-        return True, "OK"
+    # 1차 존재 판단
+    if edge_count < min_edge or mean_raw < min_mean:
+        return False, "WASHER_MISSING"
 
-    if edge_count < min_edge:
-        return False, "WASHER_EDGE_LOW"
+    # 2차 개수 판단
+    if peak_count < min_peak:
+        return False, "WASHER_COUNT_LOW"
 
-    return False, "WASHER_MEAN_LOW"
+    return True, "OK"
 
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
@@ -326,6 +330,13 @@ class Inspector:
         trk_score,
     ):
         job_type = (cfg.get("type") or "").strip().lower()
+        # --- washer 전용 tracking 제한 ---
+        orig_margin = None
+
+        if job_type == "washer_presence":
+            orig_margin = getattr(self.tracker, "search_margin", None)
+            self.tracker.search_margin = int(cfg.get("tracker_margin", 50))
+
         runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
         ok, metrics, reason = runner(crop, cfg)
 
@@ -363,6 +374,10 @@ class Inspector:
         metrics["align_anchor_id"] = pose.get("anchor_id")
         metrics["inspection_id"] = cfg.get("id", "job")
 
+        # --- tracker 복구 ---
+        if orig_margin is not None:
+            self.tracker.search_margin = orig_margin
+            
         return job_ok, metrics, job_reason, job_type
 
     def _get_mean_filter(self, roi_id):
