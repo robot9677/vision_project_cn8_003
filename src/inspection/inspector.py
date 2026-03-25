@@ -325,11 +325,13 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
     qr_candidate = bool(metrics.get("qr_candidate", False))
     qr_text = str(metrics.get("qr_text", "") or "").strip()
 
+    # 1. decode 성공
     if qr_detected and qr_text:
         return True, "OK"
 
+    # 2. decode 실패 but 후보 존재 → OK (핵심 변경)
     if qr_candidate:
-        return False, "QR_DETECTED_NO_DECODE"
+        return True, "QR_CANDIDATE_OK"
 
     return False, "QR_NOT_FOUND"
 
