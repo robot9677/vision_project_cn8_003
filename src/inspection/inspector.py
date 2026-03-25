@@ -22,6 +22,8 @@ from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
 from inspection.tools_measure_washer import run_washer_presence
 from pyzbar import pyzbar
+import re
+import pytesseract
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -98,8 +100,46 @@ def _run_presence_job(crop, cfg):
     reason = "OK"
     return ok, metrics, reason
 
+def _normalize_qr_text(s: str) -> str:
+    s = str(s or "").strip().upper()
+    s = re.sub(r"[^A-Z0-9]", "", s)
+    return s
+    
 def _run_qr_job(crop, cfg):
     detector = cv2.QRCodeDetector()
+
+    def _ocr_bottom_text_from_qr_crop(crop):
+        if crop is None or crop.size == 0:
+            return ""
+
+        h, w = crop.shape[:2]
+
+        # 하단 인쇄문자 영역: QR 박스 아래쪽 띠
+        y1 = int(h * 0.72)
+        y2 = h
+        x1 = 0
+        x2 = w
+
+        if y2 <= y1:
+            return ""
+
+        band = crop[y1:y2, x1:x2]
+        if band is None or band.size == 0:
+            return ""
+
+        # OCR 잘 되게 확대 + 이진화
+        band_up = cv2.resize(band, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+        band_blur = cv2.GaussianBlur(band_up, (3, 3), 0)
+        _, band_bw = cv2.threshold(band_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        try:
+            txt = pytesseract.image_to_string(band_bw, config=config)
+        except Exception:
+            txt = ""
+
+        txt = _normalize_qr_text(txt)
+        return txt
 
     def _try_decode(img):
         data, points, _straight = detector.detectAndDecode(img)
@@ -186,17 +226,22 @@ def _run_qr_job(crop, cfg):
         except Exception:
             text = str(zbar_results[0].data)
 
+        qr_text_norm = _normalize_qr_text(text)
+        ocr_text = _ocr_bottom_text_from_qr_crop(base)
+
         return True, {
             "qr_detected": True,
             "qr_candidate": True,
             "qr_text": text,
+            "qr_text_norm": qr_text_norm,     # 추가
+            "qr_ocr_text": ocr_text,          # 추가
             "qr_variant": "pyzbar_raw",
             "qr_candidate_score": 1.0,
             "qr_candidate_area": int(base.shape[0] * base.shape[1]),
             "qr_candidate_box_area": int(base.shape[0] * base.shape[1]),
             "_last_image": base,
         }, "OK"
-    
+        
     if base is None or base.size == 0:
         return False, {
             "qr_detected": False,
@@ -354,26 +399,44 @@ def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
 def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     qr_detected = bool(metrics.get("qr_detected", False))
     qr_text = str(metrics.get("qr_text", "") or "").strip()
+    qr_text_norm = str(metrics.get("qr_text_norm", "") or "").strip()
+    qr_ocr_text = str(metrics.get("qr_ocr_text", "") or "").strip()
 
     expected_text = str(cfg.get("expected_text", "") or "").strip()
     expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()
     min_length = int(cfg.get("min_length", 1))
+    compare_ocr = bool(cfg.get("compare_ocr", False))
 
     if not qr_detected or not qr_text:
         return False, "NG: QR SCAN FAIL"
 
-    if len(qr_text) < min_length:
+    if len(qr_text_norm) < min_length:
         return False, "NG: QR TEXT TOO SHORT"
 
+    # 1) QR 자체 문자열 검사
     if expected_text:
-        if qr_text == expected_text:
-            return True, f"OK: {qr_text}"
-        return False, f"NG: QR TEXT INVALID"
+        if qr_text_norm != _normalize_qr_text(expected_text):
+            return False, "NG: QR TEXT INVALID"
 
     if expected_prefix:
-        if qr_text.startswith(expected_prefix):
-            return True, f"OK: {qr_text}"
-        return False, f"NG: QR TEXT INVALID"
+        if not qr_text_norm.startswith(_normalize_qr_text(expected_prefix)):
+            return False, "NG: QR TEXT INVALID"
+
+    # 2) 하단 OCR 비교
+    if compare_ocr:
+        if not qr_ocr_text:
+            return False, "NG: OCR FAIL"
+
+        # QR에 URL/문자열이 들어오더라도, 마지막 영문숫자 토큰 비교를 우선 허용
+        qr_tail = qr_text_norm
+        m = re.findall(r"[A-Z0-9]+", qr_text_norm)
+        if m:
+            qr_tail = m[-1]
+
+        if qr_tail != qr_ocr_text:
+            return False, "NG: TEXT MISMATCH"
+
+        return True, f"OK: {qr_ocr_text}"
 
     return True, f"OK: {qr_text}"
 
