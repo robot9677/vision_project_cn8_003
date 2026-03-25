@@ -652,6 +652,8 @@ class Inspector:
                     f"dark_ratio={metrics.get('dark_ratio')} "
                     f"qr_detected={metrics.get('qr_detected')} "
                     f"qr_text={metrics.get('qr_text')} "
+                    f"edge_count={metrics.get('edge_count')} "
+                    f"band_h={metrics.get('band_h')} "
                     f"mean_raw={metrics.get('mean_raw')} "
                     f"mean={metrics.get('mean')} "
                     f"norm_gain={metrics.get('norm_gain')} "
