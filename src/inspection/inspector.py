@@ -102,60 +102,71 @@ def _run_qr_job(crop, cfg):
 
     def _try_decode(img):
         data, points, _straight = detector.detectAndDecode(img)
-        detected = bool(data)
-        if not detected and points is not None:
-            detected = True
-        return detected, str(data or ""), points
-
-    variants = []
+        has_points = points is not None
+        has_text = bool(data)
+        return {
+            "has_text": bool(has_text),
+            "text": str(data or ""),
+            "has_points": bool(has_points),
+        }
 
     base = crop
     if base is None or base.size == 0:
-        return False, {"qr_detected": False, "qr_text": "", "_last_image": crop}, "QR_EMPTY"
+        return False, {
+            "qr_detected": False,
+            "qr_candidate": False,
+            "qr_text": "",
+            "qr_variant": "empty",
+            "_last_image": crop,
+        }, "QR_EMPTY"
 
-    # 1) 원본
-    variants.append(("raw", base))
+    variants = [
+        ("raw", base),
+        ("up2", cv2.resize(base, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)),
+        ("up3", cv2.resize(base, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)),
+    ]
 
-    # 2) 2배 확대
-    up2 = cv2.resize(base, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    variants.append(("up2", up2))
-
-    # 3) 3배 확대
-    up3 = cv2.resize(base, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
-    variants.append(("up3", up3))
-
-    # 4) 히스토그램 평활화 + 확대
     eq = cv2.equalizeHist(base)
-    eq2 = cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    variants.append(("eq2", eq2))
+    variants.append(
+        ("eq2", cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC))
+    )
 
-    # 5) Gaussian blur 후 OTSU
     blur = cv2.GaussianBlur(base, (3, 3), 0)
     _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    otsu2 = cv2.resize(otsu, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
-    variants.append(("otsu2", otsu2))
+    variants.append(
+        ("otsu2", cv2.resize(otsu, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST))
+    )
 
-    # 6) 반전 OTSU + 확대
     otsu_inv = cv2.bitwise_not(otsu)
-    otsu_inv2 = cv2.resize(otsu_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
-    variants.append(("otsu_inv2", otsu_inv2))
+    variants.append(
+        ("otsu_inv2", cv2.resize(otsu_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST))
+    )
 
     best_img = base
     best_name = "raw"
     qr_detected = False
+    qr_candidate = False
     qr_text = ""
 
     for name, img in variants:
-        detected, text, points = _try_decode(img)
-        if detected:
+        res = _try_decode(img)
+
+        if res["has_points"] and not qr_candidate:
+            qr_candidate = True
+            best_img = img
+            best_name = name
+
+        if res["has_text"]:
             qr_detected = True
-            qr_text = text
+            qr_candidate = True
+            qr_text = res["text"]
             best_img = img
             best_name = name
             break
 
     metrics = {
-        "qr_detected": bool(qr_detected),
+        "qr_detected": bool(qr_detected),   # decode 성공 기준
+        "qr_candidate": bool(qr_candidate), # QR 모양 후보만 잡힌 경우
         "qr_text": str(qr_text or ""),
         "qr_variant": best_name,
         "_last_image": best_img,
