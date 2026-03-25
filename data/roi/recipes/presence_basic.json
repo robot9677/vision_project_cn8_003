@@ -133,10 +133,10 @@
       "enabled": true,
       "roi_id": 2,
       "type": "qr_presence",
-      "min_score": 0.25,
-      "min_area": 500,
+      "min_score": 0.15,
+      "min_area": 300,
       "min_trk_score": 0.75,
-      "min_mean_raw": 55.0
+      "min_mean_raw": 40.0
     },
     {
       "id": "insp_washer",
