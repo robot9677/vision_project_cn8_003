@@ -238,16 +238,16 @@ def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     edge_count = int(metrics.get("edge_count", 0))
     mean_raw = float(metrics.get("mean_raw", 0.0))
 
-    min_edge = int(cfg.get("min_edge", 180))
-    min_mean = float(cfg.get("min_mean", 37.5))
+    min_mean = float(cfg.get("min_mean", 39.0))
+    min_edge = int(cfg.get("min_edge", 170))
 
-    if edge_count >= min_edge and mean_raw >= min_mean:
-        return True, "OK"
+    if mean_raw < min_mean:
+        return False, "WASHER_MEAN_LOW"
 
     if edge_count < min_edge:
         return False, "WASHER_EDGE_LOW"
 
-    return False, "WASHER_MEAN_LOW"
+    return True, "OK"
 
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
@@ -513,9 +513,7 @@ class Inspector:
             else:
                 norm_gain = 1.0
 
-        # use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
-        # 임시로 막음.
-        use_tracker = False
+        use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
 
         if use_tracker and getattr(self, "aligner", None) is not None:
             align_result = self.aligner.estimate(frame_gray8, self.roi_mgr)
