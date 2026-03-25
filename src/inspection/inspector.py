@@ -235,19 +235,10 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
     return False, "QR_NOT_FOUND"
 
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
-    edge_count = int(metrics.get("edge_count", 0))
-    mean_raw = float(metrics.get("mean_raw", 0.0))
     peak_count = int(metrics.get("peak_count", 0))
 
-    min_edge = int(cfg.get("min_edge", 170))
-    min_mean = float(cfg.get("min_mean", 38.0))
     min_peak = int(cfg.get("min_peak", 2))
 
-    # 1차: 존재
-    if edge_count < min_edge or mean_raw < min_mean:
-        return False, "WASHER_MISSING"
-
-    # 2차: 개수
     if peak_count < min_peak:
         return False, "WASHER_COUNT_LOW"
 

@@ -52,7 +52,7 @@ def run_washer_presence(crop, cfg):
     reason = "OK"
     return ok, metrics, reason
 
-def _count_peaks(profile, min_dist=10, th_ratio=0.4):
+def _count_peaks(profile, min_dist=15, th_ratio=0.5):
     peaks = []
     max_val = np.max(profile)
     th = max_val * th_ratio

@@ -148,9 +148,7 @@
         "band_bottom": 0.75,
         "min_edge": 150,
         "min_mean": 38.0,
-        "min_peak": 2,
-        "tracker_margin": 50,
-        "tracker_enable": true
+        "min_peak": 2
       }
     }
   ]
