@@ -213,14 +213,76 @@ def _run_qr_job(crop, cfg):
         return is_candidate, float(best_fill), int(best_area), int(best_box_area)
 
     base = crop
-    # 0) pyzbar decode 우선
-    # QR 영역만 crop (중앙 기준)
+    if base is None or base.size == 0:
+        return False, {
+            "qr_detected": False,
+            "qr_candidate": False,
+            "qr_text": "",
+            "qr_variant": "empty",
+            "qr_candidate_score": 0.0,
+            "qr_candidate_area": 0,
+            "qr_candidate_box_area": 0,
+            "_last_image": crop,
+        }, "QR_EMPTY"
+
+    # 0) pyzbar decode 우선 - 여러 전처리 버전 재시도
     h, w = base.shape[:2]
-    qr_crop = base[int(h*0.1):int(h*0.7), int(w*0.1):int(w*0.9)]
-    try:
-        zbar_results = pyzbar.decode(qr_crop)
-    except Exception:
-        zbar_results = []
+
+    # QR 본체 위주 crop
+    qr_crop = base[int(h * 0.05):int(h * 0.68), int(w * 0.18):int(w * 0.92)]
+    if qr_crop is None or qr_crop.size == 0:
+        qr_crop = base
+
+    decode_candidates = []
+
+    # raw
+    decode_candidates.append(("pyzbar_raw", qr_crop))
+
+    # upscaled
+    up2 = cv2.resize(qr_crop, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    decode_candidates.append(("pyzbar_up2", up2))
+
+    up3 = cv2.resize(qr_crop, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+    decode_candidates.append(("pyzbar_up3", up3))
+
+    # equalized
+    eq = cv2.equalizeHist(qr_crop)
+    decode_candidates.append(("pyzbar_eq", eq))
+    decode_candidates.append((
+        "pyzbar_eq_up2",
+        cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    ))
+
+    # otsu binary
+    blur0 = cv2.GaussianBlur(qr_crop, (3, 3), 0)
+    _, bw = cv2.threshold(blur0, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    decode_candidates.append(("pyzbar_otsu", bw))
+    decode_candidates.append((
+        "pyzbar_otsu_up2",
+        cv2.resize(bw, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
+    ))
+
+    # inverted otsu
+    bw_inv = cv2.bitwise_not(bw)
+    decode_candidates.append(("pyzbar_otsu_inv", bw_inv))
+    decode_candidates.append((
+        "pyzbar_otsu_inv_up2",
+        cv2.resize(bw_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
+    ))
+
+    zbar_results = []
+    zbar_variant = "pyzbar_none"
+
+    for name, cand_img in decode_candidates:
+        try:
+            zres = pyzbar.decode(cand_img)
+        except Exception:
+            zres = []
+
+        if zres:
+            zbar_results = zres
+            zbar_variant = name
+            break
 
     if zbar_results:
         text = ""
@@ -236,12 +298,12 @@ def _run_qr_job(crop, cfg):
             "qr_detected": True,
             "qr_candidate": True,
             "qr_text": text,
-            "qr_text_norm": qr_text_norm,     # 추가
-            "qr_ocr_text": ocr_text,          # 추가
-            "qr_variant": "pyzbar_raw",
+            "qr_text_norm": qr_text_norm,
+            "qr_ocr_text": ocr_text,
+            "qr_variant": zbar_variant,
             "qr_candidate_score": 1.0,
-            "qr_candidate_area": int(base.shape[0] * base.shape[1]),
-            "qr_candidate_box_area": int(base.shape[0] * base.shape[1]),
+            "qr_candidate_area": int(qr_crop.shape[0] * qr_crop.shape[1]),
+            "qr_candidate_box_area": int(qr_crop.shape[0] * qr_crop.shape[1]),
             "_last_image": base,
         }, "OK"
         
