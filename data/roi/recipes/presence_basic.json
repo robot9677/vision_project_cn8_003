@@ -137,6 +137,8 @@
     },
     {
       "id": "insp_washer",
+      "enabled": true,
+      "roi_id": 3,
       "type": "washer_presence",
       "params": {
         "blur": 3,
