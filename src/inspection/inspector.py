@@ -105,40 +105,40 @@ def _normalize_qr_text(s: str) -> str:
     s = re.sub(r"[^A-Z0-9]", "", s)
     return s
     
+def _ocr_bottom_text_from_qr_crop(crop):
+    if crop is None or crop.size == 0:
+        return ""
+
+    h, w = crop.shape[:2]
+
+    # 하단 인쇄문자 영역: QR 박스 아래쪽 띠
+    y1 = int(h * 0.72)
+    y2 = h
+    x1 = 0
+    x2 = w
+
+    if y2 <= y1:
+        return ""
+
+    band = crop[y1:y2, x1:x2]
+    if band is None or band.size == 0:
+        return ""
+
+    # OCR 잘 되게 확대 + 이진화
+    band_up = cv2.resize(band, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+    band_blur = cv2.GaussianBlur(band_up, (3, 3), 0)
+    _, band_bw = cv2.threshold(band_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    try:
+        txt = pytesseract.image_to_string(band_bw, config=config)
+    except Exception:
+        txt = ""
+
+    txt = _normalize_qr_text(txt)
+    return txt
+    
 def _run_qr_job(crop, cfg):
-
-    def _ocr_bottom_text_from_qr_crop(crop):
-        if crop is None or crop.size == 0:
-            return ""
-
-        h, w = crop.shape[:2]
-
-        # 하단 인쇄문자 영역: QR 박스 아래쪽 띠
-        y1 = int(h * 0.72)
-        y2 = h
-        x1 = 0
-        x2 = w
-
-        if y2 <= y1:
-            return ""
-
-        band = crop[y1:y2, x1:x2]
-        if band is None or band.size == 0:
-            return ""
-
-        # OCR 잘 되게 확대 + 이진화
-        band_up = cv2.resize(band, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
-        band_blur = cv2.GaussianBlur(band_up, (3, 3), 0)
-        _, band_bw = cv2.threshold(band_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        try:
-            txt = pytesseract.image_to_string(band_bw, config=config)
-        except Exception:
-            txt = ""
-
-        txt = _normalize_qr_text(txt)
-        return txt
 
     base = crop
     if base is None or base.size == 0:
