@@ -214,8 +214,11 @@ def _run_qr_job(crop, cfg):
 
     base = crop
     # 0) pyzbar decode 우선
+    # QR 영역만 crop (중앙 기준)
+    h, w = base.shape[:2]
+    qr_crop = base[int(h*0.1):int(h*0.7), int(w*0.1):int(w*0.9)]
     try:
-        zbar_results = pyzbar.decode(base)
+        zbar_results = pyzbar.decode(qr_crop)
     except Exception:
         zbar_results = []
 
