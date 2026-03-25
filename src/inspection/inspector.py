@@ -347,34 +347,29 @@ def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
 
 def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     qr_detected = bool(metrics.get("qr_detected", False))
-    qr_candidate = bool(metrics.get("qr_candidate", False))
     qr_text = str(metrics.get("qr_text", "") or "").strip()
 
-    score = float(metrics.get("qr_candidate_score", 0.0))
-    area = int(metrics.get("qr_candidate_box_area", 0))
-    trk_score = float(metrics.get("trk_score", 0.0))
-    mean_raw = float(metrics.get("mean_raw", 0.0))
+    expected_text = str(cfg.get("expected_text", "") or "").strip()
+    expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()
+    min_length = int(cfg.get("min_length", 1))
 
-    min_score = float(cfg.get("min_score", 0.25))
-    min_area = int(cfg.get("min_area", 500))
-    min_trk_score = float(cfg.get("min_trk_score", 0.75))
-    min_mean_raw = float(cfg.get("min_mean_raw", 55.0))
+    if not qr_detected or not qr_text:
+        return False, "NG: QR SCAN FAIL"
 
-    # 1. decode 성공
-    if qr_detected and qr_text:
-        return True, "OK"
+    if len(qr_text) < min_length:
+        return False, "NG: QR TEXT TOO SHORT"
 
-    # 2. candidate fallback
-    if qr_candidate:
-        if trk_score < min_trk_score:
-            return False, "QR_TRACK_WEAK"
-        if mean_raw < min_mean_raw:
-            return False, "QR_DARK"
-        if score < min_score or area < min_area:
-            return False, "QR_WEAK"
-        return True, "QR_CANDIDATE_OK"
+    if expected_text:
+        if qr_text == expected_text:
+            return True, f"OK: {qr_text}"
+        return False, f"NG: QR TEXT INVALID"
 
-    return False, "QR_NOT_FOUND"
+    if expected_prefix:
+        if qr_text.startswith(expected_prefix):
+            return True, f"OK: {qr_text}"
+        return False, f"NG: QR TEXT INVALID"
+
+    return True, f"OK: {qr_text}"
 
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     edge_count = int(metrics.get("edge_count", 0))

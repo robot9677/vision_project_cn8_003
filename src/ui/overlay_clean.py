@@ -101,13 +101,20 @@ def draw_rois(
 
         # check roi_results for status/metrics
         rid_str = str(roi_id)
+        rv = None
+        ok = None
+        metrics = None
+        reason = ""
+
         if roi_results is not None:
-            rv = None
             if isinstance(roi_results, dict):
                 rv = roi_results.get(rid_str) if rid_str in roi_results else roi_results.get(roi_id)
+
             if rv is not None:
                 ok = rv.get("ok") if isinstance(rv, dict) else getattr(rv, "ok", None)
                 metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
+                reason = rv.get("reason", "") if isinstance(rv, dict) else getattr(rv, "reason", "")
+
                 if ok is True:
                     color = cfg.COLOR_OK
                 elif ok is False:
@@ -138,6 +145,42 @@ def draw_rois(
         # center point
         cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
 
+        # QR scan result text (ROI 하단, QR일 때만)
+        qr_overlay_text = ""
+        qr_overlay_color = color
+
+        if metrics and isinstance(metrics, dict):
+            qr_text = str(metrics.get("qr_text", "") or "").strip()
+            qr_detected = bool(metrics.get("qr_detected", False))
+
+            # QR 스캔 결과만 표시
+            if qr_detected or ("QR" in str(reason).upper()):
+                if ok:
+                    if qr_text:
+                        qr_overlay_text = f"OK: {qr_text}"
+                    else:
+                        qr_overlay_text = "OK: QR SCAN OK"
+                    qr_overlay_color = cfg.COLOR_OK
+                else:
+                    if reason:
+                        qr_overlay_text = str(reason)
+                    else:
+                        qr_overlay_text = "NG: QR SCAN FAIL"
+                    qr_overlay_color = cfg.COLOR_NG
+
+        if qr_overlay_text:
+            qx = int(x + 2)
+            qy = int(y + h + 12)
+            draw_text(
+                img,
+                qr_overlay_text,
+                (qx, qy),
+                color=qr_overlay_color,
+                scale=roi_text_scale,
+                thickness=roi_text_thickness,
+                align="lt",
+            )
+            
         # prepare label lines
         line1 = f"{label}" if roi_id is not None else label
 

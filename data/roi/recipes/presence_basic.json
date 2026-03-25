@@ -94,7 +94,7 @@
       "id": "insp_roi1_presence",
       "enabled": true,
       "roi_id": 1,
-      "type": "presence",
+      "type": "none",
       "params": {
         "blur_ksize": 3,
         "threshold_mode": "mean_offset",
@@ -136,7 +136,9 @@
       "min_score": 0.15,
       "min_area": 300,
       "min_trk_score": 0.75,
-      "min_mean_raw": 40.0
+      "min_mean_raw": 40.0,
+      "expected_prefix": "T24",
+       "min_length": 8
     },
     {
       "id": "insp_washer",
