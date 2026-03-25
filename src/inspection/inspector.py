@@ -236,18 +236,12 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
 
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     edge_count = int(metrics.get("edge_count", 0))
-    mean_raw = float(metrics.get("mean_raw", 0.0))
+    min_edge = int(cfg.get("min_edge", 165))
 
-    min_mean = float(cfg.get("min_mean", 39.0))
-    min_edge = int(cfg.get("min_edge", 170))
+    if edge_count >= min_edge:
+        return True, "OK"
 
-    if mean_raw < min_mean:
-        return False, "WASHER_MEAN_LOW"
-
-    if edge_count < min_edge:
-        return False, "WASHER_EDGE_LOW"
-
-    return True, "OK"
+    return False, "WASHER_MISSING"
 
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
