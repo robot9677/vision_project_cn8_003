@@ -146,7 +146,7 @@
         "canny_high": 120,
         "band_top": 0.35,
         "band_bottom": 0.75,
-        "min_edge": 100,
+        "min_edge": 170,
         "min_mean": 38.0,
         "min_peak": 2,
         "tracker_margin": 50,

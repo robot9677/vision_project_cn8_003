@@ -239,15 +239,15 @@ def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     mean_raw = float(metrics.get("mean_raw", 0.0))
     peak_count = int(metrics.get("peak_count", 0))
 
-    min_edge = int(cfg.get("min_edge", 100))
+    min_edge = int(cfg.get("min_edge", 170))
     min_mean = float(cfg.get("min_mean", 38.0))
     min_peak = int(cfg.get("min_peak", 2))
 
-    # 1차 존재 판단
+    # 1차: 존재
     if edge_count < min_edge or mean_raw < min_mean:
         return False, "WASHER_MISSING"
 
-    # 2차 개수 판단
+    # 2차: 개수
     if peak_count < min_peak:
         return False, "WASHER_COUNT_LOW"
 
@@ -377,7 +377,7 @@ class Inspector:
         # --- tracker 복구 ---
         if orig_margin is not None:
             self.tracker.search_margin = orig_margin
-            
+
         return job_ok, metrics, job_reason, job_type
 
     def _get_mean_filter(self, roi_id):
@@ -518,6 +518,11 @@ class Inspector:
                 norm_gain = 1.0
 
         use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
+
+        # washer 검사일 때 tracker 끄기
+        if any(cfg.get("type") == "washer_presence" for cfg in get_inspection_cfgs(self.recipe, 3)):
+            use_tracker = False
+
         if use_tracker and getattr(self, "aligner", None) is not None:
             align_result = self.aligner.estimate(frame_gray8, self.roi_mgr)
             g = align_result.get("global") or {}
