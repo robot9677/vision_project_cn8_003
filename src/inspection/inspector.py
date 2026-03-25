@@ -327,21 +327,27 @@ def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg)
 
     score = float(metrics.get("qr_candidate_score", 0.0))
     area = int(metrics.get("qr_candidate_box_area", 0))
+    trk_score = float(metrics.get("trk_score", 0.0))
+    mean_raw = float(metrics.get("mean_raw", 0.0))
 
-    # 튜닝 파라미터 (중요)
     min_score = float(cfg.get("min_score", 0.25))
     min_area = int(cfg.get("min_area", 500))
+    min_trk_score = float(cfg.get("min_trk_score", 0.75))
+    min_mean_raw = float(cfg.get("min_mean_raw", 55.0))
 
     # 1. decode 성공
     if qr_detected and qr_text:
         return True, "OK"
 
-    # 2. candidate + 조건 만족
+    # 2. candidate fallback
     if qr_candidate:
-        if score >= min_score and area >= min_area:
-            return True, "QR_CANDIDATE_OK"
-        else:
+        if trk_score < min_trk_score:
+            return False, "QR_TRACK_WEAK"
+        if mean_raw < min_mean_raw:
+            return False, "QR_DARK"
+        if score < min_score or area < min_area:
             return False, "QR_WEAK"
+        return True, "QR_CANDIDATE_OK"
 
     return False, "QR_NOT_FOUND"
 
