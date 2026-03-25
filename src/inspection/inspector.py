@@ -519,10 +519,6 @@ class Inspector:
 
         use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
 
-        # washer 검사일 때 tracker 끄기
-        if any(cfg.get("type") == "washer_presence" for cfg in get_inspection_cfgs(self.recipe, 3)):
-            use_tracker = False
-
         if use_tracker and getattr(self, "aligner", None) is not None:
             align_result = self.aligner.estimate(frame_gray8, self.roi_mgr)
             g = align_result.get("global") or {}
