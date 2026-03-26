@@ -39,6 +39,26 @@ class CameraGST:
         hp_collect_frames: int = 10,
         hp_thresh: float = 10.0,
     ):
+        self.profiles = {
+            "default": {
+                "auto_brightness": True,
+                "target_mean": 112.0,
+                "denoise_method": "median",
+                "median_ksize": 1,
+                "sharpen": True,
+            },
+            "qr": {
+                "auto_brightness": False,
+                "denoise_method": "none",
+                "sharpen": False,
+            },
+            "ocr": {
+                "auto_brightness": False,
+                "denoise_method": "median",
+                "median_ksize": 3,
+                "sharpen": False,
+            }
+        }
 
         self.gst = gst_pipeline
         self.cap = None
@@ -81,6 +101,17 @@ class CameraGST:
         if not self.cap.isOpened():
             self.cap = None
             raise RuntimeError("Camera open failed (GStreamer pipeline)")
+
+    def set_profile(self, name):
+        cfg = self.profiles.get(name)
+        if not cfg:
+            return
+
+        self.auto_brightness = cfg.get("auto_brightness", self.auto_brightness)
+        self.target_mean = cfg.get("target_mean", self.target_mean)
+        self.denoise_method = cfg.get("denoise_method", self.denoise_method)
+        self.median_ksize = cfg.get("median_ksize", self.median_ksize)
+        self.sharpen = cfg.get("sharpen", True)
 
     # ---------- helper: update hotpixel accumulator ----------
     def _accumulate_hotpixel(self, gray):
@@ -226,8 +257,9 @@ class CameraGST:
 
         # --- light sharpen ---
         try:
-            blur = cv2.GaussianBlur(frame, (0, 0), 0.8)
-            frame = cv2.addWeighted(frame, 1.22, blur, -0.22, 0)
+            if getattr(self, "sharpen", True):
+                blur = cv2.GaussianBlur(frame, (0, 0), 1.0)
+                frame = cv2.addWeighted(frame, 1.5, blur, -0.5, 0)
         except Exception as e:
             print("[DBG CAMERA] sharpen error:", e)
 
