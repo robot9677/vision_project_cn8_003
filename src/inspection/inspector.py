@@ -101,175 +101,9 @@ def _run_presence_job(crop, cfg):
     reason = "OK"
     return ok, metrics, reason
 
-def _normalize_qr_text(s: str) -> str:
-    s = str(s or "").strip().upper()
-    s = re.sub(r"[^A-Z0-9]", "", s)
-    return s
-    
-def _ocr_bottom_text_from_qr_crop(crop):
-    if crop is None or crop.size == 0:
-        return ""
-
-    h, w = crop.shape[:2]
-
-    # 하단 인쇄문자 영역: QR 박스 아래쪽 띠
-    y1 = int(h * 0.72)
-    y2 = h
-    x1 = 0
-    x2 = w
-
-    if y2 <= y1:
-        return ""
-
-    band = crop[y1:y2, x1:x2]
-    if band is None or band.size == 0:
-        return ""
-
-    # OCR 잘 되게 확대 + 이진화
-    band_up = cv2.resize(band, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
-    band_blur = cv2.GaussianBlur(band_up, (3, 3), 0)
-    _, band_bw = cv2.threshold(band_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    try:
-        txt = pytesseract.image_to_string(band_bw, config=config)
-    except Exception:
-        txt = ""
-
-    txt = _normalize_qr_text(txt)
-    return txt
-    
-def _run_qr_job(crop, cfg):
-
-    base = crop
-    if base is None or base.size == 0:
-        return False, {
-            "qr_detected": False,
-            "qr_candidate": False,
-            "qr_text": "",
-            "qr_variant": "empty",
-            "qr_candidate_score": 0.0,
-            "qr_candidate_area": 0,
-            "qr_candidate_box_area": 0,
-            "_last_image": crop,
-        }, "QR_EMPTY"
-
-    # 0) pyzbar decode 우선 - 여러 전처리 버전 재시도
-    h, w = base.shape[:2]
-
-    # QR 본체 위주 crop
-    qr_crop = base  # 전체 ROI 그대로 사용
-    if qr_crop is None or qr_crop.size == 0:
-        qr_crop = base
-
-    decode_candidates = []
-
-    # raw
-    decode_candidates.append(("pyzbar_raw", qr_crop))
-
-    # upscaled
-    up2 = cv2.resize(qr_crop, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    decode_candidates.append(("pyzbar_up2", up2))
-
-    up3 = cv2.resize(qr_crop, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
-    decode_candidates.append(("pyzbar_up3", up3))
-
-    # equalized
-    eq = cv2.equalizeHist(qr_crop)
-    decode_candidates.append(("pyzbar_eq", eq))
-    decode_candidates.append((
-        "pyzbar_eq_up2",
-        cv2.resize(eq, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    ))
-
-    # otsu binary
-    blur0 = cv2.GaussianBlur(qr_crop, (3, 3), 0)
-    _, bw = cv2.threshold(blur0, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    decode_candidates.append(("pyzbar_otsu", bw))
-    decode_candidates.append((
-        "pyzbar_otsu_up2",
-        cv2.resize(bw, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
-    ))
-
-    # inverted otsu
-    bw_inv = cv2.bitwise_not(bw)
-    decode_candidates.append(("pyzbar_otsu_inv", bw_inv))
-    decode_candidates.append((
-        "pyzbar_otsu_inv_up2",
-        cv2.resize(bw_inv, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
-    ))
-
-    zbar_results = []
-    zbar_variant = "pyzbar_none"
-
-    for name, cand_img in decode_candidates:
-        try:
-            zres = pyzbar.decode(cand_img)
-        except Exception:
-            zres = []
-
-        if zres:
-            zbar_results = zres
-            zbar_variant = name
-            break
-
-    if zbar_results:
-        text = ""
-        try:
-            text = zbar_results[0].data.decode("utf-8").strip()
-        except Exception:
-            text = str(zbar_results[0].data)
-
-        qr_text_norm = _normalize_qr_text(text)
-        ocr_text = _ocr_bottom_text_from_qr_crop(base)
-
-        return True, {
-            "qr_detected": True,
-            "qr_candidate": True,
-            "qr_text": text,
-            "qr_text_norm": qr_text_norm,
-            "qr_ocr_text": ocr_text,
-            "qr_variant": zbar_variant,
-            "qr_candidate_score": 1.0,
-            "qr_candidate_area": int(qr_crop.shape[0] * qr_crop.shape[1]),
-            "qr_candidate_box_area": int(qr_crop.shape[0] * qr_crop.shape[1]),
-            "_last_image": base,
-        }, "OK"
-        
-    if base is None or base.size == 0:
-        return False, {
-            "qr_detected": False,
-            "qr_candidate": False,
-            "qr_text": "",
-            "qr_variant": "empty",
-            "qr_candidate_score": 0.0,
-            "qr_candidate_area": 0,
-            "qr_candidate_box_area": 0,
-            "_last_image": crop,
-        }, "QR_EMPTY"
-
-
-    return False, {
-        "qr_detected": False,
-        "qr_candidate": False,
-        "qr_text": "",
-        "qr_text_norm": "",
-        "qr_ocr_text": "",
-        "qr_variant": "pyzbar_fail",
-        "qr_candidate_score": 0.0,
-        "qr_candidate_area": 0,
-        "qr_candidate_box_area": 0,
-        "_last_image": base,
-    }, "NG: QR SCAN FAIL"
-
+   
 def _run_none_job(crop, cfg):
     return True, {}, "OK"
-
-def _run_ocr_text(crop, cfg):
-    txt = _ocr_bottom_text_from_qr_crop(crop)
-    return True, {
-        "ocr_text": txt
-    }, "OK"
 
 @dataclass
 class ROIResult:
@@ -413,10 +247,8 @@ JOB_EVALUATORS = {
     "mean_threshold": _job_eval_mean_threshold,
     "score_threshold": _job_eval_score_threshold,
     "presence": _job_eval_presence,
-    "qr_presence": _job_eval_qr_presence,
     "washer_presence": _job_eval_washer, 
     "none": _job_eval_none,
-    "ocr_text": _job_eval_ocr_text,
 }
 
 def _run_toolchain_job(crop, cfg):
@@ -431,10 +263,8 @@ JOB_RUNNERS = {
     "mean_threshold": _run_analyzer_job,
     "score_threshold": _run_analyzer_job,
     "presence": _run_presence_job,
-    "qr_presence": _run_qr_job,
     "washer_presence": run_washer_presence,
     "none": _run_none_job,
-    "ocr_text": _run_ocr_text,
 }
 
 class Inspector:
