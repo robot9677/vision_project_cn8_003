@@ -56,10 +56,11 @@ def run_qr(crop, cfg):
                 "qr_detected": True,
                 "qr_text": text,
                 "qr_text_norm": _normalize_qr_text(text),
-                "qr_ocr_text": _ocr_bottom_text_from_qr_crop(base)
+                "qr_ocr_text": _ocr_bottom_text_from_qr_crop(base),
+                "_last_image": base   
             }, "OK"
 
-    return False, {"qr_detected": False}, "NG: QR SCAN FAIL"
+    return False, {"qr_detected": False, "_last_image": base}, "NG: QR SCAN FAIL"
 
 
 def eval_qr(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
