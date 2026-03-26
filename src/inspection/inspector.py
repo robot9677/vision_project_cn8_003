@@ -24,6 +24,7 @@ from inspection.tools_measure_washer import run_washer_presence
 from pyzbar import pyzbar
 import re
 import pytesseract
+from inspection.registry.job_registry import JOB_REGISTRY
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -495,7 +496,13 @@ class Inspector:
             orig_margin = getattr(self.tracker, "search_margin", None)
             self.tracker.search_margin = int(cfg.get("tracker_margin", 50))
 
-        runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
+        registry_pair = JOB_REGISTRY.get(job_type)
+        if registry_pair is not None:
+            runner, evaluator = registry_pair
+        else:
+            runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
+            evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
+
         ok, metrics, reason = runner(crop, cfg)
 
         if metrics is None:
@@ -521,8 +528,6 @@ class Inspector:
         metrics["align_anchor_id"] = pose.get("anchor_id")
         metrics["inspection_id"] = cfg.get("id", "job")
 
-        job_type = (cfg.get("type") or "").strip().lower()
-        evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
         job_ok, job_reason = evaluator(
             ok=ok,
             metrics=metrics,
