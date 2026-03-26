@@ -15,4 +15,5 @@ def load_product_profile(path):
     data["modules"] = modules
     data["recipe_name"] = data.get("recipe_name", "tape_presence")
 
+    profile.setdefault("camera_profile", "default")
     return data
