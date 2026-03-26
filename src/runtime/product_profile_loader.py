@@ -1,4 +1,5 @@
 import json
+from capture.camera_gst import CameraGST
 
 
 def load_product_profile(path):
