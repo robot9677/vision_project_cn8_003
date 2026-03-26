@@ -25,6 +25,7 @@ from pyzbar import pyzbar
 import re
 import pytesseract
 from inspection.registry.job_registry import JOB_REGISTRY
+from inspection.engine.inspect_prepare import prepare_inspection_context
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -491,45 +492,20 @@ class Inspector:
 
         results: Dict[str, ROIResult] = {}
 
-        ref = self.roi_mgr.get(1)
-        norm_gain = 1.0
-        dx = dy = 0
-        dangle = 0.0
-        trk_score = 0.0
-        align_result = None
+        prep = prepare_inspection_context(
+            inspector=self,
+            frame_gray8=frame_gray8,
+            auto_mode=auto_mode,
+        )
 
-        # 1) ref 기반 정규화 후 align 단계 수행
-        if ref is not None:
-            ref_id = ref["id"]
-            ref_crop_raw = self.roi_mgr.crop(frame_gray8, ref_id)
-
-            use_normalize = bool(self.runtime_cfg.get("normalize_enabled", False))
-            if use_normalize and ref_crop_raw is not None and ref_crop_raw.size > 0:
-                target_mean = float(self.runtime_cfg.get("normalize_target_mean", 50.0))
-                frame_gray8, norm_gain = normalize_by_roi(frame_gray8, ref_crop_raw, target_mean=target_mean)
-            else:
-                norm_gain = 1.0
-
-        use_tracker = bool(self.runtime_cfg.get("enable_tracker", True))
-
-        if use_tracker and getattr(self, "aligner", None) is not None:
-            align_result = self.aligner.estimate(frame_gray8, self.roi_mgr)
-            g = align_result.get("global") or {}
-            dx = int(g.get("dx", 0))
-            dy = int(g.get("dy", 0))
-            dangle = float(g.get("dangle", 0.0))
-            trk_score = float(g.get("score", 0.0))
-            if not auto_mode:
-                anchors = align_result.get("anchors") or []
-                if anchors:
-                    dbg = " ".join(
-                        f"{a.get('id')}[ok={a.get('ok')} dx={a.get('dx')} dy={a.get('dy')} da={a.get('dangle'):.2f} sc={a.get('score'):.3f}]"
-                        for a in anchors
-                    )
-                    print(f"[DBG ALIGN] {dbg}")
-        else:
-            align_result = {"per_roi": {}, "global": {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}}
-
+        frame_gray8 = prep["frame_gray8"]
+        norm_gain = prep["norm_gain"]
+        dx = prep["dx"]
+        dy = prep["dy"]
+        dangle = prep["dangle"]
+        trk_score = prep["trk_score"]
+        align_result = prep["align_result"]
+        
         # 2) 모든 ROI는 Δ만 적용해서 crop (안정)
         H, W = frame_gray8.shape[:2]
 

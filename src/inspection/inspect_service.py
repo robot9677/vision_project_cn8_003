@@ -1,4 +1,5 @@
 import numpy as np
+from inspection.engine.inspection_runner import run_inspection
 
 
 def _capture_avg_frame(cam, fallback_frame, avg5=True):
@@ -57,7 +58,11 @@ def run_inspect_once(
 ):
     avg = _capture_avg_frame(cam, frame_gray8, avg5=avg5)
 
-    overall_ok, results = inspector.inspect(avg, auto_mode=state.auto_inspect)
+    overall_ok, results = run_inspection(
+        inspector=inspector,
+        frame_gray8=avg,
+        auto_mode=state.auto_inspect,
+    )
 
     try:
         inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
