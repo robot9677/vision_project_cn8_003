@@ -4,7 +4,21 @@ import time
 from ui import overlay_clean as overlay
 from inspection.logger import save_snapshot, save_template_copy
 
+def _safe_draw_overlay(vis, roi_mgr, state, show_metrics):
+    overlay.draw_rois(
+        vis,
+        rois=roi_mgr_to_list(roi_mgr),
+        active_id=roi_mgr.selected_id,
+        roi_results=state.last_results,
+        compact=True,
+        show_metrics=show_metrics,
+    )
 
+
+def _reset_tracking_state(state):
+    state.tracking_stable = False
+    state.stable_frame_count = 0
+    
 def roi_mgr_to_list(roi_mgr):
     return [
         {
@@ -75,7 +89,7 @@ def draw_run_tracking(
     if (not runtime_cfg.get("enable_tracker", True)) or (not product_profile["modules"].get("tracker", True)):
         state.tracking_stable = False
         state.stable_frame_count = 0
-        overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
+        _safe_draw_overlay(vis, roi_mgr, state, show_metrics)
         return
 
     aligner = getattr(inspector, "aligner", None)
@@ -122,19 +136,11 @@ def draw_run_tracking(
 
             draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos, show_metrics=show_metrics)
         else:
-            overlay.draw_rois(vis, rois=roi_mgr_to_list(roi_mgr), active_id=roi_mgr.selected_id, roi_results=state.last_results, compact=True)
+            _safe_draw_overlay(vis, roi_mgr, state, show_metrics)
             state.tracking_stable = False
             state.stable_frame_count = 0
 
     except Exception as e:
         print("[DBG] run-mode tracker overlay exception:", e)
-        overlay.draw_rois(
-            vis,
-            rois=roi_mgr_to_list(roi_mgr),
-            active_id=roi_mgr.selected_id,
-            roi_results=state.last_results,
-            compact=True,
-            show_metrics=show_metrics,
-        )
-        state.tracking_stable = False
-        state.stable_frame_count = 0
+        _safe_draw_overlay(vis, roi_mgr, state, show_metrics)
+        _reset_tracking_state(state)
