@@ -12,7 +12,7 @@ from .temporal import TemporalMeanFilter
 from .roi_tracker import ROITracker
 from .aligner import MultiAnchorAligner
 # add near top of file
-from typing import Tuple
+from typing import Tuple, Dict
 from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
