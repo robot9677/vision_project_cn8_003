@@ -3,7 +3,7 @@ import time
 import cv2
 import numpy as np
 
-from inspection.inspector import ROIResult
+from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
 
 

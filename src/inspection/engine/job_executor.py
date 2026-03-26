@@ -1,12 +1,4 @@
 import numpy as np
-
-from inspection.inspector import (
-    JOB_REGISTRY,
-    JOB_RUNNERS,
-    JOB_EVALUATORS,
-    _run_analyzer_job,
-    _job_eval_toolchain,
-)
 from inspection.score import combined_score
 
 
@@ -24,6 +16,11 @@ def execute_inspection_job(
     roi_dangle,
     pose,
     trk_score,
+    job_registry,
+    job_runners,
+    job_evaluators,
+    default_runner,
+    default_evaluator,
 ):
     job_type = (cfg.get("type") or "").strip().lower()
     orig_margin = None
@@ -32,12 +29,12 @@ def execute_inspection_job(
         orig_margin = getattr(inspector.tracker, "search_margin", None)
         inspector.tracker.search_margin = int(cfg.get("tracker_margin", 50))
 
-    registry_pair = JOB_REGISTRY.get(job_type)
+    registry_pair = job_registry.get(job_type)
     if registry_pair is not None:
         runner, evaluator = registry_pair
     else:
-        runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
-        evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
+        runner = job_runners.get(job_type, default_runner)
+        evaluator = job_evaluators.get(job_type, default_evaluator)
 
     ok, metrics, reason = runner(crop, cfg)
 

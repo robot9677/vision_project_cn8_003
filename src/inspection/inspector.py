@@ -1,8 +1,6 @@
 import os
 import json
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, Tuple
 
 import cv2
 import numpy as np
@@ -14,6 +12,7 @@ from .temporal import TemporalMeanFilter
 from .roi_tracker import ROITracker
 from .aligner import MultiAnchorAligner
 # add near top of file
+from typing import Tuple
 from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
@@ -21,14 +20,12 @@ from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
 from inspection.tools_measure_washer import run_washer_presence
-from pyzbar import pyzbar
-import re
-import pytesseract
 from inspection.registry.job_registry import JOB_REGISTRY
 from inspection.engine.inspect_prepare import prepare_inspection_context
 from inspection.engine.inspect_roi_loop import process_all_rois
 from inspection.engine.decision_engine import decide_overall
 from inspection.engine.job_executor import execute_inspection_job
+from inspection.engine.result_model import ROIResult
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -104,17 +101,9 @@ def _run_presence_job(crop, cfg):
     ok = True
     reason = "OK"
     return ok, metrics, reason
-
    
 def _run_none_job(crop, cfg):
     return True, {}, "OK"
-
-@dataclass
-class ROIResult:
-    roi_id: Any
-    ok: bool
-    reason: str
-    metrics: Dict[str, Any]
 
 def _job_eval_toolchain(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     job_ok = bool(ok)
@@ -314,11 +303,39 @@ class Inspector:
             self.mean_filters[key] = TemporalMeanFilter(win=5)
         return self.mean_filters[key]
 
-    def _run_inspection_job(self, crop, cfg,recipe_default, runtime_cfg, mean_filter, norm_gain, roi_dx,
-        roi_dy, roi_dangle, pose, trk_score,):
-        return execute_inspection_job(inspector=self, crop=crop, cfg=cfg, recipe_default=recipe_default,
-            runtime_cfg=runtime_cfg, mean_filter=mean_filter, norm_gain=norm_gain, roi_dx=roi_dx,
-            roi_dy=roi_dy, roi_dangle=roi_dangle, pose=pose, trk_score=trk_score,)
+    def _run_inspection_job(
+        self,
+        crop,
+        cfg,
+        recipe_default,
+        runtime_cfg,
+        mean_filter,
+        norm_gain,
+        roi_dx,
+        roi_dy,
+        roi_dangle,
+        pose,
+        trk_score,
+    ):
+        return execute_inspection_job(
+            inspector=self,
+            crop=crop,
+            cfg=cfg,
+            recipe_default=recipe_default,
+            runtime_cfg=runtime_cfg,
+            mean_filter=mean_filter,
+            norm_gain=norm_gain,
+            roi_dx=roi_dx,
+            roi_dy=roi_dy,
+            roi_dangle=roi_dangle,
+            pose=pose,
+            trk_score=trk_score,
+            job_registry=JOB_REGISTRY,
+            job_runners=JOB_RUNNERS,
+            job_evaluators=JOB_EVALUATORS,
+            default_runner=_run_analyzer_job,
+            default_evaluator=_job_eval_toolchain,
+        )
 
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
