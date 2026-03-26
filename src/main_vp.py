@@ -147,8 +147,13 @@ class VisionApp:
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
-        camera_profile = product_profile.get("camera_profile", "default")
-        self.cam.set_profile(camera_profile)
+
+        self.cam = CameraGST(GST_PIPELINE)
+        camera_profile = self.product_profile.get("camera_profile", "default")
+        if hasattr(self.cam, "set_profile"):
+            self.cam.set_profile(camera_profile)
+        print("[MAIN] CameraGST created")
+        
         self.runtime_cfg["_product_profile"] = self.product_profile
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")

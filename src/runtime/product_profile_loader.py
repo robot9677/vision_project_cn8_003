@@ -1,5 +1,4 @@
 import json
-from capture.camera_gst import CameraGST
 
 
 def load_product_profile(path):
@@ -15,6 +14,6 @@ def load_product_profile(path):
 
     data["modules"] = modules
     data["recipe_name"] = data.get("recipe_name", "tape_presence")
+    data["camera_profile"] = data.get("camera_profile", "default")
 
-    profile.setdefault("camera_profile", "default")
     return data
