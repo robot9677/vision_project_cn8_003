@@ -1,51 +1,36 @@
 import numpy as np
 
 
-def run_inspect_once(
-    *,
-    cam,
-    inspector,
-    runtime_cfg,
-    state,
-    frame_gray8,
-    vis_bgr,
-    avg5=True,
-):
-    pose_roi_id = str(runtime_cfg.get("pose_roi_id", "1"))
-    pose_metric_key = str(runtime_cfg.get("pose_metric_key", "blob_count"))
-    pose_expect = int(runtime_cfg.get("pose_expect", 4))
+def _capture_avg_frame(cam, fallback_frame, avg5=True):
+    if not avg5:
+        return fallback_frame
 
-    if avg5:
-        frames = []
-        for _ in range(5):
-            f = cam.read()
-            if f is None:
-                continue
-            if getattr(f, "ndim", 0) == 3:
-                f = f[:, :, 0]
-            frames.append(f)
-        avg = np.mean(frames, axis=0).astype("uint8") if frames else frame_gray8
-    else:
-        avg = frame_gray8
+    frames = []
+    for _ in range(5):
+        f = cam.read()
+        if f is None:
+            continue
+        if getattr(f, "ndim", 0) == 3:
+            f = f[:, :, 0]
+        frames.append(f)
 
-    overall_ok, results = inspector.inspect(avg, auto_mode=state.auto_inspect)
+    return np.mean(frames, axis=0).astype("uint8") if frames else fallback_frame
 
-    try:
-        inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
-    except Exception as e:
-        print("[DBG] save_run failed:", e)
 
+def _store_inspect_result(state, overall_ok, results):
     state.last_results = {str(k): v for k, v in results.items()} if results else {}
     state.last_overall_ok = overall_ok
     state.status = f"INSPECT {'OK' if overall_ok else 'NG'}"
 
-    try:
-        inspector.log_result(state.last_overall_ok, state.last_results)
-    except Exception:
-        pass
+
+def _update_pose_bad_count(state, runtime_cfg):
+    pose_roi_id = str(runtime_cfg.get("pose_roi_id", "1"))
+    pose_metric_key = str(runtime_cfg.get("pose_metric_key", "blob_count"))
+    pose_expect = int(runtime_cfg.get("pose_expect", 4))
 
     r = (state.last_results or {}).get(pose_roi_id)
     bc = None
+
     if r is not None and hasattr(r, "metrics"):
         bc = (r.metrics or {}).get(pose_metric_key, None)
     elif isinstance(r, dict):
@@ -58,5 +43,34 @@ def run_inspect_once(
             state.pose_bad_cnt = 0
         else:
             state.pose_bad_cnt += 1
+
+
+def run_inspect_once(
+    *,
+    cam,
+    inspector,
+    runtime_cfg,
+    state,
+    frame_gray8,
+    vis_bgr,
+    avg5=True,
+):
+    avg = _capture_avg_frame(cam, frame_gray8, avg5=avg5)
+
+    overall_ok, results = inspector.inspect(avg, auto_mode=state.auto_inspect)
+
+    try:
+        inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
+    except Exception as e:
+        print("[DBG] save_run failed:", e)
+
+    _store_inspect_result(state, overall_ok, results)
+
+    try:
+        inspector.log_result(state.last_overall_ok, state.last_results)
+    except Exception:
+        pass
+
+    _update_pose_bad_count(state, runtime_cfg)
 
     return overall_ok, state.last_results
