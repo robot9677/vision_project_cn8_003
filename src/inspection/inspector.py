@@ -27,7 +27,8 @@ import pytesseract
 from inspection.registry.job_registry import JOB_REGISTRY
 from inspection.engine.inspect_prepare import prepare_inspection_context
 from inspection.engine.inspect_roi_loop import process_all_rois
-
+from inspection.engine.decision_engine import decide_overall
+from inspection.engine.job_executor import execute_inspection_job
 
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
@@ -307,80 +308,17 @@ class Inspector:
         register_locate_tools()
         register_identify_tools()
 
-    def _run_inspection_job(
-        self,
-        crop,
-        cfg,
-        recipe_default,
-        runtime_cfg,
-        mean_filter,
-        norm_gain,
-        roi_dx,
-        roi_dy,
-        roi_dangle,
-        pose,
-        trk_score,
-    ):
-        job_type = (cfg.get("type") or "").strip().lower()
-        # --- washer 전용 tracking 제한 ---
-        orig_margin = None
-
-        if job_type == "washer_presence":
-            orig_margin = getattr(self.tracker, "search_margin", None)
-            self.tracker.search_margin = int(cfg.get("tracker_margin", 50))
-
-        registry_pair = JOB_REGISTRY.get(job_type)
-        if registry_pair is not None:
-            runner, evaluator = registry_pair
-        else:
-            runner = JOB_RUNNERS.get(job_type, _run_analyzer_job)
-            evaluator = JOB_EVALUATORS.get(job_type, _job_eval_toolchain)
-
-        ok, metrics, reason = runner(crop, cfg)
-
-        if metrics is None:
-            metrics = {}
-
-        mean_raw = float(np.mean(crop))
-        metrics["mean_raw"] = mean_raw
-        metrics["mean"] = mean_filter.update(mean_raw)
-
-        need_score = str(cfg.get("type", "")).lower() in ("mean_score", "score_threshold", "texture_score")
-        if need_score:
-            try:
-                score = combined_score(crop)
-            except Exception:
-                score = 0.0
-            metrics["score"] = float(score)
-
-        metrics["norm_gain"] = float(norm_gain)
-        metrics["dx"] = roi_dx
-        metrics["dy"] = roi_dy
-        metrics["dangle"] = float(roi_dangle)
-        metrics["trk_score"] = float(pose.get("score", trk_score))
-        metrics["align_anchor_id"] = pose.get("anchor_id")
-        metrics["inspection_id"] = cfg.get("id", "job")
-
-        job_ok, job_reason = evaluator(
-            ok=ok,
-            metrics=metrics,
-            reason=reason,
-            cfg=cfg,
-            recipe_default=recipe_default,
-            runtime_cfg=runtime_cfg,
-        )
-
-        # --- tracker 복구 ---
-        if orig_margin is not None:
-            self.tracker.search_margin = orig_margin
-
-        return job_ok, metrics, job_reason, job_type
-
     def _get_mean_filter(self, roi_id):
         key = str(roi_id)
         if key not in self.mean_filters:
             self.mean_filters[key] = TemporalMeanFilter(win=5)
         return self.mean_filters[key]
+
+    def _run_inspection_job(self, crop, cfg,recipe_default, runtime_cfg, mean_filter, norm_gain, roi_dx,
+        roi_dy, roi_dangle, pose, trk_score,):
+        return execute_inspection_job(inspector=self, crop=crop, cfg=cfg, recipe_default=recipe_default,
+            runtime_cfg=runtime_cfg, mean_filter=mean_filter, norm_gain=norm_gain, roi_dx=roi_dx,
+            roi_dy=roi_dy, roi_dangle=roi_dangle, pose=pose, trk_score=trk_score,)
 
     def reload_recipe(self):
         self.recipe = load_recipe(self.recipe_path)
@@ -516,31 +454,13 @@ class Inspector:
             trk_score=trk_score,
             auto_mode=auto_mode,
         )
-        
-        # --- overall decision by recipe ---
-        decision = (self.recipe.get("decision") or {})
-        mode = (decision.get("mode") or "any_fail_is_ng").strip().lower()
 
-        oks = [r.ok for r in results.values()]
-        if not oks:
-            overall_ok = False
-        else:
-            if mode == "any_fail_is_ng":
-                overall_ok = all(oks)
-            elif mode == "majority_ok":
-                overall_ok = (sum(1 for v in oks if v) >= (len(oks) / 2))
-            elif mode == "allow_fail_count":
-                max_fail = int(decision.get("max_fail", 0))
-                fail_cnt = sum(1 for v in oks if not v)
-                overall_ok = (fail_cnt <= max_fail)
-            else:
-                # fallback
-                overall_ok = all(oks)
-
-        if not auto_mode:
-            print(f"[DBG] overall decision by recipe : {mode}")
+        overall_ok = decide_overall(
+            recipe=self.recipe,
+            results=results,
+            auto_mode=auto_mode,
+        )
         return overall_ok, results
-
 
     def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
         day = time.strftime("%Y%m%d")
