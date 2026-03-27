@@ -6,15 +6,29 @@ def save_snapshot(root, frame_gray8, roi, prefix="stable"):
     ts = time.strftime("%Y%m%d_%H%M%S")
     rid = roi.get("id", "r")
     fn_crop = os.path.join(root, f"{prefix}_roi{rid}_{ts}.png")
-    x,y,w,h = int(roi["x"]), int(roi["y"]), int(roi["w"]), int(roi["h"])
-    crop = frame_gray8[y:y+h, x:x+w]
-    cv2.imwrite(fn_crop, crop)
 
-    prune_log_dirs(root, keep=10)
-    
+    H, W = frame_gray8.shape[:2]
+    x = int(roi["x"])
+    y = int(roi["y"])
+    w = int(roi["w"])
+    h = int(roi["h"])
+
+    x1 = max(0, min(x, W - 1))
+    y1 = max(0, min(y, H - 1))
+    x2 = max(x1 + 1, min(W, x1 + w))
+    y2 = max(y1 + 1, min(H, y1 + h))
+
+    crop = frame_gray8[y1:y2, x1:x2]
+    if crop is None or crop.size == 0:
+        return None
+
+    cv2.imwrite(fn_crop, crop)
     return fn_crop
 
 def save_template_copy(root, tpl_img):
+    if tpl_img is None or tpl_img.size == 0:
+        return None
+
     os.makedirs(root, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     fn = os.path.join(root, f"template_{ts}.png")
