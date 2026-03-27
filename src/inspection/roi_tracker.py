@@ -46,13 +46,13 @@ class ROITracker:
         self.template_grad = None
 
         # full-frame reacquire rate limit
-        self.global_reacquire_interval = max(1, int(tracker_cfg.get("global_reacquire_interval", 6)))
+        self.global_reacquire_interval = max(1, int(tracker_cfg.get("global_reacquire_interval", 999)))
         self._global_reacquire_tick = 0
 
         # debug print rate limit
-        self.debug_print_interval = max(0.0, float(tracker_cfg.get("debug_print_interval", 0.25)))
+        self.debug_print_interval = max(0.0, float(tracker_cfg.get("debug_print_interval", 1.0)))
 
-    def _prep_track_img(self, img, apply_clahe=True):
+    def _prep_track_img(self, img, apply_clahe=False):
         if img is None or img.size == 0:
             return img
 
@@ -84,7 +84,7 @@ class ROITracker:
             self.template = None
             self.template_grad = None
         else:
-            self.template = self._prep_track_img(tmpl_gray8.copy(), apply_clahe=True)
+            self.template = self._prep_track_img(tmpl_gray8.copy(), apply_clahe=False)
             self.template_grad = self._grad_img(self.template)
         
     def update_template(self, new_crop: np.ndarray, score: float):
@@ -228,7 +228,7 @@ class ROITracker:
         if search.size == 0:
             return None
 
-        search = self._prep_track_img(search, apply_clahe=True)
+        search = self._prep_track_img(search, apply_clahe=False)
         th, tw = self.template.shape[:2]
         if search.shape[0] < th or search.shape[1] < tw:
             return None
@@ -261,7 +261,7 @@ class ROITracker:
         _, maxv, _, maxloc = cv2.minMaxLoc(res)
 
         tracker_cfg = self.runtime_cfg if isinstance(self.runtime_cfg, dict) else {}
-        use_fb = bool(tracker_cfg.get("use_gradient_fallback", True))
+        use_fb = bool(tracker_cfg.get("use_gradient_fallback", False))
         fb_thr = float(tracker_cfg.get("fallback_score_thr", 0.62))
 
         if use_fb and maxv < self.thr:

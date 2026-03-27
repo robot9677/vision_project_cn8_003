@@ -122,7 +122,8 @@ def draw_run_tracking(
                 state.stable_frame_count = 0
 
             state.status = "RUN MODE (stable)" if state.tracking_stable else "RUN MODE (tracking...)"
-            if False and state.tracking_stable and (time.time() - state.last_snapshot_time) > snapshot_cooldown:
+
+            if state.tracking_stable and (time.time() - state.last_snapshot_time) > snapshot_cooldown:
                 log_dir = os.path.join(data_dir, "logs", "snapshots")
                 os.makedirs(log_dir, exist_ok=True)
 
