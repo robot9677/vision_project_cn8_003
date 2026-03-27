@@ -46,7 +46,7 @@ def draw_dev_hud(img, st, product_profile=None):
             ng_cnt = 0
 
         hint = f"{hint}   OK:{ok_cnt} NG:{ng_cnt}"
-        hint = f"{hint}   OK--: NG--:"
+        hint = f"{hint}   D: ON/NG RST B: Baseline RST L: Learning U: Update"
         x = 16
         y = h - 100
         ovl2 = img.copy()
