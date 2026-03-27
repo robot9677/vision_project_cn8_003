@@ -620,7 +620,6 @@ class VisionApp:
     def run(self):
         st = self.state
         self.cam.open()
-        self.cam.set_profile("qr")
 
         last_ok_frame_time = time.time()
 

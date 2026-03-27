@@ -1,5 +1,8 @@
 import numpy as np
-from inspection.score import combined_score
+try:
+    from inspection.score import combined_score
+except:
+    combined_score = None
 
 
 def execute_inspection_job(
@@ -47,11 +50,13 @@ def execute_inspection_job(
 
     need_score = str(cfg.get("type", "")).lower() in ("mean_score", "score_threshold", "texture_score")
     if need_score:
-        try:
-            score = combined_score(crop)
-        except Exception:
+        if combined_score is not None:
+            try:
+                score = combined_score(crop)
+            except Exception:
+                score = 0.0
+        else:
             score = 0.0
-        metrics["score"] = float(score)
 
     metrics["norm_gain"] = float(norm_gain)
     metrics["dx"] = roi_dx

@@ -13,7 +13,6 @@ from .roi_tracker import ROITracker
 from .aligner import MultiAnchorAligner
 # add near top of file
 from typing import Tuple, Dict
-from inspection.score import combined_score
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
@@ -160,50 +159,6 @@ def _job_eval_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
         return False, "PRESENCE_COUNT_HIGH"
 
     return bool(job_ok), "OK"
-
-def _job_eval_qr_presence(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
-    qr_detected = bool(metrics.get("qr_detected", False))
-    qr_text = str(metrics.get("qr_text", "") or "").strip()
-    qr_text_norm = str(metrics.get("qr_text_norm", "") or "").strip()
-    qr_ocr_text = str(metrics.get("qr_ocr_text", "") or "").strip()
-
-    expected_text = str(cfg.get("expected_text", "") or "").strip()
-    expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()
-    min_length = int(cfg.get("min_length", 1))
-    compare_ocr = bool(cfg.get("compare_ocr", False))
-
-    if not qr_detected or not qr_text:
-        return False, "NG: QR SCAN FAIL"
-
-    if len(qr_text_norm) < min_length:
-        return False, "NG: QR TEXT TOO SHORT"
-
-    # 1) QR 자체 문자열 검사
-    if expected_text:
-        if qr_text_norm != _normalize_qr_text(expected_text):
-            return False, "NG: QR TEXT INVALID"
-
-    if expected_prefix:
-        if not qr_text_norm.startswith(_normalize_qr_text(expected_prefix)):
-            return False, "NG: QR TEXT INVALID"
-
-    # 2) 하단 OCR 비교
-    if compare_ocr:
-        if not qr_ocr_text:
-            return False, "NG: OCR FAIL"
-
-        # QR에 URL/문자열이 들어오더라도, 마지막 영문숫자 토큰 비교를 우선 허용
-        qr_tail = qr_text_norm
-        m = re.findall(r"[A-Z0-9]+", qr_text_norm)
-        if m:
-            qr_tail = m[-1]
-
-        if qr_tail != qr_ocr_text:
-            return False, "NG: TEXT MISMATCH"
-
-        return True, f"OK: {qr_ocr_text}"
-
-    return True, f"OK: {qr_text}"
 
 def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     edge_count = int(metrics.get("edge_count", 0))
