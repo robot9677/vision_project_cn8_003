@@ -1,6 +1,5 @@
 from pyzbar import pyzbar
 import cv2
-import numpy as np
 import re
 import pytesseract
 
@@ -68,7 +67,7 @@ def eval_qr(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
         return False, "NG: QR SCAN FAIL"
 
     if cfg.get("compare_ocr"):
-        if metrics.get("qr_ocr_text") != metrics.get("qr_text_norm"):
+        if str(metrics.get("qr_ocr_text","")) != str(metrics.get("qr_text_norm","")):
             return False, "NG: TEXT MISMATCH"
         return True, f"OK: {metrics.get('qr_ocr_text')}"
 

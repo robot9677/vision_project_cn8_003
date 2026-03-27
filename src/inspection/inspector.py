@@ -172,24 +172,6 @@ def _job_eval_washer(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
 def _job_eval_none(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     return True, "OK"
 
-def _job_eval_ocr_text(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
-    ocr_text = str(metrics.get("ocr_text", "") or "").strip()
-
-    expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()
-    min_length = int(cfg.get("min_length", 1))
-
-    if not ocr_text:
-        return False, "NG: OCR FAIL"
-
-    if len(ocr_text) < min_length:
-        return False, "NG: OCR TOO SHORT"
-
-    if expected_prefix:
-        if not ocr_text.startswith(expected_prefix):
-            return False, "NG: OCR INVALID"
-
-    return True, f"OK: {ocr_text}"
-
 JOB_EVALUATORS = {
     "toolchain": _job_eval_toolchain,
     "mean_threshold": _job_eval_mean_threshold,

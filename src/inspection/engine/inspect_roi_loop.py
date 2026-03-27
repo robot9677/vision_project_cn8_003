@@ -1,7 +1,6 @@
 import os
 import time
 import cv2
-import numpy as np
 
 from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
@@ -73,7 +72,7 @@ def process_all_rois(
         last_metrics = {}
 
         for cfg in inspection_cfgs:
-            job_ok, metrics, job_reason, roi_type = inspector._run_inspection_job(
+            job_ok, metrics, job_reason, job_type = inspector._run_inspection_job(
                 crop=crop,
                 cfg=cfg,
                 recipe_default=inspector.recipe.get("default", {}),
@@ -101,7 +100,7 @@ def process_all_rois(
             job_results.append(
                 {
                     "id": cfg.get("id", f"ROI{roi_id}"),
-                    "type": roi_type,
+                    "type": job_type,
                     "ok": bool(job_ok),
                     "reason": job_reason,
                     "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
@@ -141,27 +140,7 @@ def process_all_rois(
 
         results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
-        if not auto_mode:
-            print(
-                f"[DBG ROI{roi_id}] ok={final_ok} reason={reason} "
-                f"blob={metrics.get('blob_count')} "
-                f"areas={metrics.get('blob_areas_kept')} "
-                f"boxes={metrics.get('blob_boxes_kept')} "
-                f"zone={metrics.get('count_zone')} "
-                f"th={metrics.get('th_value')} "
-                f"white_ratio={metrics.get('white_ratio')} "
-                f"dark_ratio={metrics.get('dark_ratio')} "
-                f"qr_detected={metrics.get('qr_detected')} "
-                f"qr_text={metrics.get('qr_text')} "
-                f"edge_count={metrics.get('edge_count')} "
-                f"band_h={metrics.get('band_h')} "
-                f"mean_raw={metrics.get('mean_raw')} "
-                f"mean={metrics.get('mean')} "
-                f"norm_gain={metrics.get('norm_gain')} "
-                f"dx={metrics.get('dx')} dy={metrics.get('dy')} "
-                f"dangle={metrics.get('dangle')} "
-                f"trk_score={metrics.get('trk_score')}"
-            )
+        if not auto_mode and inspector.runtime_cfg.get("debug_log", False):
             dbg_path = os.path.join(inspector.logs_root, f"roi{roi_id}_last.png")
             last_img = metrics.get("_last_image")
             if not auto_mode and last_img is not None:
