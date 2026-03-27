@@ -104,7 +104,7 @@ def draw_run_tracking(
 
             state._trk_frame_idx += 1
 
-            if state._trk_frame_idx % 2 == 0 or state._trk_cache is None:
+            if state._trk_frame_idx % 3 == 0 or state._trk_cache is None:
                 align_result = aligner.estimate(frame_gray8, roi_mgr)
                 state._trk_cache = align_result
             else:
