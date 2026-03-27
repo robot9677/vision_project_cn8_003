@@ -444,16 +444,21 @@ class VisionApp:
             
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
+        if key != 255:
+            print(f"[DBG KEY] raw={key} chr={repr(chr(key)) if 32 <= key <= 126 else 'NONPRINT'}")
 
         if key == ord('D'):   # delete OK/NG Dataset reset
+            print("[DBG KEY] DATASET RESET HOTKEY")
             self._reset_dataset()
             return
 
         if key == ord('B'):   # baseline_profile.json reset
+            print("[DBG KEY] BASELINE RESET HOTKEY")
             self._reset_baseline()
             return
         
         if key in (ord('u'), ord('U')):
+            print("[DBG KEY] BASELINE UPDATE HOTKEY")
             if self._update_baseline_from_ok_results():
                 st.status = "Baseline updated from OK result"
             else:
@@ -462,6 +467,7 @@ class VisionApp:
         
         if key in (ord('l'), ord('L')):
             self._handle_baseline_key(frame_gray8)
+            print("[DBG KEY] BASELINE LEARN HOTKEY")
             return
         
         if (not st.edit_mode) and key in (ord('t'), ord('T')):
@@ -579,31 +585,40 @@ class VisionApp:
             os.path.join(DATA_DIR, "dataset", "NG"),
             os.path.join(DATA_DIR, "templates"),
         ]
+        print("[DBG RESET] dataset targets =", targets)
 
         for p in targets:
             os.makedirs(p, exist_ok=True)
             for name in os.listdir(p):
                 fp = os.path.join(p, name)
+                print("[DBG RESET] remove:", fp)
                 try:
                     if os.path.isfile(fp) or os.path.islink(fp):
                         os.remove(fp)
                     elif os.path.isdir(fp):
                         shutil.rmtree(fp)
                 except Exception:
-                    pass
+                    print("[DBG RESET] fail:", fp, e)
 
         self.state.status = "DATASET RESET DONE"
-
+        print("[DBG RESET] DATASET RESET DONE")
 
     def _reset_baseline(self):
         try:
+            print("[DBG RESET] baseline path =", self.baseline_path)
             if os.path.exists(self.baseline_path):
                 os.remove(self.baseline_path)
+                print("[DBG RESET] baseline removed")
+            else:
+                print("[DBG RESET] baseline file not found")
+
             self.baseline = AutoBaseline(self.baseline_path)
             self.state.baseline_learning = False
             self.state.baseline_count = 0
             self.state.status = "BASELINE RESET DONE"
+            print("[DBG RESET] BASELINE RESET DONE")
         except Exception as e:
+            print("[DBG RESET] BASELINE RESET FAIL:", e)
             self.state.status = f"BASELINE RESET FAIL: {e}"
 
     def _draw_ui(self, vis):
