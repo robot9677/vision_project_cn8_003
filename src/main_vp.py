@@ -597,7 +597,7 @@ class VisionApp:
                         os.remove(fp)
                     elif os.path.isdir(fp):
                         shutil.rmtree(fp)
-                except Exception:
+                except Exception as e:
                     print("[DBG RESET] fail:", fp, e)
 
         self.state.status = "DATASET RESET DONE"
