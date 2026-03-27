@@ -197,6 +197,7 @@ class VisionApp:
         self.baseline_path = os.path.join(ROI_DIR, "baseline_profile.json")
         self.baseline = AutoBaseline(self.baseline_path)
         self.baseline_debug = False
+        self._inspect_frame_idx = 0
 
     def _get_primary_anchor_roi_id(self):
         align_cfg = self.product_profile.get("align", {}) or {}
