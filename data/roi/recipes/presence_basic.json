@@ -51,7 +51,7 @@
       "enabled": true,
       "roi_id": 2,
       "type": "qr_presence",
-      "compare_ocr": true,
+      "compare_ocr": false,
       "min_length": 6,
       "min_score": 0.15,
       "min_area": 300,
@@ -64,7 +64,7 @@
       "enabled": true,
       "roi_id": 3,
       "type": "ocr_text",
-      "expected_prefix": "T24",
+      "expected_prefix": "MPL",
       "min_length": 6
     }
   ]

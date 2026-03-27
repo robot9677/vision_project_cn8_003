@@ -620,7 +620,7 @@ class VisionApp:
     def run(self):
         st = self.state
         self.cam.open()
-
+asdfasdf
         last_ok_frame_time = time.time()
 
         while True:
