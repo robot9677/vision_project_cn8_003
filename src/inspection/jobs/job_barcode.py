@@ -54,8 +54,18 @@ def eval_barcode(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     if not metrics.get("barcode_detected"):
         return False, "NG: BARCODE SCAN FAIL"
 
-    text = str(metrics.get("barcode_text", "") or "").strip()
-    text_norm = str(metrics.get("barcode_text_norm", "") or "").strip()
+    digits_only = bool(cfg.get("digits_only", False))
+    exact_length = cfg.get("exact_length", None)
+
+    # 숫자만 체크
+    if digits_only:
+        if not text_norm.isdigit():
+            return False, "NG: BARCODE NOT DIGITS"
+
+    # 길이 고정 체크
+    if exact_length is not None:
+        if len(text_norm) != int(exact_length):
+            return False, "NG: BARCODE LENGTH MISMATCH"
 
     expected_text = str(cfg.get("expected_text", "") or "").strip()
     expected_prefix = str(cfg.get("expected_prefix", "") or "").strip()

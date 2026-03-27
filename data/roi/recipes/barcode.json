@@ -12,14 +12,8 @@
       "roi_id": 2,
       "type": "barcode_1d",
       "allowed_types": ["CODE128", "CODE39", "EAN13", "EAN8"],
-      "min_length": 6
-    },
-    {
-      "id": "roi3_ocr",
-      "enabled": true,
-      "roi_id": 3,
-      "type": "ocr_text",
-      "min_length": 6
+      "digits_only": true,
+      "exact_length": 10
     }
   ]
 }
