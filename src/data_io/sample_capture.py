@@ -103,12 +103,48 @@ def handle_sample_keys(
     if key not in (ord("t"), ord("T"), ord("k"), ord("K"), ord("n"), ord("N")):
         return False, None
 
-    try:
-        sel = roi_mgr.get_selected()
-    except Exception:
-        sel = None
+    tag = "OK" if is_k else "NG"
+    out_dir = os.path.join(data_dir, "dataset", tag)
+    os.makedirs(out_dir, exist_ok=True)
 
-    roi_id = int(sel["id"]) if (isinstance(sel, dict) and sel.get("id") is not None) else 1
+    ts = time.strftime("%Y%m%d_%H%M%S")
+
+    results = last_results or {}
+
+    for roi in getattr(roi_mgr, "rois", []):
+        roi_id = int(roi.get("id"))
+        stem = f"cap_{ts}_ROI{roi_id}"
+
+        raw_path = os.path.join(out_dir, f"{stem}_raw.png")
+        ov_path = os.path.join(out_dir, f"{stem}_overlay.png")
+        crop_path = os.path.join(out_dir, f"{stem}_crop.png")
+        json_path = os.path.join(out_dir, f"{stem}.json")
+
+        cv2.imwrite(raw_path, frame_gray8)
+        cv2.imwrite(ov_path, vis_bgr)
+
+        crop = crop_roi(frame_gray8, roi_mgr, roi_id)
+        if crop is not None:
+            cv2.imwrite(crop_path, crop)
+
+        roi_res = results.get(str(roi_id))
+
+        meta = {
+            "ts": ts,
+            "roi_id": roi_id,
+            "tag": tag,
+            "raw": raw_path,
+            "overlay": ov_path,
+            "crop": crop_path if crop is not None else None,
+            "result": {
+                "ok": getattr(roi_res, "ok", None),
+                "reason": getattr(roi_res, "reason", None),
+                "metrics": getattr(roi_res, "metrics", None),
+            } if roi_res else None,
+        }
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
 
     is_t = key in (ord("t"), ord("T"))
     is_k = key in (ord("k"), ord("K"))
@@ -165,4 +201,4 @@ def handle_sample_keys(
     prune_snapshots(out_dir, max_keep=snapshot_keep)
     prune_manifests(out_dir, keep=snapshot_keep)
 
-    return True, f"[SAMPLE SAVED] {tag} ROI{roi_id}"
+    return True, f"[SAMPLE SAVED] {tag} ALL ROI"
