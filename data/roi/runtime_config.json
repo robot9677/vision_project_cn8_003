@@ -4,7 +4,7 @@
   "run_mode": "held",
   "normalize_enabled": false,
   "normalize_target_mean": 60.0,
-  "enable_tracker": false,
+  "enable_tracker": true,
   "enable_pose_guide": true,
   "pose_bad_n": 5,
   "pose_roi_id": "1",
@@ -28,6 +28,6 @@
   "tracker": {
   "use_gradient_fallback": true,
   "fallback_score_thr": 0.62,
-  "global_reacquire_interval": 1
+  "global_reacquire_interval": 3
   }
 }
