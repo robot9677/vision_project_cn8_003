@@ -1,0 +1,22 @@
+{
+  "default": {
+    "type": "none"
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
+  },
+  "inspections": [
+    {
+        "tool": "measure.washer",
+        "params": {
+        "blur": 3,
+        "canny_low": 40,
+        "canny_high": 120,
+        "band_top": 0.35,
+        "band_bottom": 0.75,
+        "min_edge": 165,
+        "min_mean": 39.0
+        }
+    }
+  ]
+}

@@ -18,7 +18,6 @@ from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
 from inspection.tools_locate import register_locate_tools
 from inspection.tools_identify import register_identify_tools
-from inspection.tools_measure_washer import run_washer_presence
 from inspection.registry.job_registry import JOB_REGISTRY
 from inspection.engine.inspect_prepare import prepare_inspection_context
 from inspection.engine.inspect_roi_loop import process_all_rois
@@ -193,7 +192,6 @@ JOB_RUNNERS = {
     "mean_threshold": _run_analyzer_job,
     "score_threshold": _run_analyzer_job,
     "presence": _run_presence_job,
-    "washer_presence": run_washer_presence,
     "none": _run_none_job,
 }
 

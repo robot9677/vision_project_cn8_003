@@ -1,0 +1,19 @@
+{
+  "default": {
+    "type": "none"
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
+  },
+  "inspections": [
+    {
+      "id": "insp_roi2_qr",
+      "enabled": true,
+      "roi_id": 2,
+      "type": "qr_presence",
+      "compare_ocr": false,
+      "min_length": 6,
+      "expected_prefix": "MPL"
+    }
+  ]
+}

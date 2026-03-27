@@ -399,6 +399,54 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
 
     return dbg, meta, ok, reason
 
+def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    """
+    washer 전용 (기존 tools_measure_washer 대체)
+
+    params:
+      - polarity: "white"|"black"
+      - min_area
+      - max_area
+      - min_count
+    """
+    if img is None or img.size == 0:
+        return img, {"washer_count": 0}, False, "EMPTY"
+
+    if img.dtype != np.uint8:
+        img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        img8 = img.copy()
+
+    if img8.ndim == 3:
+        img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+
+    _, bw = cv2.threshold(img8, 0, 255, cv2.THRESH_BINARY)
+
+    polarity = str(params.get("polarity", "white")).lower()
+    if polarity == "black":
+        bw = cv2.bitwise_not(bw)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
+
+    min_area = int(params.get("min_area", 10))
+    max_area = int(params.get("max_area", 999999))
+    min_count = int(params.get("min_count", 1))
+
+    count = 0
+
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if min_area <= area <= max_area:
+            count += 1
+
+    ok = count >= min_count
+
+    meta = {
+        "washer_count": count
+    }
+
+    return bw, meta, ok, "OK" if ok else "WASHER_MISSING"
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -406,3 +454,4 @@ def register_measure_tools() -> None:
     register_tool("measure.dark_ratio", _dark_ratio)
     register_tool("measure.bright_ratio", _bright_ratio)
     register_tool("measure.presence_blob", _presence_blob)
+    register_tool("measure.washer", _washer_presence)

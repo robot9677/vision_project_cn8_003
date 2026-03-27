@@ -1,0 +1,18 @@
+{
+  "default": {
+    "type": "none"
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
+  },
+  "inspections": [
+    {
+      "id": "insp_roi3_ocr",
+      "enabled": true,
+      "roi_id": 3,
+      "type": "ocr_text",
+      "expected_prefix": "MPL",
+      "min_length": 6
+    }
+  ]
+}
