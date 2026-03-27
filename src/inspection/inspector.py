@@ -5,14 +5,14 @@ import time
 import cv2
 import numpy as np
 
-from .recipe import load_recipe, get_roi_cfg, get_inspection_cfgs, has_explicit_inspections, has_inspection_for_roi, save_recipe
 from .analyzers import run_analyzer
 from .preprocess import normalize_by_roi
 from .temporal import TemporalMeanFilter
 from .roi_tracker import ROITracker
 from .aligner import MultiAnchorAligner
 # add near top of file
-from typing import Tuple, Dict
+from .recipe import load_recipe, get_roi_cfg, save_recipe
+from typing import Dict
 from inspection.toolchain import run_toolchain
 from inspection.tools_enhance import register_enhance_tools
 from inspection.tools_measure import register_measure_tools
@@ -220,7 +220,6 @@ class Inspector:
             product_profile=(self.runtime_cfg.get("_product_profile") or {}),
             project_root=os.path.abspath(os.path.join(os.path.dirname(recipe_path), "..", "..")),
         )
-        self.debug_images = {}
         self.debug_tiles = {}
         self.baseline_path = os.path.join(os.path.dirname(recipe_path), "baseline_profile.json")
         if os.path.exists(self.baseline_path):
@@ -394,9 +393,6 @@ class Inspector:
 
         frame_gray8 = prep["frame_gray8"]
         norm_gain = prep["norm_gain"]
-        dx = prep["dx"]
-        dy = prep["dy"]
-        dangle = prep["dangle"]
         trk_score = prep["trk_score"]
         align_result = prep["align_result"]
 

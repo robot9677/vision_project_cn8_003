@@ -5,8 +5,6 @@ from inspection.preprocess import normalize_by_roi
 def prepare_inspection_context(*, inspector, frame_gray8, auto_mode=False):
     ref = inspector.roi_mgr.get(1)
     norm_gain = 1.0
-    dx = dy = 0
-    dangle = 0.0
     trk_score = 0.0
     align_result = None
 
@@ -26,9 +24,6 @@ def prepare_inspection_context(*, inspector, frame_gray8, auto_mode=False):
     if use_tracker and getattr(inspector, "aligner", None) is not None:
         align_result = inspector.aligner.estimate(frame_gray8, inspector.roi_mgr)
         g = align_result.get("global") or {}
-        dx = int(g.get("dx", 0))
-        dy = int(g.get("dy", 0))
-        dangle = float(g.get("dangle", 0.0))
         trk_score = float(g.get("score", 0.0))
 
         if not auto_mode:
@@ -45,9 +40,6 @@ def prepare_inspection_context(*, inspector, frame_gray8, auto_mode=False):
     return {
         "frame_gray8": frame_gray8,
         "norm_gain": norm_gain,
-        "dx": dx,
-        "dy": dy,
-        "dangle": dangle,
         "trk_score": trk_score,
         "align_result": align_result,
     }

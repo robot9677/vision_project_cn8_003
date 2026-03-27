@@ -52,8 +52,6 @@ class MultiAnchorAligner:
         default_thr = float(self.runtime_cfg.get("tracker_thr", 0.70))
         default_reacquire_margin = int(self.runtime_cfg.get("tracker_reacquire_margin", 220))
         default_reacquire_scale = float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5))
-        default_angle_range = float(self.runtime_cfg.get("tracker_angle_range", 4.0))
-        default_angle_step = float(self.runtime_cfg.get("tracker_angle_step", 1.0))
 
         for idx, raw in enumerate(anchors_cfg):
             if not isinstance(raw, dict):

@@ -17,7 +17,7 @@ def decide_overall(*, recipe, results, auto_mode=False):
         else:
             overall_ok = all(oks)
 
-    if not auto_mode:
+    if not auto_mode and recipe.get("debug", False):
         print(f"[DBG] overall decision by recipe : {mode}")
 
     return overall_ok
