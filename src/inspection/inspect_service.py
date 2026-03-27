@@ -58,11 +58,23 @@ def run_inspect_once(
 ):
     avg = _capture_avg_frame(cam, frame_gray8, avg5=avg5)
 
-    overall_ok, results = run_inspection(
-        inspector=inspector,
-        frame_gray8=avg,
-        auto_mode=state.auto_inspect,
-    )
+    # 최초 초기화
+    if not hasattr(state, "_inspect_frame_idx"):
+        state._inspect_frame_idx = 0
+        state._inspect_cache = None
+
+    state._inspect_frame_idx += 1
+
+    # 3프레임마다만 inspect 실행
+    if state._inspect_frame_idx % 3 == 0 or state._inspect_cache is None:
+        overall_ok, results = run_inspection(
+            inspector=inspector,
+            frame_gray8=avg,
+            auto_mode=state.auto_inspect,
+        )
+        state._inspect_cache = (overall_ok, results)
+    else:
+        overall_ok, results = state._inspect_cache
 
     try:
         inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
