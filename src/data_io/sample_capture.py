@@ -94,7 +94,7 @@ def handle_sample_keys(
     edit_mode,
     roi_mgr,
     data_dir,
-    snapshot_keep=200,
+    snapshot_keep=10,
 ):
     if edit_mode:
         return False, None
