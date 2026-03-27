@@ -31,7 +31,7 @@ class ROITracker:
         self.enable_template_update = False
         self.wide_reacquire_margin_x = int(self.search_margin_x * 3)
         self.wide_reacquire_margin_y = int(self.search_margin_y * 3)
-        self.wide_reacquire_scale = 0.4
+        self.wide_reacquire_scale = 0.3
         self.wide_reacquire_thr = max(0.50, self.thr - 0.1)
 
         tracker_cfg = self.runtime_cfg if isinstance(self.runtime_cfg, dict) else {}
