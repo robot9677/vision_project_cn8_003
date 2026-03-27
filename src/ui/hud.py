@@ -46,7 +46,7 @@ def draw_dev_hud(img, st, product_profile=None):
             ng_cnt = 0
 
         hint = f"{hint}   OK:{ok_cnt} NG:{ng_cnt}"
-        hint = f"{roi_text}  T: template  K: save OK  N: save NG"
+        hint = f"{hint}   OK--: NG--:"
         x = 16
         y = h - 100
         ovl2 = img.copy()
