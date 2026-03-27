@@ -1,6 +1,6 @@
 {
   "dev_mode": true,
-  "dev_overlay_metrics": true,
+  "dev_overlay_metrics": false,
   "run_mode": "held",
   "normalize_enabled": false,
   "normalize_target_mean": 60.0,
@@ -13,7 +13,7 @@
   "enable_auto_inspect": false,
   "auto_inspect_interval": 1.0,
   "auto_inspect_avg5": false,
-  "snapshot_cooldown": 5.0,
+  "snapshot_cooldown": 9999,
   "snapshot_keep": 200,
   "auto_inspect_stable_frames": 3,
   "autotune_target_mean": 50.0,
