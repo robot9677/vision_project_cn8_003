@@ -4,7 +4,7 @@
   "run_mode": "held",
   "normalize_enabled": false,
   "normalize_target_mean": 60.0,
-  "enable_tracker": true,
+  "enable_tracker": false,
   "enable_pose_guide": true,
   "pose_bad_n": 5,
   "pose_roi_id": "1",
