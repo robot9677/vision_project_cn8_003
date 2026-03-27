@@ -1,8 +1,8 @@
-import os
+# import os
 import time
 
 from ui import overlay_clean as overlay
-from inspection.logger import save_snapshot, save_template_copy
+# from inspection.logger import save_snapshot, save_template_copy
 
 def _safe_draw_overlay(vis, roi_mgr, state, show_metrics):
     overlay.draw_rois(
@@ -126,26 +126,26 @@ def draw_run_tracking(
 
             state.status = "RUN MODE (stable)" if state.tracking_stable else "RUN MODE (tracking...)"
 
-            if state.tracking_stable and (time.time() - state.last_snapshot_time) > snapshot_cooldown:
-                log_dir = os.path.join(data_dir, "logs", "snapshots")
-                os.makedirs(log_dir, exist_ok=True)
+            # if state.tracking_stable and (time.time() - state.last_snapshot_time) > snapshot_cooldown:
+            #     log_dir = os.path.join(data_dir, "logs", "snapshots")
+            #     os.makedirs(log_dir, exist_ok=True)
 
-                for mr in smoothed:
-                    roi_for_save = {
-                        "id": mr["id"],
-                        "x": int(round(mr["x"])),
-                        "y": int(round(mr["y"])),
-                        "w": int(mr["w"]),
-                        "h": int(mr["h"]),
-                    }
-                    save_snapshot(log_dir, frame_gray8, roi_for_save, prefix="stable")
-                    prune_snapshots(log_dir, snapshot_keep)
+            #     for mr in smoothed:
+            #         roi_for_save = {
+            #             "id": mr["id"],
+            #             "x": int(round(mr["x"])),
+            #             "y": int(round(mr["y"])),
+            #             "w": int(mr["w"]),
+            #             "h": int(mr["h"]),
+            #         }
+            #         save_snapshot(log_dir, frame_gray8, roi_for_save, prefix="stable")
+            #         prune_snapshots(log_dir, snapshot_keep)
 
-                tracker = getattr(aligner, "primary_tracker", None)
-                if tracker is not None and getattr(tracker, "template", None) is not None:
-                    save_template_copy(log_dir, tracker.template)
+            #     tracker = getattr(aligner, "primary_tracker", None)
+            #     if tracker is not None and getattr(tracker, "template", None) is not None:
+            #         save_template_copy(log_dir, tracker.template)
 
-                state.last_snapshot_time = time.time()
+            #     state.last_snapshot_time = time.time()
 
             draw_roi_overlay(vis, smoothed, state.last_results, roi_label_pos, show_metrics=show_metrics)
         else:
