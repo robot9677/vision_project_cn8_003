@@ -3,10 +3,6 @@ import time
 
 from ui import overlay_clean as overlay
 from inspection.logger import save_snapshot, save_template_copy
-state._trk_frame_idx = 0
-state._trk_cache = None
-
-state._trk_frame_idx += 1
 
 def _safe_draw_overlay(vis, roi_mgr, state, show_metrics):
     overlay.draw_rois(
@@ -103,13 +99,7 @@ def draw_run_tracking(
         if aligner is not None and frame_gray8 is not None:
             rois_src = list(getattr(roi_mgr, "rois", []))
 
-            # 2프레임마다만 tracker 실행
-            if state._trk_frame_idx % 2 == 0 or state._trk_cache is None:
-                align_result = aligner.estimate(frame_gray8, roi_mgr)
-                state._trk_cache = align_result
-            else:
-                align_result = state._trk_cache
-
+            align_result = aligner.estimate(frame_gray8, roi_mgr)
             moved = aligner.apply_to_rois(rois_src, align_result)
 
             any_ok = any(bool(a.get("ok")) for a in (align_result.get("anchors") or []))
