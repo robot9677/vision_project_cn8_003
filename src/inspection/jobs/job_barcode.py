@@ -92,5 +92,15 @@ def eval_barcode(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     if expected_prefix:
         if not text_norm.startswith(_normalize_barcode_text(expected_prefix)):
             return False, "NG: BARCODE INVALID"
+        
+    
+    # OCR cross-check
+    compare_ocr = bool(cfg.get("compare_ocr", False))
+
+    if compare_ocr:
+        ocr_text = str(metrics.get("ocr_text_norm", "") or "")
+        if ocr_text:
+            if text_norm != ocr_text:
+                return False, "NG: BARCODE OCR MISMATCH"
 
     return True, f"OK: {text}"
