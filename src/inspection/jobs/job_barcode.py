@@ -51,6 +51,14 @@ def run_barcode(crop, cfg):
 
 
 def eval_barcode(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
+
+    print(
+        "[DBG BARCODE]",
+        "det=", metrics.get("barcode_detected"),
+        "type=", metrics.get("barcode_type"),
+        "text=", repr(metrics.get("barcode_text")),
+        "norm=", repr(metrics.get("barcode_text_norm")),
+    )
     if not metrics.get("barcode_detected"):
         return False, "NG: BARCODE SCAN FAIL"
 
