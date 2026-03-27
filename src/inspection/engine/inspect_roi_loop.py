@@ -140,7 +140,7 @@ def process_all_rois(
 
         results[key] = ROIResult(roi_id=roi_id, ok=final_ok, reason=reason, metrics=metrics)
 
-        if not auto_mode and inspector.runtime_cfg.get("debug_log", False):
+        if not auto_mode and inspector.runtime_cfg.get("debug_log", True):
             dbg_path = os.path.join(inspector.logs_root, f"roi{roi_id}_last.png")
             last_img = metrics.get("_last_image")
             if not auto_mode and last_img is not None:
