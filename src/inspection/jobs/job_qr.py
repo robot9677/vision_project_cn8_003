@@ -67,8 +67,16 @@ def eval_qr(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
         return False, "NG: QR SCAN FAIL"
 
     if cfg.get("compare_ocr"):
-        if str(metrics.get("qr_ocr_text","")) != str(metrics.get("qr_text_norm","")):
+        qr = str(metrics.get("qr_text_norm",""))
+        ocr = str(metrics.get("qr_ocr_text",""))
+
+        if not ocr:
+            return False, "NG: OCR FAIL"
+
+        # 완화 (prefix 비교)
+        if not qr.endswith(ocr):
             return False, "NG: TEXT MISMATCH"
-        return True, f"OK: {metrics.get('qr_ocr_text')}"
+
+        return True, f"OK: {ocr}"
 
     return True, f"OK: {metrics.get('qr_text')}"

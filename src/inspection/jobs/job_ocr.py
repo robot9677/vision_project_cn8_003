@@ -6,7 +6,10 @@ def run_ocr(crop, cfg):
     except:
         txt = ""
 
-    return True, {"ocr_text": txt.strip()}, "OK"
+    return True, {
+        "ocr_text": txt.strip(),
+        "_last_image": crop  
+    }, "OK"
 
 
 def eval_ocr(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
