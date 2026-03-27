@@ -447,12 +447,12 @@ class VisionApp:
         if key != 255:
             print(f"[DBG KEY] raw={key} chr={repr(chr(key)) if 32 <= key <= 126 else 'NONPRINT'}")
 
-        if key == ord('D'):   # delete OK/NG Dataset reset
+        if key in (ord('d'), ord('D')):   # delete OK/NG Dataset reset
             print("[DBG KEY] DATASET RESET HOTKEY")
             self._reset_dataset()
             return
 
-        if key == ord('B'):   # baseline_profile.json reset
+        if key in (ord('b'), ord('B')):   # baseline_profile.json reset
             print("[DBG KEY] BASELINE RESET HOTKEY")
             self._reset_baseline()
             return
