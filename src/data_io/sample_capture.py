@@ -103,6 +103,10 @@ def handle_sample_keys(
     if key not in (ord("t"), ord("T"), ord("k"), ord("K"), ord("n"), ord("N")):
         return False, None
 
+    is_t = key in (ord("t"), ord("T"))
+    is_k = key in (ord("k"), ord("K"))
+    is_n = key in (ord("n"), ord("N"))
+
     tag = "OK" if is_k else "NG"
     out_dir = os.path.join(data_dir, "dataset", tag)
     os.makedirs(out_dir, exist_ok=True)
@@ -145,10 +149,6 @@ def handle_sample_keys(
 
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
-
-    is_t = key in (ord("t"), ord("T"))
-    is_k = key in (ord("k"), ord("K"))
-    is_n = key in (ord("n"), ord("N"))
 
     if is_t:
         crop = crop_roi(frame_gray8, roi_mgr, roi_id)
