@@ -97,9 +97,22 @@ def draw_run_tracking(
 
     try:
         if aligner is not None and frame_gray8 is not None:
+            # 최초 1회만 초기화
+            if not hasattr(state, "_trk_frame_idx"):
+                state._trk_frame_idx = 0
+                state._trk_cache = None
+
+            state._trk_frame_idx += 1
+
+            if state._trk_frame_idx % 2 == 0 or state._trk_cache is None:
+                align_result = aligner.estimate(frame_gray8, roi_mgr)
+                state._trk_cache = align_result
+            else:
+                align_result = state._trk_cache
+
             rois_src = list(getattr(roi_mgr, "rois", []))
 
-            align_result = aligner.estimate(frame_gray8, roi_mgr)
+           # align_result = aligner.estimate(frame_gray8, roi_mgr)
             moved = aligner.apply_to_rois(rois_src, align_result)
 
             any_ok = any(bool(a.get("ok")) for a in (align_result.get("anchors") or []))
