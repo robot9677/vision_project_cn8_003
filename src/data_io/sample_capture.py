@@ -95,6 +95,7 @@ def handle_sample_keys(
     roi_mgr,
     data_dir,
     snapshot_keep=10,
+    last_results=None, 
 ):
     if edit_mode:
         return False, None
@@ -140,6 +141,10 @@ def handle_sample_keys(
     if crop is not None:
         cv2.imwrite(crop_path, crop)
 
+    roi_res = None
+    if last_results:
+        roi_res = last_results.get(str(roi_id))
+
     meta = {
         "ts": ts,
         "roi_id": roi_id,
@@ -147,6 +152,11 @@ def handle_sample_keys(
         "raw": raw_path,
         "overlay": ov_path,
         "crop": crop_path if crop is not None else None,
+        "result": {
+            "ok": getattr(roi_res, "ok", None),
+            "reason": getattr(roi_res, "reason", None),
+            "metrics": getattr(roi_res, "metrics", None),
+        } if roi_res else None,
     }
 
     with open(json_path, "w", encoding="utf-8") as f:

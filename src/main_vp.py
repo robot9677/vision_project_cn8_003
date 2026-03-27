@@ -467,7 +467,8 @@ class VisionApp:
             edit_mode=st.edit_mode,
             roi_mgr=self.roi_mgr,
             data_dir=DATA_DIR,
-            snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 200)),
+            snapshot_keep=int(self.runtime_cfg.get("snapshot_keep", 10)),
+            last_results=st.last_results,
         )
         if consumed:
             if sample_msg:
