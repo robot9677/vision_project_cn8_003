@@ -445,6 +445,14 @@ class VisionApp:
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
 
+        if key == ord('D'):   # delete OK/NG Dataset reset
+            self._reset_dataset()
+            return
+
+        if key == ord('B'):   # baseline_profile.json reset
+            self._reset_baseline()
+            return
+        
         if key in (ord('u'), ord('U')):
             if self._update_baseline_from_ok_results():
                 st.status = "Baseline updated from OK result"
@@ -562,6 +570,41 @@ class VisionApp:
             self.baseline = AutoBaseline(self.baseline_path)
 
         self._add_baseline_from_last_results()
+
+    def _reset_dataset(self):
+        import shutil
+
+        targets = [
+            os.path.join(DATA_DIR, "dataset", "OK"),
+            os.path.join(DATA_DIR, "dataset", "NG"),
+            os.path.join(DATA_DIR, "templates"),
+        ]
+
+        for p in targets:
+            os.makedirs(p, exist_ok=True)
+            for name in os.listdir(p):
+                fp = os.path.join(p, name)
+                try:
+                    if os.path.isfile(fp) or os.path.islink(fp):
+                        os.remove(fp)
+                    elif os.path.isdir(fp):
+                        shutil.rmtree(fp)
+                except Exception:
+                    pass
+
+        self.state.status = "DATASET RESET DONE"
+
+
+    def _reset_baseline(self):
+        try:
+            if os.path.exists(self.baseline_path):
+                os.remove(self.baseline_path)
+            self.baseline = AutoBaseline(self.baseline_path)
+            self.state.baseline_learning = False
+            self.state.baseline_count = 0
+            self.state.status = "BASELINE RESET DONE"
+        except Exception as e:
+            self.state.status = f"BASELINE RESET FAIL: {e}"
 
     def _draw_ui(self, vis):
         st = self.state
