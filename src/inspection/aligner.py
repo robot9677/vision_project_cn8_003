@@ -380,14 +380,6 @@ class MultiAnchorAligner:
                 raw_dy = int(dy)
                 raw_dangle = float(dangle)
 
-                # if fail_count >= 3:
-                #     prev_dx = 0
-                #     prev_dy = 0
-                #     prev_da = 0.0
-                # else:
-                #     prev_dx = int(a.get("last_output_dx", 0))
-                #     prev_dy = int(a.get("last_output_dy", 0))
-                #     prev_da = float(a.get("last_output_dangle", 0.0))
                 prev_dx = int(a.get("last_output_dx", 0))
                 prev_dy = int(a.get("last_output_dy", 0))
                 prev_da = float(a.get("last_output_dangle", 0.0))
@@ -410,21 +402,37 @@ class MultiAnchorAligner:
                     jump_a > (max_step_angle * 2.0)
                 )
 
-                cfg = self._get_align_cfg()
-                smooth = cfg.get("smooth", {})
-                step_dx = abs(dx - prev_dx)
-                step_dy = abs(dy - prev_dy)
+                align_cfg = self._get_align_cfg()
+                smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
 
-                max_step_x = int(smooth.get("max_step_x", 120))
-                max_step_y = int(smooth.get("max_step_y", 90))
+                max_step_x = int(smooth_cfg.get("max_step_x", 9999))
+                max_step_y = int(smooth_cfg.get("max_step_y", 9999))
+                max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
+                jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
 
+                jump_x = abs(raw_dx - prev_dx)
+                jump_y = abs(raw_dy - prev_dy)
+                jump_a = abs(raw_dangle - prev_da)
+
+                suspicious_jump = (
+                    jump_x > (max_step_x * 2) or
+                    jump_y > (max_step_y * 2) or
+                    jump_a > (max_step_angle * 2.0)
+                )
+
+                step_dx = jump_x
+                step_dy = jump_y
+
+                step_reject = False
                 if step_dx > max_step_x or step_dy > max_step_y:
                     if score < (jump_guard_score + 0.03):
-                        ok = False
+                        step_reject = True
 
-                # if suspicious_jump and score < jump_guard_score:
-                #     ok = False
+                jump_reject = False
                 if suspicious_jump and fail_count == 0 and score < jump_guard_score:
+                    jump_reject = True
+
+                if step_reject or jump_reject:
                     ok = False
                 else:
                     a["fail_count"] = 0
@@ -459,49 +467,6 @@ class MultiAnchorAligner:
                     if best_global is None or score > float(best_global.get("score", -1.0)):
                         best_global = anchor_pose
                     continue
-
-            # low score
-            a["fail_count"] = int(a.get("fail_count", 0)) + 1
-            fail_count = a["fail_count"]
-            has_lock = bool(a.get("has_lock", False))
-
-            # grace frames 동안은 마지막 성공 pose 유지
-            # hold는 아주 짧게만 허용하고, 그 뒤에는 즉시 lost/reacquire 모드로 전환
-            if has_lock and fail_count <= grace_frames:
-                hold_pose = a["last_pose"]
-
-                hdx = int(hold_pose.get("dx", 0))
-                hdy = int(hold_pose.get("dy", 0))
-                hda = float(hold_pose.get("dangle", 0.0))
-                hsc = float(hold_pose.get("score", 0.0))
-
-                hdx, hdy, hda = self._clamp_step(a, hdx, hdy, hda)
-                self._commit_output_pose(a, hdx, hdy, hda)
-
-                hold_global = self._append_hold_result(
-                    result=result,
-                    all_roi_ids=all_roi_ids,
-                    anchor=a,
-                    dx=hdx,
-                    dy=hdy,
-                    dangle=hda,
-                    score=hsc,
-                    fail_count=fail_count,
-                    grace_frames=grace_frames,
-                )
-
-                self._last_global_state = "TRACKING"
-                if fail_count == 1 and self._should_log_anchor(a, "HOLD", hdx, hdy, score):
-                    print(
-                        f"[DBG ALIGN] {a['id']} hold=True "
-                        f"last_dx={hdx} last_dy={hdy} last_da={hda:.2f} "
-                        f"low_sc={score:.3f} fail={fail_count}/{grace_frames}"
-                    )
-                any_hold = True
-
-                if best_global is None or hsc > float(best_global.get("score", -1.0)):
-                    best_global = hold_global
-                continue
 
             # grace 초과 시에만 fallback
             a["has_lock"] = False
