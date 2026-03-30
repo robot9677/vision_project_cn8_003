@@ -334,12 +334,14 @@ class MultiAnchorAligner:
             fail_count = int(a.get("fail_count", 0))
 
             # fail 누적되면 search를 원점으로 복귀
-            if fail_count >= 3:
-                search_x = base_x
-                search_y = base_y
-            else:
-                search_x = base_x + int(last_pose.get("dx", 0))
-                search_y = base_y + int(last_pose.get("dy", 0))
+            # if fail_count >= 3:
+            #     search_x = base_x
+            #     search_y = base_y
+            # else:
+            #     search_x = base_x + int(last_pose.get("dx", 0))
+            #     search_y = base_y + int(last_pose.get("dy", 0))
+            search_x = base_x + int(last_pose.get("dx", 0))
+            search_y = base_y + int(last_pose.get("dy", 0))
 
             search_a = base_a + float(last_pose.get("dangle", 0.0))
 
@@ -361,7 +363,7 @@ class MultiAnchorAligner:
             score = float(score)
 
             lock_thr = float(min_score)
-            hold_thr = float(self._get_align_cfg().get("hold_min_score", lock_thr - 0.06))
+            hold_thr = float(self._get_align_cfg().get("hold_min_score", lock_thr - 0.12))
 
             was_locked = bool(a.get("has_lock", False))
 
@@ -378,14 +380,17 @@ class MultiAnchorAligner:
                 raw_dy = int(dy)
                 raw_dangle = float(dangle)
 
-                if fail_count >= 3:
-                    prev_dx = 0
-                    prev_dy = 0
-                    prev_da = 0.0
-                else:
-                    prev_dx = int(a.get("last_output_dx", 0))
-                    prev_dy = int(a.get("last_output_dy", 0))
-                    prev_da = float(a.get("last_output_dangle", 0.0))
+                # if fail_count >= 3:
+                #     prev_dx = 0
+                #     prev_dy = 0
+                #     prev_da = 0.0
+                # else:
+                #     prev_dx = int(a.get("last_output_dx", 0))
+                #     prev_dy = int(a.get("last_output_dy", 0))
+                #     prev_da = float(a.get("last_output_dangle", 0.0))
+                prev_dx = int(a.get("last_output_dx", 0))
+                prev_dy = int(a.get("last_output_dy", 0))
+                prev_da = float(a.get("last_output_dangle", 0.0))
 
                 align_cfg = self._get_align_cfg()
                 smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
@@ -405,7 +410,9 @@ class MultiAnchorAligner:
                     jump_a > (max_step_angle * 2.0)
                 )
 
-                if suspicious_jump and score < jump_guard_score:
+                # if suspicious_jump and score < jump_guard_score:
+                #     ok = False
+                if suspicious_jump and fail_count == 0 and score < jump_guard_score:
                     ok = False
                 else:
                     a["fail_count"] = 0
