@@ -1,6 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "presence_basic",
+  "recipe_name": "washer",
   "camera_profile": "default",
   "enable_modules": {
     "enhance": true,
@@ -51,10 +51,6 @@
   "rois": [
     {
       "id": 1,
-      "type": "inspect"
-    },
-    {
-      "id": 2,
       "type": "inspect"
     },
     {

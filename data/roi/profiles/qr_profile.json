@@ -1,7 +1,7 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "presence_basic",
-  "camera_profile": "default",
+  "recipe_name": "qr",
+  "camera_profile": "qr",
   "enable_modules": {
     "enhance": true,
     "measure": true,

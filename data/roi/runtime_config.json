@@ -1,4 +1,5 @@
 {
+  "profile_name": "barcode",
   "dev_mode": true,
   "dev_overlay_metrics": true,
   "run_mode": "held",

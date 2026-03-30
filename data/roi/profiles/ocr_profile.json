@@ -1,7 +1,7 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "presence_basic",
-  "camera_profile": "default",
+  "recipe_name": "ocr",
+  "camera_profile": "ocr",
   "enable_modules": {
     "enhance": true,
     "measure": true,
@@ -51,10 +51,6 @@
   "rois": [
     {
       "id": 1,
-      "type": "inspect"
-    },
-    {
-      "id": 2,
       "type": "inspect"
     },
     {

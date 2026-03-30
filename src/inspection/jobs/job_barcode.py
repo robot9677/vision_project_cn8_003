@@ -65,6 +65,9 @@ def eval_barcode(ok, metrics, reason, cfg, recipe_default, runtime_cfg):
     digits_only = bool(cfg.get("digits_only", False))
     exact_length = cfg.get("exact_length", None)
 
+    text = str(metrics.get("barcode_text", "") or "").strip()
+    text_norm = str(metrics.get("barcode_text_norm", "") or "").strip()
+
     # 숫자만 체크
     if digits_only:
         if not text_norm.isdigit():

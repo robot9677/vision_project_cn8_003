@@ -3,9 +3,8 @@ from typing import Any, Dict, List, Optional
 
 import cv2
 
-from app.app_paths import TEMPLATE_PATH
+from app.app_paths import TEMPLATE_PATH, PROFILES_DIR
 from .roi_tracker import ROITracker
-
 
 class MultiAnchorAligner:
     """
@@ -175,6 +174,16 @@ class MultiAnchorAligner:
                 continue
 
             path = self._resolve_template_path(a.get("template_path"))
+
+            # profile별 template override
+            profile = str(self.runtime_cfg.get("_product_profile", {}).get("recipe_name", "") or "").strip()
+
+            if profile:
+                fname = f"align_template_{profile}.png"
+                candidate = os.path.join(PROFILES_DIR, fname)
+                if os.path.exists(candidate):
+                    path = candidate
+                    
             if not path or not os.path.exists(path):
                 continue
 

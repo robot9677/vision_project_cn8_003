@@ -30,6 +30,7 @@ from runtime.runtime_config_loader import load_runtime_config
 from app.app_setup import ensure_dirs
 from app.app_paths import (
     PRODUCT_PROFILE_PATH,
+    PROFILES_DIR,
     TEMPLATE_PATH,
     DATA_DIR,
     ROI_DIR,
@@ -146,7 +147,17 @@ class VisionApp:
         ensure_dirs(DATA_DIR, ROI_DIR, LOGS_ROOT)
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
-        self.product_profile = load_product_profile(PRODUCT_PROFILE_PATH)
+
+        profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
+        profile_path = PRODUCT_PROFILE_PATH
+
+        if profile_name:
+            candidate = os.path.join(PROFILES_DIR, f"{profile_name}.json")
+            if os.path.exists(candidate):
+                profile_path = candidate
+
+        self.product_profile = load_product_profile(profile_path)
+        print("[PROFILE]", profile_path)
 
         self.cam = CameraGST(GST_PIPELINE)
         camera_profile = self.product_profile.get("camera_profile", "default")
@@ -159,8 +170,20 @@ class VisionApp:
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
         selected_recipe_path = recipe_candidate if os.path.exists(recipe_candidate) else DEFAULT_RECIPE_PATH
         self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
+
+        profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
+
+        roi_path = ROI_PATH  # fallback
+
+        if profile_name:
+            candidate = os.path.join(PROFILES_DIR, f"{profile_name}_roi.json")
+            if os.path.exists(candidate):
+                roi_path = candidate
+
+        print("[ROI PATH]", roi_path)
+
         try:
-            self.roi_mgr.load(ROI_PATH)
+            self.roi_mgr.load(roi_path)
             if DEV_MODE == True:
                 print("[DBG ROI COUNT]", len(getattr(self.roi_mgr, "rois", [])))
         except Exception as e:
@@ -339,10 +362,22 @@ class VisionApp:
     def _save_roi_and_template(self, frame_gray8):
         st = self.state
         try:
-            self.roi_mgr.save(ROI_PATH)
+            profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
+            recipe_name = str(self.product_profile.get("recipe_name", "") or "").strip()
+
+            roi_path = ROI_PATH
+            if profile_name:
+                roi_path = os.path.join(PROFILES_DIR, f"{profile_name}_roi.json")
+
+            tpl_path = TEMPLATE_PATH
+            if recipe_name:
+                tpl_path = os.path.join(PROFILES_DIR, f"align_template_{recipe_name}.png")
+
+            self.roi_mgr.save(roi_path)
+
             anchor_roi_id = self._get_primary_anchor_roi_id()
             ok_tpl = self.roi_mgr.save_alignment_template(
-                frame_gray8, TEMPLATE_PATH, roi_id=anchor_roi_id
+                frame_gray8, tpl_path, roi_id=anchor_roi_id
             )
             if ok_tpl:
                 if getattr(self.inspector, "aligner", None) is not None:
