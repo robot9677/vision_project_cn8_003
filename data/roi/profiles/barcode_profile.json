@@ -8,8 +8,8 @@
     "locate": true,
     "identify": false,
     "pose_check": true,
-    "tracker": false,
-    "auto_inspect": true
+    "tracker": true,
+    "auto_inspect": false
   },
   "ui": {
     "show_pose_guide": true,
