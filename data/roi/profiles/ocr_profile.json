@@ -7,7 +7,6 @@
     "measure": true,
     "locate": true,
     "identify": false,
-    "__comment": "auto_inspect : true 는 자동 검사 장비를 의미",
     "pose_check": true,
     "tracker": true,
     "auto_inspect": true

@@ -152,7 +152,7 @@ class VisionApp:
         profile_path = PRODUCT_PROFILE_PATH
 
         if profile_name:
-            candidate = os.path.join(PROFILES_DIR, f"{profile_name}.json")
+            candidate = os.path.join(PROFILES_DIR, f"{profile_name}_profile.json")
             if os.path.exists(candidate):
                 profile_path = candidate
 
