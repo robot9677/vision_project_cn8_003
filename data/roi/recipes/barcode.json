@@ -13,7 +13,7 @@
       "type": "barcode_1d",
       "allowed_types": ["CODE128", "CODE39", "EAN13", "EAN8"],
       "digits_only": true,
-      "exact_length": 10
+      "exact_length": 8
     }
   ]
 }
