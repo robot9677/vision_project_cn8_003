@@ -9,7 +9,7 @@
     "identify": false,
     "pose_check": true,
     "tracker": true,
-    "auto_inspect": true
+    "auto_inspect": false
   },
   "ui": {
     "show_pose_guide": true,
