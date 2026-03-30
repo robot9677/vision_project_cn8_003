@@ -1,6 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "",
+  "recipe_name": "barcode",
   "camera_profile": "default",
   "enable_modules": {
     "enhance": true,
@@ -34,7 +34,7 @@
         "roi_id": 1,
         "enabled": true,
         "targets": "all",
-        "enable_rotation": true,
+        "enable_rotation": false,
         "angle_range": 6.0,
         "angle_step": 1.0,
         "max_abs_angle": 8.0,
