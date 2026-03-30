@@ -25,7 +25,7 @@
     "jump_guard_score": 0.82,
     "smooth": {
       "max_step_x": 120,
-      "max_step_y": 120,
+      "max_step_y": 90,
       "max_step_angle": 3.0
     },
     "anchors": [

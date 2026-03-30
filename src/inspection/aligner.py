@@ -410,6 +410,18 @@ class MultiAnchorAligner:
                     jump_a > (max_step_angle * 2.0)
                 )
 
+                cfg = self._get_align_cfg()
+                smooth = cfg.get("smooth", {})
+                step_dx = abs(dx - prev_dx)
+                step_dy = abs(dy - prev_dy)
+
+                max_step_x = int(smooth.get("max_step_x", 120))
+                max_step_y = int(smooth.get("max_step_y", 90))
+
+                if step_dx > max_step_x or step_dy > max_step_y:
+                    if score < (jump_guard_score + 0.03):
+                        ok = False
+
                 # if suspicious_jump and score < jump_guard_score:
                 #     ok = False
                 if suspicious_jump and fail_count == 0 and score < jump_guard_score:
