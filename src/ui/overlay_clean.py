@@ -49,7 +49,7 @@ def draw_dashed_circle(img, center, radius, color, thickness=1, dash_len=10):
         y2 = int(cy + r * math.sin(a2))
 
         cv2.line(img, (x1, y1), (x2, y2), color, thickness, lineType=cv2.LINE_AA)
-        
+
 # --- higher-level UI elements ---
 def draw_status_bar(img, text):
     h, w = img.shape[:2]
@@ -380,7 +380,7 @@ def draw_overall_banner(img, overall_ok, info=None):
     align, (mx, my) = POS["overall"]
     x = w // 2 + mx
     y = my
-    draw_text(img, text, (x, y-10), color=color, scale=0.8, thickness=2, align=align)
+    draw_text(img, text, (x-20, y-10), color=color, scale=0.8, thickness=2, align=align)
 
     # ---- debug (우측 하단) ----
     if isinstance(info, dict):
