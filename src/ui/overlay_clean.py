@@ -373,14 +373,27 @@ def draw_overall_banner(img, overall_ok, info=None):
     ng = int(info.get("ng", 0)) if isinstance(info, dict) else 0
     total = int(info.get("total", 0)) if isinstance(info, dict) else 0
 
-    text  = f"OVERALL: {'OK' if overall_ok else 'NG'} ({ng}/{total} NG)"
+    mode = info.get("mode") if isinstance(info, dict) else None
+    allowed = info.get("max_fail") if isinstance(info, dict) else None
+
+    if total > 0:
+        if overall_ok:
+            if mode == "allow_fail_count" and allowed is not None:
+                text = f"OVERALL: OK (NG:{ng}/{total}, allowed:{allowed})"
+            else:
+                text = f"OVERALL: OK ({total-ng}/{total})"
+        else:
+            text = f"OVERALL: NG (NG:{ng}/{total})"
+    else:
+        text = "OVERALL: -"
+        
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
 
     # ---- OVERALL (중앙 상단) ----
     align, (mx, my) = POS["overall"]
     x = w // 2 + mx
     y = my
-    draw_text(img, text, (x-20, y-10), color=color, scale=0.8, thickness=2, align=align)
+    draw_text(img, text, (x, y-10), color=color, scale=0.8, thickness=2, align=align)
 
     # ---- debug (우측 하단) ----
     if isinstance(info, dict):
@@ -405,7 +418,7 @@ def draw_overall_banner(img, overall_ok, info=None):
             x = w - mx
             y = h - my
 
-            draw_text(img, dbg, (x-250, y+2), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
+            draw_text(img, dbg, (x-230, y+2), color=cfg.COLOR_TEXT, scale=0.6, thickness=1, align=align)
 
 
 def draw_origin_axes(img, origin=(40, 60), axis_len=80):
