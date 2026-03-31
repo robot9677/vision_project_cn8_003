@@ -10,55 +10,24 @@
       "min_mean": 0.0,
       "max_mean": 255.0
     },
-
-    "ROI4": {
+    "ROI2": {
       "type": "toolchain",
       "tools": [
         {
-          "tool": "measure.dark_ratio",
+          "tool": "locate.circle",
           "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "min_ratio": 0.03,
-            "max_ratio": 0.35,
-            "blur": 3,
-            "invert": false
+            "dp": 1.2,
+            "min_dist": 20,
+            "param1": 100,
+            "param2": 20,
+            "min_radius": 5,
+            "max_radius": 80,
+            "expected": 3
           }
         }
-      ]
+      ],
+      "tool_decision": "all_ok"
     },
-
-    "ROI5": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.dark_ratio",
-          "params": {
-            "thresh_mode": "mean_offset",
-            "offset": -4,
-            "min_ratio": 0.03,
-            "max_ratio": 0.35,
-            "blur": 3,
-            "invert": false
-          }
-        }
-      ]
-    },
-
-    "ROI6": {
-      "type": "toolchain",
-      "tools": [
-        {
-          "tool": "measure.edge_energy",
-          "params": {
-            "ksize": 3,
-            "sigma": 0,
-            "thresh_min": 2.0
-          }
-        }
-      ]
-    }
-  },
   "decision": {
     "mode": "allow_fail_count",
     "max_fail": 1
