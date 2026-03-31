@@ -15,7 +15,7 @@
             "dp": 1.2,
             "min_dist": 35,
             "param1": 100,
-            "param2": 20,
+            "param2": 10,
             "min_radius": 15,
             "max_radius": 100,
             "expected": 3
