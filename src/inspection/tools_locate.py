@@ -61,13 +61,18 @@ def _find_circle(crop, params, ctx):
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     if gray.dtype != np.uint8:
         gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        
+    gray = cv2.equalizeHist(gray)
 
     blur_k = int(params.get("blur", 5))
     if blur_k < 1:
         blur_k = 1
     if blur_k % 2 == 0:
         blur_k += 1
+
     gray_blur = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
+    edges = cv2.Canny(gray_blur, 50, 150)
+    gray_blur = edges
 
     circles = cv2.HoughCircles(
         gray_blur,
