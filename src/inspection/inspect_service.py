@@ -81,7 +81,26 @@ def run_inspect_once(
     except Exception as e:
         print("[DBG] save_run failed:", e)
 
-    _store_inspect_result(state, overall_ok, results)
+    # ---- overall info 계산 ----
+    total = len(results) if results else 0
+    ng = 0
+
+    if results:
+        for r in results.values():
+            ok = r.get("ok") if isinstance(r, dict) else getattr(r, "ok", None)
+            if ok is False:
+                ng += 1
+
+    # decision 정보 가져오기
+    mode = getattr(inspector, "decision_mode", None)
+    max_fail = getattr(inspector, "decision_max_fail", None)
+
+    state.last_overall_info = {
+        "total": total,
+        "ng": ng,
+        "mode": mode,
+        "max_fail": max_fail,
+    }
 
     try:
         inspector.log_result(state.last_overall_ok, state.last_results)
