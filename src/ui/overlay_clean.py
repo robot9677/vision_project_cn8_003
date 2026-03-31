@@ -34,6 +34,22 @@ def draw_rect(img, pt1, pt2, color=None, thickness=1, fill=False):
     else:
         cv2.rectangle(img, (x1, y1), (x2, y2), color, int(thickness), lineType=cfg.LINE_TYPE)
 
+def draw_dashed_circle(img, center, radius, color, thickness=1, dash_len=10):
+    import math
+    cx, cy = int(center[0]), int(center[1])
+    r = int(radius)
+
+    for i in range(0, 360, dash_len * 2):
+        a1 = math.radians(i)
+        a2 = math.radians(i + dash_len)
+
+        x1 = int(cx + r * math.cos(a1))
+        y1 = int(cy + r * math.sin(a1))
+        x2 = int(cx + r * math.cos(a2))
+        y2 = int(cy + r * math.sin(a2))
+
+        cv2.line(img, (x1, y1), (x2, y2), color, thickness, lineType=cv2.LINE_AA)
+        
 # --- higher-level UI elements ---
 def draw_status_bar(img, text):
     h, w = img.shape[:2]
@@ -144,6 +160,26 @@ def draw_rois(
 
         # center point
         cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
+
+        if metrics and isinstance(metrics, dict) and "circles" in metrics:
+            for c in metrics["circles"]:
+                if isinstance(c, dict):
+                    ccx = int(c.get("x", 0)) + x
+                    ccy = int(c.get("y", 0)) + y
+                    rr = int(c.get("r", 0))
+                else:
+                    ccx = int(c[0]) + x
+                    ccy = int(c[1]) + y
+                    rr = int(c[2])
+
+                draw_dashed_circle(
+                    img,
+                    (ccx, ccy),
+                    rr,
+                    (0, 255, 0),
+                    thickness=1,
+                    dash_len=8,
+                )
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
