@@ -664,7 +664,7 @@ class VisionApp:
         overlay.draw_status_bar(vis, st.status)
 
         if (not st.edit_mode) and (st.last_overall_ok is not None):
-            overlay.draw_overall_banner(vis,st.last_overall_ok,info=getattr(st, "last_overall_info", None)
+            overlay.draw_overall_banner(vis,st.last_overall_ok,info=getattr(st, "last_overall_info", None),)
 
         st.last_buttons = render_control_bar(vis, st.edit_mode)
 
