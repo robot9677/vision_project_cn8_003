@@ -13,11 +13,12 @@
           "tool": "locate.circle",
           "params": {
             "dp": 1.2,
-            "min_dist": 35,
-            "param1": 100,
-            "param2":1,
-            "min_radius": 15,
-            "max_radius": 100,
+            "min_dist": 60,
+            "param1": 60,
+            "param2":10,
+            "min_radius": 40,
+            "max_radius": 90,
+            "blur": 3,
             "expected": 3
           }
         }
