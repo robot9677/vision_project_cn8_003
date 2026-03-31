@@ -180,6 +180,35 @@ def draw_rois(
                     thickness=1,
                     dash_len=8,
                 )
+        # mm 표시
+        if metrics and "diameters_mm" in metrics:
+            ds = metrics["diameters_mm"]
+
+            for i, c in enumerate(metrics.get("circles", [])):
+                if i >= len(ds):
+                    continue
+
+                d_mm = ds[i]
+
+                if isinstance(c, dict):
+                    cx = int(c["x"]) + x
+                    cy = int(c["y"]) + y
+                else:
+                    cx = int(c[0]) + x
+                    cy = int(c[1]) + y
+
+                text = f"{d_mm:.1f} mm"
+
+                cv2.putText(
+                    img,
+                    text,
+                    (cx - 40, cy - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    1,
+                    cv2.LINE_AA
+                )
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
@@ -386,7 +415,7 @@ def draw_overall_banner(img, overall_ok, info=None):
             text = f"OVERALL: NG (NG:{ng}/{total})"
     else:
         text = "OVERALL: -"
-        
+
     color = cfg.COLOR_OK if overall_ok else cfg.COLOR_NG
 
     # ---- OVERALL (중앙 상단) ----
