@@ -1,6 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "recipe_static",
+  "recipe_name": "circle",
   "camera_profile": "default",
   "enable_modules": {
     "enhance": true,
