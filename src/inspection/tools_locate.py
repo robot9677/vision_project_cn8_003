@@ -115,7 +115,10 @@ def _find_circle(crop, params, ctx):
     meta = {
         "circle_count": int(count),
         "circles": found,
+        "blob": int(count),
     }
+
+    print(f"[DBG CIRCLE] count={count}")
     return dbg, meta, bool(ok), reason
 
 
