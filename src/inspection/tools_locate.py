@@ -152,13 +152,22 @@ def _find_circle(crop, params, ctx):
         rs = [c["r"] if isinstance(c, dict) else c[2] for c in found]
         avg_radius = float(sum(rs) / len(rs))
 
+    scale = float(params.get("mm_per_px", 0.157))
+
+    diameters_mm = []
+    for c in found:
+        r = c["r"] if isinstance(c, dict) else c[2]
+        d_mm = 2.0 * r * scale
+        diameters_mm.append(d_mm)
+
     meta = {
         "circle_count": int(count),
         "circles": found,
         "blob": int(count),
         "avg_radius": avg_radius,
+        "diameters_mm": diameters_mm,
     }
-    print(f"[DBG CIRCLE] count={count} circles={found} blob={count} avg_radius={avg_radius}")
+    print(f"[DBG CIRCLE] count={count} circles={found} blob={count} avg_radius={avg_radius} diameters_mm={diameters_mm}")
 
     return dbg, meta, bool(ok), reason
 
