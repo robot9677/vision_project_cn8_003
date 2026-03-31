@@ -54,6 +54,29 @@ def _pattern_match(crop, params, ctx):
     ok = best >= score_min
     return crop, {"score": best, "scale": best_s}, bool(ok), ("OK" if ok else "LOW_SCORE")
 
+def _circle_arc_coverage(edge_img, cx, cy, r, tol=2):
+    pts = 360
+    hit = 0
+
+    for deg in range(pts):
+        theta = np.deg2rad(deg)
+
+        found_edge = False
+        for dt in range(-tol, tol + 1):
+            rr = r + dt
+            x = int(round(cx + rr * np.cos(theta)))
+            y = int(round(cy + rr * np.sin(theta)))
+
+            if 0 <= y < edge_img.shape[0] and 0 <= x < edge_img.shape[1]:
+                if edge_img[y, x] > 0:
+                    found_edge = True
+                    break
+
+        if found_edge:
+            hit += 1
+
+    return float(hit) / float(pts)
+
 def _find_circle(crop, params, ctx):
     if crop is None or crop.size == 0:
         return crop, {"circle_count": 0, "circles": []}, False, "EMPTY_CROP"
@@ -74,6 +97,8 @@ def _find_circle(crop, params, ctx):
     edges = cv2.Canny(gray_blur, 50, 150)
     gray_blur = edges
 
+    coverage_min = float(params.get("coverage_min", 0.70))
+
     circles = cv2.HoughCircles(
         gray_blur,
         cv2.HOUGH_GRADIENT,
@@ -91,7 +116,16 @@ def _find_circle(crop, params, ctx):
     if circles is not None:
         circles = np.round(circles[0]).astype(int)
         for x, y, r in circles:
-            found.append({"x": int(x), "y": int(y), "r": int(r)})
+            coverage = _circle_arc_coverage(edges, int(x), int(y), int(r), tol=2)
+            if coverage < coverage_min:
+                continue
+
+            found.append({
+                "x": int(x),
+                "y": int(y),
+                "r": int(r),
+                "coverage": float(coverage),
+            })
             cv2.circle(dbg, (int(x), int(y)), int(r), (0, 255, 0), 2)
             cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
 
@@ -117,6 +151,7 @@ def _find_circle(crop, params, ctx):
         "circles": found,
         "blob": int(count),
     }
+    print(f"[DBG CIRCLE] count={count} circles={found} blob={count}")
 
     print(f"[DBG CIRCLE] count={count}")
     return dbg, meta, bool(ok), reason

@@ -20,7 +20,8 @@
             "min_radius": 80,
             "max_radius": 120,
             "blur": 5,
-            "expected": 3
+            "expected": 3,
+            "coverage_min": 0.70
           }
         }
       ],
