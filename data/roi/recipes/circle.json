@@ -16,12 +16,12 @@
             "dp": 1.2,
             "min_dist": 150,
             "param1": 80,
-            "param2": 30,
+            "param2": 20,
             "min_radius": 80,
             "max_radius": 120,
             "blur": 5,
             "expected": 3,
-            "coverage_min": 0.75
+            "coverage_min": 0.65
           }
         }
       ],
