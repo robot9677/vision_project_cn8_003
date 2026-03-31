@@ -1,0 +1,12 @@
+{
+  "enable_tracker": true,
+  "enable_auto_inspect": false,
+  "auto_inspect_interval": 0.5,
+
+  "tracker_search_margin": 120,
+  "tracker_thr": 0.65,
+
+  "normalize_enabled": false,
+
+  "run_mode": "held"
+}

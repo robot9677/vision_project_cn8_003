@@ -1,0 +1,8 @@
+{
+  "enable_tracker": false,
+  "enable_auto_inspect": true,
+  "auto_inspect_interval": 0.2,
+
+  "normalize_enabled": true,
+  "normalize_target_mean": 80
+}

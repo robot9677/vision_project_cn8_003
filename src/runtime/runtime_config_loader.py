@@ -51,19 +51,25 @@ def load_runtime_config(path):
     }
 
     try:
-        profile_name = cfg.get("profile_name", None)
+        with open(path, "r", encoding="utf-8") as f:
+            user_cfg = json.load(f)
+
+        cfg = _deep_merge_dict(cfg, user_cfg)
+
+        profile_name = user_cfg.get("profile_name", None)
 
         if profile_name:
             profile_path = os.path.join(
                 os.path.dirname(path),
                 "runtime_configs",
-                f"{profile_name}.json"
+                f"{profile_name}_runtime.json"
             )
 
-        if os.path.exists(profile_path):
-            with open(profile_path, "r") as f:
-                profile_cfg = json.load(f)
-            cfg = _deep_merge_dict(cfg, profile_cfg)
+            if os.path.exists(profile_path):
+                with open(profile_path, "r", encoding="utf-8") as f:
+                    profile_cfg = json.load(f)
+
+                cfg = _deep_merge_dict(cfg, profile_cfg)
                 
     except Exception as e:
         print("[WARN] runtime config load failed:", e)
