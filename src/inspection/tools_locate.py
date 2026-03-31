@@ -146,14 +146,20 @@ def _find_circle(crop, params, ctx):
         ok = False
         reason = "CIRCLE_COUNT_HIGH"
 
+    # 평균 반지름 계산
+    avg_radius = 0.0
+    if found:
+        rs = [c["r"] if isinstance(c, dict) else c[2] for c in found]
+        avg_radius = float(sum(rs) / len(rs))
+
     meta = {
         "circle_count": int(count),
         "circles": found,
         "blob": int(count),
+        "avg_radius": avg_radius,
     }
-    print(f"[DBG CIRCLE] count={count} circles={found} blob={count}")
+    print(f"[DBG CIRCLE] count={count} circles={found} blob={count} avg_radius={avg_radius}")
 
-    print(f"[DBG CIRCLE] count={count}")
     return dbg, meta, bool(ok), reason
 
 
