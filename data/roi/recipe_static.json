@@ -1,15 +1,11 @@
 {
-  "default": {
-    "type": "mean_threshold",
-    "min_mean": 0.0,
-    "max_mean": 255.0
-  },
   "overrides": {
     "ROI1": {
       "type": "mean_threshold",
       "min_mean": 0.0,
       "max_mean": 255.0
     },
+
     "ROI2": {
       "type": "toolchain",
       "tools": [
@@ -17,17 +13,19 @@
           "tool": "locate.circle",
           "params": {
             "dp": 1.2,
-            "min_dist": 20,
+            "min_dist": 35,
             "param1": 100,
             "param2": 20,
-            "min_radius": 5,
-            "max_radius": 80,
+            "min_radius": 15,
+            "max_radius": 100,
             "expected": 3
           }
         }
       ],
       "tool_decision": "all_ok"
-    },
+    }
+  },
+
   "decision": {
     "mode": "allow_fail_count",
     "max_fail": 1
