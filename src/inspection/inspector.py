@@ -202,6 +202,9 @@ class Inspector:
         self.logs_root = logs_root
         self.recipe = load_recipe(recipe_path)
         print("[RECIPE]", "STATIC", recipe_path)
+        decision = self.recipe.get("decision", {}) if isinstance(self.recipe, dict) else {}
+        self.decision_mode = decision.get("mode", "any_fail_is_ng")
+        self.decision_max_fail = int(decision.get("max_fail", 0))
         self.mean_filters = {}
         self.runtime_cfg = runtime_cfg or {}
         self.debug_view_enabled = bool(self.runtime_cfg.get("debug_view_enabled", True))

@@ -101,6 +101,7 @@ def run_inspect_once(
         "mode": mode,
         "max_fail": max_fail,
     }
+    _store_inspect_result(state, overall_ok, results)
 
     try:
         inspector.log_result(state.last_overall_ok, state.last_results)
