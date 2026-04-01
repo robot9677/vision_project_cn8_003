@@ -447,6 +447,43 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
 
     return bw, meta, ok, "OK" if ok else "WASHER_MISSING"
 
+def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    metrics = ctx.get("metrics", {}) if isinstance(ctx, dict) else {}
+    circles = metrics.get("circles") or []
+
+    if not circles:
+        return img, {"circle_measure_count": 0}, False, "NO_CIRCLES"
+
+    calibration = params.get("calibration") or {}
+    mm_per_px = calibration.get("mm_per_px", None)
+
+    diameters_px = []
+    radii_px = []
+    diameters_mm = []
+
+    for c in circles:
+        r = float(c.get("r", 0)) if isinstance(c, dict) else float(c[2])
+        d_px = 2.0 * r
+
+        radii_px.append(r)
+        diameters_px.append(d_px)
+
+        if mm_per_px is not None:
+            diameters_mm.append(d_px * float(mm_per_px))
+
+    meta = {
+        "circle_measure_count": int(len(circles)),
+        "radii_px": radii_px,
+        "diameters_px": diameters_px,
+        "unit_mode": "mm" if mm_per_px is not None else "px",
+    }
+
+    if diameters_mm:
+        meta["diameters_mm"] = diameters_mm
+        meta["mm_per_px"] = float(mm_per_px)
+
+    return img, meta, True, "OK"
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -455,3 +492,4 @@ def register_measure_tools() -> None:
     register_tool("measure.bright_ratio", _bright_ratio)
     register_tool("measure.presence_blob", _presence_blob)
     register_tool("measure.washer", _washer_presence)
+    register_tool("measure.circle_size", _circle_size)

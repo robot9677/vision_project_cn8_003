@@ -23,6 +23,12 @@
             "expected": 3,
             "coverage_min": 0.65
           }
+        },
+        {
+          "tool": "measure.circle_size",
+          "params": {
+            "calibration": {}
+          }
         }
       ],
       "tool_decision": "all_ok"

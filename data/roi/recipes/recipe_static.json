@@ -21,6 +21,12 @@
             "blur": 3,
             "expected": 3
           }
+        },
+        {
+          "tool": "measure.circle_size",
+          "params": {
+            "calibration": {}
+          }
         }
       ],
       "tool_decision": "all_ok"

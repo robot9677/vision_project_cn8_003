@@ -180,16 +180,12 @@ def draw_rois(
                     thickness=1,
                     dash_len=8,
                 )
-        # mm 표시
-        if metrics and "diameters_mm" in metrics:
-            ds = metrics["diameters_mm"]
+        # mm  / px 표시
+        if metrics:
+            mm_list = metrics.get("diameters_mm")
+            px_list = metrics.get("diameters_px")
 
             for i, c in enumerate(metrics.get("circles", [])):
-                if i >= len(ds):
-                    continue
-
-                d_mm = ds[i]
-
                 if isinstance(c, dict):
                     cx = int(c["x"]) + x
                     cy = int(c["y"]) + y
@@ -197,7 +193,14 @@ def draw_rois(
                     cx = int(c[0]) + x
                     cy = int(c[1]) + y
 
-                text = f"{d_mm:.1f} mm"
+                text = None
+                if isinstance(mm_list, list) and i < len(mm_list):
+                    text = f"{float(mm_list[i]):.1f} mm"
+                elif isinstance(px_list, list) and i < len(px_list):
+                    text = f"{float(px_list[i]):.1f} px"
+
+                if not text:
+                    continue
 
                 cv2.putText(
                     img,
@@ -207,7 +210,7 @@ def draw_rois(
                     0.5,
                     (0, 255, 0),
                     1,
-                    cv2.LINE_AA
+                    cv2.LINE_AA,
                 )
 
         # QR scan result text (ROI 하단, QR일 때만)
