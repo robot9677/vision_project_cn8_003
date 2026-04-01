@@ -21,15 +21,42 @@ def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> 
 
     if mode == "reference_circle":
         ref_mm = calibration.get("reference_diameter_mm", None)
-        ref_index = int(calibration.get("reference_index", 0))
-
-        diameters_px = metrics.get("diameters_px") or []
         if ref_mm is None:
             return None, "CALIBRATION_MISSING_REF_MM"
-        if not isinstance(diameters_px, list) or ref_index >= len(diameters_px):
+
+        circles = metrics.get("circles") or []
+        diameters_px = metrics.get("diameters_px") or []
+
+        if not isinstance(diameters_px, list) or not diameters_px:
             return None, "CALIBRATION_REF_NOT_FOUND"
 
-        ref_px = float(diameters_px[ref_index])
+        selector = str(calibration.get("selector", "largest")).strip().lower()
+
+        ref_idx = -1
+
+        if selector == "largest":
+            ref_idx = max(range(len(diameters_px)), key=lambda i: float(diameters_px[i]))
+        elif selector == "smallest":
+            ref_idx = min(range(len(diameters_px)), key=lambda i: float(diameters_px[i]))
+        elif selector == "leftmost" and isinstance(circles, list) and len(circles) == len(diameters_px):
+            ref_idx = min(
+                range(len(circles)),
+                key=lambda i: float(circles[i].get("x", 0)) if isinstance(circles[i], dict) else float(circles[i][0])
+            )
+        elif selector == "rightmost" and isinstance(circles, list) and len(circles) == len(diameters_px):
+            ref_idx = max(
+                range(len(circles)),
+                key=lambda i: float(circles[i].get("x", 0)) if isinstance(circles[i], dict) else float(circles[i][0])
+            )
+        elif selector == "index":
+            ref_idx = int(calibration.get("reference_index", 0))
+        else:
+            return None, f"CALIBRATION_BAD_SELECTOR:{selector}"
+
+        if ref_idx < 0 or ref_idx >= len(diameters_px):
+            return None, "CALIBRATION_REF_NOT_FOUND"
+
+        ref_px = float(diameters_px[ref_idx])
         if ref_px <= 0:
             return None, "CALIBRATION_REF_INVALID"
 
@@ -499,19 +526,13 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
             diameters_px.append(2.0 * r)
 
     calibration = params.get("calibration")
-    calibration_preset = str(params.get("calibration_preset", "")).strip()
 
     if not calibration:
         product_profile = ctx.get("product_profile") or {}
         profile_cal = product_profile.get("calibration", {}) if isinstance(product_profile, dict) else {}
-
-        if calibration_preset:
-            presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
-            calibration = presets.get(calibration_preset, {})
-        else:
-            active_name = str(profile_cal.get("active", "")).strip() if isinstance(profile_cal, dict) else ""
-            presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
-            calibration = presets.get(active_name, {})
+        active_name = str(profile_cal.get("active", "")).strip() if isinstance(profile_cal, dict) else ""
+        presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
+        calibration = presets.get(active_name, {})
 
     mm_per_px, calib_reason = _resolve_mm_per_px(calibration, metrics)
 
@@ -520,7 +541,7 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
         "radii_px": radii_px,
         "diameters_px": diameters_px,
         "unit_mode": "px",
-        "calibration_mode": str(calibration.get("mode", "none")).strip().lower(),
+        "calibration_mode": str(calibration.get("mode", "none")).strip().lower() if isinstance(calibration, dict) else "none",
         "calibration_ok": bool(mm_per_px is not None),
         "calibration_reason": calib_reason,
     }
