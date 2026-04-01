@@ -26,10 +26,7 @@
         },
         {
           "tool": "measure.circle_size",
-            "params": {
-              "_comment": "자동 처리시 calibration_preset 값을 ref_circle_30mm 로 처리",
-              "calibration_preset": "fixed_default"
-            }
+          "params": {}
         }
       ],
       "tool_decision": "all_ok"
