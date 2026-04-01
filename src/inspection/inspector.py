@@ -229,6 +229,8 @@ class Inspector:
         else:
             self.baseline = None
 
+        self._roi_debug_window_init = False
+
         register_enhance_tools()
         register_measure_tools()
         register_locate_tools()
@@ -330,9 +332,20 @@ class Inspector:
             rows.append(cv2.hconcat(row))
 
         grid = cv2.vconcat(rows)
-        cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("ROI DEBUG", 600, 350)
+        if not hasattr(self, "_roi_debug_window_init"):
+            self._roi_debug_window_init = False
+
+        if not self._roi_debug_window_init:
+            cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("ROI DEBUG", 600, 350)
+            self._roi_debug_window_init = True
+
         cv2.imshow("ROI DEBUG", grid)
+
+        try:
+            cv2.setWindowProperty("ROI DEBUG", cv2.WND_PROP_TOPMOST, 0)
+        except Exception:
+            pass
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
@@ -379,10 +392,6 @@ class Inspector:
     def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
         if self.debug_view_enabled:
             self.debug_tiles = {}
-            try:
-                cv2.destroyWindow("ROI DEBUG")
-            except:
-                pass
 
         results: Dict[str, ROIResult] = {}
 
