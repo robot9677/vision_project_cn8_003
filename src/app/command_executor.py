@@ -79,6 +79,7 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
             frame_gray8=frame_gray8,
             vis_bgr=vis_bgr,
             avg5=True,
+            use_cache=False,
         )
         return
 

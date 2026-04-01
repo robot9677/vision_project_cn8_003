@@ -426,6 +426,8 @@ class VisionApp:
                 frame_gray8=frame_gray8,
                 vis_bgr=vis_bgr,
                 avg5=avg5,
+                use_cache=True,
+                cache_every_n=int(cfg.get("auto_inspect_every_n", 3)),
             )
 
     def _render_run_frame(self, vis, frame_gray8):

@@ -14,6 +14,7 @@
   "enable_auto_inspect": false,
   "auto_inspect_interval": 1.0,
   "auto_inspect_avg5": false,
+  "auto_inspect_every_n": 3,
   "snapshot_cooldown": 5.0,
   "snapshot_keep": 200,
   "auto_inspect_stable_frames": 3,

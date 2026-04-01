@@ -55,33 +55,46 @@ def run_inspect_once(
     frame_gray8,
     vis_bgr,
     avg5=True,
+    use_cache=False,
+    cache_every_n=3,
 ):
     avg = _capture_avg_frame(cam, frame_gray8, avg5=avg5)
 
-    # 최초 초기화
     if not hasattr(state, "_inspect_frame_idx"):
         state._inspect_frame_idx = 0
+    if not hasattr(state, "_inspect_cache"):
         state._inspect_cache = None
 
-    state._inspect_frame_idx += 1
+    overall_ok = None
+    results = None
 
-    # 3프레임마다만 inspect 실행
-    if state._inspect_frame_idx % 3 == 0 or state._inspect_cache is None:
+    if use_cache:
+        cache_every_n = max(1, int(cache_every_n))
+        state._inspect_frame_idx += 1
+
+        if (state._inspect_frame_idx % cache_every_n) == 0 or state._inspect_cache is None:
+            overall_ok, results = run_inspection(
+                inspector=inspector,
+                frame_gray8=avg,
+                auto_mode=state.auto_inspect,
+            )
+            state._inspect_cache = (overall_ok, results)
+        else:
+            overall_ok, results = state._inspect_cache
+    else:
         overall_ok, results = run_inspection(
             inspector=inspector,
             frame_gray8=avg,
             auto_mode=state.auto_inspect,
         )
         state._inspect_cache = (overall_ok, results)
-    else:
-        overall_ok, results = state._inspect_cache
+        state._inspect_frame_idx = 0
 
     try:
         inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
     except Exception as e:
         print("[DBG] save_run failed:", e)
 
-    # ---- overall info 계산 ----
     total = len(results) if results else 0
     ng = 0
 
@@ -91,7 +104,6 @@ def run_inspect_once(
             if ok is False:
                 ng += 1
 
-    # decision 정보 가져오기
     mode = getattr(inspector, "decision_mode", None)
     max_fail = getattr(inspector, "decision_max_fail", None)
 
