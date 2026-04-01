@@ -25,7 +25,9 @@
         {
           "tool": "measure.circle_size",
           "params": {
-            "calibration": {}
+            "calibration": {
+              "mode": "none"
+            }
           }
         }
       ],

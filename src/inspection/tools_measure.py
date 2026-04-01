@@ -4,6 +4,39 @@ import numpy as np
 from typing import Any, Dict, Tuple
 from .toolchain import register_tool
 
+def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> Tuple[Any, str]:
+    if not isinstance(calibration, dict):
+        return None, "NO_CALIBRATION"
+
+    mode = str(calibration.get("mode", "none")).strip().lower()
+
+    if mode in ("", "none"):
+        return None, "NO_CALIBRATION"
+
+    if mode == "fixed":
+        mm_per_px = calibration.get("mm_per_px", None)
+        if mm_per_px is None:
+            return None, "CALIBRATION_MISSING_MM_PER_PX"
+        return float(mm_per_px), "OK"
+
+    if mode == "reference_circle":
+        ref_mm = calibration.get("reference_diameter_mm", None)
+        ref_index = int(calibration.get("reference_index", 0))
+
+        diameters_px = metrics.get("diameters_px") or []
+        if ref_mm is None:
+            return None, "CALIBRATION_MISSING_REF_MM"
+        if not isinstance(diameters_px, list) or ref_index >= len(diameters_px):
+            return None, "CALIBRATION_REF_NOT_FOUND"
+
+        ref_px = float(diameters_px[ref_index])
+        if ref_px <= 0:
+            return None, "CALIBRATION_REF_INVALID"
+
+        return float(ref_mm) / ref_px, "OK"
+
+    return None, f"UNSUPPORTED_CALIBRATION_MODE:{mode}"
+
 def _edge_energy(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any], bool, str]:
     """
     params:
@@ -450,37 +483,52 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
 def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     metrics = ctx.get("metrics", {}) if isinstance(ctx, dict) else {}
     circles = metrics.get("circles") or []
+    diameters_px_src = metrics.get("diameters_px") or []
+    radii_px_src = metrics.get("radii_px") or []
 
     if not circles:
         return img, {"circle_measure_count": 0}, False, "NO_CIRCLES"
 
-    calibration = params.get("calibration") or {}
-    mm_per_px = calibration.get("mm_per_px", None)
+    radii_px = [float(v) for v in radii_px_src] if radii_px_src else []
+    diameters_px = [float(v) for v in diameters_px_src] if diameters_px_src else []
 
-    diameters_px = []
-    radii_px = []
-    diameters_mm = []
+    if not diameters_px:
+        for c in circles:
+            r = float(c.get("r", 0)) if isinstance(c, dict) else float(c[2])
+            radii_px.append(r)
+            diameters_px.append(2.0 * r)
 
-    for c in circles:
-        r = float(c.get("r", 0)) if isinstance(c, dict) else float(c[2])
-        d_px = 2.0 * r
+    calibration = params.get("calibration")
+    calibration_preset = str(params.get("calibration_preset", "")).strip()
 
-        radii_px.append(r)
-        diameters_px.append(d_px)
+    if not calibration:
+        product_profile = ctx.get("product_profile") or {}
+        profile_cal = product_profile.get("calibration", {}) if isinstance(product_profile, dict) else {}
 
-        if mm_per_px is not None:
-            diameters_mm.append(d_px * float(mm_per_px))
+        if calibration_preset:
+            presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
+            calibration = presets.get(calibration_preset, {})
+        else:
+            active_name = str(profile_cal.get("active", "")).strip() if isinstance(profile_cal, dict) else ""
+            presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
+            calibration = presets.get(active_name, {})
+
+    mm_per_px, calib_reason = _resolve_mm_per_px(calibration, metrics)
 
     meta = {
         "circle_measure_count": int(len(circles)),
         "radii_px": radii_px,
         "diameters_px": diameters_px,
-        "unit_mode": "mm" if mm_per_px is not None else "px",
+        "unit_mode": "px",
+        "calibration_mode": str(calibration.get("mode", "none")).strip().lower(),
+        "calibration_ok": bool(mm_per_px is not None),
+        "calibration_reason": calib_reason,
     }
 
-    if diameters_mm:
-        meta["diameters_mm"] = diameters_mm
+    if mm_per_px is not None:
         meta["mm_per_px"] = float(mm_per_px)
+        meta["diameters_mm"] = [float(v) * float(mm_per_px) for v in diameters_px]
+        meta["unit_mode"] = "mm"
 
     return img, meta, True, "OK"
 

@@ -2,6 +2,20 @@
   "product_name": "vision_inspection_basic",
   "recipe_name": "circle",
   "camera_profile": "default",
+  "calibration": {
+    "active": "fixed_default",
+    "presets": {
+      "fixed_default": {
+        "mode": "fixed",
+        "mm_per_px": 0.157
+      },
+      "ref_circle_30mm": {
+        "mode": "reference_circle",
+        "reference_index": 0,
+        "reference_diameter_mm": 30.0
+      }
+    }
+  },
   "enable_modules": {
     "enhance": true,
     "measure": true,
