@@ -1,4 +1,4 @@
-# src/ui/overlay.py
+# src/ui/overlay_clean.py
 import cv2
 import numpy as np
 from ui import ui_config as cfg

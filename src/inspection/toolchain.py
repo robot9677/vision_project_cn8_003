@@ -18,7 +18,12 @@ def run_toolchain(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str
     steps: List[Dict[str, Any]] = cfg.get("tools") or []
     decision = (cfg.get("tool_decision") or "all_ok").strip().lower()
 
-    ctx: Dict[str, Any] = {"metrics": {}, "steps": []}
+    ctx: Dict[str, Any] = {
+        "metrics": {},
+        "steps": [],
+        "product_profile": cfg.get("product_profile")
+    }
+    
     cur = crop
     oks: List[bool] = []
     last_reason = "NO_TOOLS"
