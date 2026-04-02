@@ -23,7 +23,7 @@
             "expected": 3,
             "coverage_min": 0.65,
             "smooth_radius": true,
-            "smooth_alpha": 0.3
+            "smooth_alpha": 0.25
           }
         },
         {

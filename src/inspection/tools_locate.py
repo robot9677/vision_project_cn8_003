@@ -135,6 +135,7 @@ def _find_circle(crop, params, ctx):
 
         smooth = bool(params.get("smooth_radius", False))
         alpha = float(params.get("smooth_alpha", 0.6))
+        alpha = max(0.0, min(1.0, alpha))
 
         prev_circles = ctx.get("_prev_circles", None)
 
