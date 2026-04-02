@@ -120,30 +120,39 @@ def _find_circle(crop, params, ctx):
             if coverage < coverage_min:
                 continue
 
-            # --- radius smoothing ---
-            smooth = bool(params.get("smooth_radius", False))
-            alpha = float(params.get("smooth_alpha", 0.6))
-
-            prev_rs = ctx.get("_prev_radii", None)
-
-            if smooth and isinstance(prev_rs, list) and len(prev_rs) == len(found):
-                for i, c in enumerate(found):
-                    prev_r = float(prev_rs[i])
-                    cur_r = float(c["r"])
-                    smoothed = alpha * cur_r + (1.0 - alpha) * prev_r
-                    c["r"] = int(round(smoothed))
-
             found.append({
                 "x": int(x),
                 "y": int(y),
                 "r": int(r),
                 "coverage": float(coverage),
             })
-            # --- circle 정렬 (좌→우 기준) ---
-            found = sorted(found, key=lambda c: c["x"])
-            
+
             cv2.circle(dbg, (int(x), int(y)), int(r), (0, 255, 0), 2)
             cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
+
+        # --- circle 정렬 (좌→우 기준) ---
+        found = sorted(found, key=lambda c: c["x"])
+
+        smooth = bool(params.get("smooth_radius", False))
+        alpha = float(params.get("smooth_alpha", 0.6))
+
+        prev_circles = ctx.get("_prev_circles", None)
+
+        if smooth and isinstance(prev_circles, list) and len(prev_circles) == len(found):
+            for i, c in enumerate(found):
+                prev_c = prev_circles[i]
+
+                prev_x = float(prev_c.get("x", c["x"]))
+                prev_y = float(prev_c.get("y", c["y"]))
+                prev_r = float(prev_c.get("r", c["r"]))
+
+                cur_x = float(c["x"])
+                cur_y = float(c["y"])
+                cur_r = float(c["r"])
+
+                c["x"] = int(round(alpha * cur_x + (1.0 - alpha) * prev_x))
+                c["y"] = int(round(alpha * cur_y + (1.0 - alpha) * prev_y))
+                c["r"] = int(round(alpha * cur_r + (1.0 - alpha) * prev_r))
 
     count = len(found)
     expected = params.get("expected")
@@ -184,7 +193,10 @@ def _find_circle(crop, params, ctx):
         "radii_px": radii_px,
         "diameters_px": diameters_px,
     }
-    ctx["_prev_radii"] = [c["r"] for c in found]
+    ctx["_prev_circles"] = [
+        {"x": int(c["x"]), "y": int(c["y"]), "r": int(c["r"])}
+        for c in found
+    ]
 
     print(
         f"[DBG CIRCLE] count={count} circles={found} "
