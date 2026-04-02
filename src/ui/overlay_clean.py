@@ -180,6 +180,22 @@ def draw_rois(
                     thickness=1,
                     dash_len=8,
                 )
+
+                # ★ calibration 기준 원 표시
+                if metrics:
+                    ref_idx = metrics.get("calibration_ref_index")
+
+                    if ref_idx is not None and i == int(ref_idx):
+                        cv2.putText(
+                            img,
+                            "REF",
+                            (ccx - 10, ccy + 20),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 255, 255),
+                            2,
+                            cv2.LINE_AA,
+                        )
         # mm  / px 표시
         if metrics:
             mm_list = metrics.get("diameters_mm")

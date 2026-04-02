@@ -60,7 +60,11 @@ def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> 
         if ref_px <= 0:
             return None, "CALIBRATION_REF_INVALID"
 
-        return float(ref_mm) / ref_px, "OK"
+        return float(ref_mm) / ref_px, "OK", {
+            "selector": selector,
+            "ref_index": int(ref_idx),
+            "ref_px": float(ref_px)
+        }
 
     return None, f"UNSUPPORTED_CALIBRATION_MODE:{mode}"
 
@@ -534,7 +538,7 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
         presets = profile_cal.get("presets", {}) if isinstance(profile_cal, dict) else {}
         calibration = presets.get(active_name, {})
 
-    mm_per_px, calib_reason = _resolve_mm_per_px(calibration, metrics)
+    mm_per_px, calib_reason, calib_info = _resolve_mm_per_px(calibration, metrics)
 
     meta = {
         "circle_measure_count": int(len(circles)),
@@ -544,6 +548,9 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
         "calibration_mode": str(calibration.get("mode", "none")).strip().lower() if isinstance(calibration, dict) else "none",
         "calibration_ok": bool(mm_per_px is not None),
         "calibration_reason": calib_reason,
+        "calibration_selector": calib_info.get("selector"),
+        "calibration_ref_index": calib_info.get("ref_index"),
+        "calibration_ref_px": calib_info.get("ref_px"),
     }
 
     if mm_per_px is not None:
