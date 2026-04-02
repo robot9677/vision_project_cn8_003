@@ -36,7 +36,7 @@
     {
       "id": "circle_detect_ROI3",
       "enabled": true,
-      "roi_id": 23,
+      "roi_id": 3,
       "type": "toolchain",
       "tools": [
         {
