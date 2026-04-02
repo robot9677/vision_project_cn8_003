@@ -162,7 +162,9 @@ def draw_rois(
         cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
 
         if metrics and isinstance(metrics, dict) and "circles" in metrics:
-            for c in metrics["circles"]:
+            ref_idx = metrics.get("calibration_ref_index", None)
+
+            for i, c in enumerate(metrics["circles"]):
                 if isinstance(c, dict):
                     ccx = int(c.get("x", 0)) + x
                     ccy = int(c.get("y", 0)) + y
@@ -181,7 +183,6 @@ def draw_rois(
                     dash_len=8,
                 )
 
-                # ★ calibration 기준 원 표시
                 if ref_idx is not None and int(ref_idx) == i:
                     cv2.putText(
                         img,
