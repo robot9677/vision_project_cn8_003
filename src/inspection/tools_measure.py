@@ -558,6 +558,13 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
         meta["diameters_mm"] = [float(v) * float(mm_per_px) for v in diameters_px]
         meta["unit_mode"] = "mm"
 
+    if calib_info:
+        print(
+            f"[DBG CAL] selector={calib_info.get('selector')} "
+            f"ref_idx={calib_info.get('ref_index')} "
+            f"ref_px={calib_info.get('ref_px')}"
+        )
+        
     return img, meta, True, "OK"
 
 def register_measure_tools() -> None:
