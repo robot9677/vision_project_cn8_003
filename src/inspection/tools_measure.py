@@ -6,18 +6,18 @@ from .toolchain import register_tool
 
 def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> Tuple[Any, str]:
     if not isinstance(calibration, dict):
-        return None, "NO_CALIBRATION"
+        return None, "NO_CALIBRATION", {}
 
     mode = str(calibration.get("mode", "none")).strip().lower()
 
     if mode in ("", "none"):
-        return None, "NO_CALIBRATION"
+        return None, "NO_CALIBRATION", {}
 
     if mode == "fixed":
         mm_per_px = calibration.get("mm_per_px", None)
         if mm_per_px is None:
             return None, "CALIBRATION_MISSING_MM_PER_PX" ,{}
-        return float(mm_per_px), "OK"
+        return float(mm_per_px), "OK", {}
 
     if mode == "reference_circle":
         ref_mm = calibration.get("reference_diameter_mm", None)
