@@ -70,6 +70,14 @@
     {
       "id": 2,
       "type": "inspect"
+    },
+    {
+      "id": 3,
+      "type": "inspect"
+    },
+    {
+      "id": 4,
+      "type": "inspect"
     }
   ]
 }

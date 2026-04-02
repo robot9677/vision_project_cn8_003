@@ -5,7 +5,7 @@
   },
   "inspections": [
     {
-      "id": "circle_detect",
+      "id": "circle_detect_ROI2",
       "enabled": true,
       "roi_id": 2,
       "type": "toolchain",
@@ -14,7 +14,65 @@
           "tool": "locate.circle",
           "params": {
             "dp": 1.2,
-            "min_dist": 150,
+            "min_dist": 80,
+            "param1": 80,
+            "param2": 20,
+            "min_radius": 80,
+            "max_radius": 120,
+            "blur": 5,
+            "expected": 3,
+            "coverage_min": 0.65,
+            "smooth_radius": true,
+            "smooth_alpha": 0.25
+          }
+        },
+        {
+          "tool": "measure.circle_size",
+          "params": {}
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "circle_detect_ROI3",
+      "enabled": true,
+      "roi_id": 23,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.circle",
+          "params": {
+            "dp": 1.2,
+            "min_dist": 80,
+            "param1": 80,
+            "param2": 20,
+            "min_radius": 80,
+            "max_radius": 120,
+            "blur": 5,
+            "expected": 3,
+            "coverage_min": 0.65,
+            "smooth_radius": true,
+            "smooth_alpha": 0.25
+          }
+        },
+        {
+          "tool": "measure.circle_size",
+          "params": {}
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "circle_detect_ROI4",
+      "enabled": true,
+      "roi_id": 4,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.circle",
+          "params": {
+            "dp": 1.2,
+            "min_dist": 80,
             "param1": 80,
             "param2": 20,
             "min_radius": 80,
