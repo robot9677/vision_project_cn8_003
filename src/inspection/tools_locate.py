@@ -120,6 +120,19 @@ def _find_circle(crop, params, ctx):
             if coverage < coverage_min:
                 continue
 
+            # --- radius smoothing ---
+            smooth = bool(params.get("smooth_radius", False))
+            alpha = float(params.get("smooth_alpha", 0.6))
+
+            prev_rs = ctx.get("_prev_radii", None)
+
+            if smooth and isinstance(prev_rs, list) and len(prev_rs) == len(found):
+                for i, c in enumerate(found):
+                    prev_r = float(prev_rs[i])
+                    cur_r = float(c["r"])
+                    smoothed = alpha * cur_r + (1.0 - alpha) * prev_r
+                    c["r"] = int(round(smoothed))
+
             found.append({
                 "x": int(x),
                 "y": int(y),
@@ -168,6 +181,8 @@ def _find_circle(crop, params, ctx):
         "radii_px": radii_px,
         "diameters_px": diameters_px,
     }
+    ctx["_prev_radii"] = [c["r"] for c in found]
+    
     print(
         f"[DBG CIRCLE] count={count} circles={found} "
         f"blob={count} avg_radius={avg_radius} diameters_px={diameters_px}"
