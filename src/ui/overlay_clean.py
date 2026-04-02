@@ -182,20 +182,25 @@ def draw_rois(
                 )
 
                 # ★ calibration 기준 원 표시
-                if metrics:
-                    ref_idx = metrics.get("calibration_ref_index")
-
-                    if ref_idx is not None and i == int(ref_idx):
-                        cv2.putText(
-                            img,
-                            "REF",
-                            (ccx - 10, ccy + 20),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.6,
-                            (0, 255, 255),
-                            2,
-                            cv2.LINE_AA,
-                        )
+                if ref_idx is not None and int(ref_idx) == i:
+                    cv2.putText(
+                        img,
+                        "REF",
+                        (ccx - 18, ccy - rr - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 255, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
+                    cv2.circle(
+                        img,
+                        (ccx, ccy),
+                        4,
+                        (0, 255, 255),
+                        -1,
+                        lineType=cv2.LINE_AA,
+                    )
         # mm  / px 표시
         if metrics:
             mm_list = metrics.get("diameters_mm")
