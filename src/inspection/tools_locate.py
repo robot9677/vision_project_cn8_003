@@ -139,6 +139,9 @@ def _find_circle(crop, params, ctx):
                 "r": int(r),
                 "coverage": float(coverage),
             })
+            # --- circle 정렬 (좌→우 기준) ---
+            found = sorted(found, key=lambda c: c["x"])
+            
             cv2.circle(dbg, (int(x), int(y)), int(r), (0, 255, 0), 2)
             cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
 
@@ -182,7 +185,7 @@ def _find_circle(crop, params, ctx):
         "diameters_px": diameters_px,
     }
     ctx["_prev_radii"] = [c["r"] for c in found]
-    
+
     print(
         f"[DBG CIRCLE] count={count} circles={found} "
         f"blob={count} avg_radius={avg_radius} diameters_px={diameters_px}"
