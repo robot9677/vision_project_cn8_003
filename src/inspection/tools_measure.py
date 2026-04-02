@@ -16,19 +16,19 @@ def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> 
     if mode == "fixed":
         mm_per_px = calibration.get("mm_per_px", None)
         if mm_per_px is None:
-            return None, "CALIBRATION_MISSING_MM_PER_PX"
+            return None, "CALIBRATION_MISSING_MM_PER_PX" ,{}
         return float(mm_per_px), "OK"
 
     if mode == "reference_circle":
         ref_mm = calibration.get("reference_diameter_mm", None)
         if ref_mm is None:
-            return None, "CALIBRATION_MISSING_REF_MM"
+            return None, "CALIBRATION_MISSING_REF_MM" ,{}
 
         circles = metrics.get("circles") or []
         diameters_px = metrics.get("diameters_px") or []
 
         if not isinstance(diameters_px, list) or not diameters_px:
-            return None, "CALIBRATION_REF_NOT_FOUND"
+            return None, "CALIBRATION_REF_NOT_FOUND", {}
 
         selector = str(calibration.get("selector", "largest")).strip().lower()
 
@@ -51,14 +51,14 @@ def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> 
         elif selector == "index":
             ref_idx = int(calibration.get("reference_index", 0))
         else:
-            return None, f"CALIBRATION_BAD_SELECTOR:{selector}"
+            return None, f"CALIBRATION_BAD_SELECTOR:{selector}", {}
 
         if ref_idx < 0 or ref_idx >= len(diameters_px):
-            return None, "CALIBRATION_REF_NOT_FOUND"
+            return None, "CALIBRATION_REF_NOT_FOUND", {}
 
         ref_px = float(diameters_px[ref_idx])
         if ref_px <= 0:
-            return None, "CALIBRATION_REF_INVALID"
+            return None, "CALIBRATION_REF_INVALID", {}
 
         return float(ref_mm) / ref_px, "OK", {
             "selector": selector,
@@ -66,7 +66,7 @@ def _resolve_mm_per_px(calibration: Dict[str, Any], metrics: Dict[str, Any]) -> 
             "ref_px": float(ref_px)
         }
 
-    return None, f"UNSUPPORTED_CALIBRATION_MODE:{mode}"
+    return None, f"UNSUPPORTED_CALIBRATION_MODE:{mode}" ,{}
 
 def _edge_energy(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any], bool, str]:
     """
