@@ -19,7 +19,7 @@ def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"
         x = int(x - tw / 2)
     elif align == "rt":
         x = int(x - tw)
-
+ 
     # align vertical: use baseline approx (putText uses bottom-left)
     y_draw = int(y + th / 2)
     cv2.putText(img, str(text), (x, y_draw), cfg.FONT, scale, color, int(thickness), cfg.LINE_TYPE)
