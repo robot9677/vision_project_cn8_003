@@ -4,7 +4,7 @@
   "camera_profile": "default",
   "calibration": {
     "_comment": "자동 처리시 active 값을 ref_circle_30mm 로 처리",
-    "active": "fixed_default",
+    "active": "ref_circle_30mm",
     "presets": {
       "fixed_default": {
         "mode": "fixed",
