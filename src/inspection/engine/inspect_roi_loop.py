@@ -72,6 +72,9 @@ def process_all_rois(
         last_metrics = {}
 
         for cfg in inspection_cfgs:
+            cfg = dict(cfg)
+            cfg["product_profile"] = inspector.runtime_cfg.get("_product_profile", {}) or {}
+            
             job_ok, metrics, job_reason, job_type = inspector._run_inspection_job(
                 crop=crop,
                 cfg=cfg,
