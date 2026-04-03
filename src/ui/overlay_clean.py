@@ -259,16 +259,7 @@ def draw_rois(
                     txt = None
 
             if txt:
-                cv2.putText(
-                    img,
-                    txt,
-                    (x + 10, y + h - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 255),
-                    1,
-                    cv2.LINE_AA,
-                )
+                cv2.putText(img,txt,(x + 10, y + h - 10),cv2.FONT_HERSHEY_SIMPLEX,0.25,(0, 255, 255),1,cv2.LINE_AA,)
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
