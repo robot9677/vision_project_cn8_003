@@ -234,35 +234,41 @@ def draw_rois(
                     1,
                     cv2.LINE_AA,
                 )
-                
+
         # --- circle 통계 표시 ---
-        if metrics:
+        if metrics and isinstance(metrics, dict):
             unit = metrics.get("unit_mode", "px")
 
             if unit == "mm":
-                avg = metrics.get("diameter_mm_avg")
-                dmin = metrics.get("diameter_mm_min")
-                dmax = metrics.get("diameter_mm_max")
+                avg = metrics.get("diameter_mm_avg", None)
+                dmin = metrics.get("diameter_mm_min", None)
+                dmax = metrics.get("diameter_mm_max", None)
 
-                txt = f"AVG:{avg:.2f}  MIN:{dmin:.2f}  MAX:{dmax:.2f}"
-
+                if avg is not None and dmin is not None and dmax is not None:
+                    txt = f"AVG:{float(avg):.2f}  MIN:{float(dmin):.2f}  MAX:{float(dmax):.2f}"
+                else:
+                    txt = None
             else:
-                avg = metrics.get("diameter_px_avg")
-                dmin = metrics.get("diameter_px_min")
-                dmax = metrics.get("diameter_px_max")
+                avg = metrics.get("diameter_px_avg", None)
+                dmin = metrics.get("diameter_px_min", None)
+                dmax = metrics.get("diameter_px_max", None)
 
-                txt = f"AVG:{avg:.1f}px  MIN:{dmin:.1f}px  MAX:{dmax:.1f}px"
+                if avg is not None and dmin is not None and dmax is not None:
+                    txt = f"AVG:{float(avg):.1f}px  MIN:{float(dmin):.1f}px  MAX:{float(dmax):.1f}px"
+                else:
+                    txt = None
 
-            cv2.putText(
-                img,
-                txt,
-                (x + 10, y + h - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
+            if txt:
+                cv2.putText(
+                    img,
+                    txt,
+                    (x + 10, y + h - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 255),
+                    1,
+                    cv2.LINE_AA,
+                )
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
