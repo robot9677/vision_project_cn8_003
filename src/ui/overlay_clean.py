@@ -224,13 +224,20 @@ def draw_rois(
                 if not text:
                     continue
 
+                col = (0, 255, 0)
+
+                flags = metrics.get("judge_flags")
+                if isinstance(flags, list) and i < len(flags):
+                    if not flags[i]:
+                        col = (0, 0, 255)
+
                 cv2.putText(
                     img,
                     text,
                     (cx - 40, cy - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
-                    (0, 255, 0),
+                    col,
                     1,
                     cv2.LINE_AA,
                 )
@@ -260,6 +267,30 @@ def draw_rois(
 
             if txt:
                 cv2.putText(img,txt,(x + 10, y + h - 10),cv2.FONT_HERSHEY_SIMPLEX,0.35,(0, 255, 255),1,cv2.LINE_AA,)
+
+        # --- tolerance 범위 표시 ---
+        if metrics and isinstance(metrics, dict):
+            target = metrics.get("target_mm")
+            tol = metrics.get("tol_mm")
+
+            if target is not None and tol is not None:
+                try:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = f"SPEC:{lo:.2f}~{hi:.2f} mm"
+
+                    cv2.putText(
+                        img,
+                        txt,
+                        (x + 10, y + h + 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4,
+                        (200, 200, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
+                except Exception:
+                    pass
 
         # --- tolerance 결과 표시 ---
         if metrics and isinstance(metrics, dict):

@@ -603,34 +603,61 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
             f"ref_px={calib_info.get('ref_px')}"
         )
     
-        # --- tolerance 판정 ---
+    # --- tolerance / judge ---
+    judge_mode = str(params.get("judge_mode", "roi_avg")).lower()  # roi_avg | each_circle
+
     target = params.get("target_mm", None)
     tol = params.get("tol_mm", None)
 
+    # --- circle 간 거리 (px/mm) ---
+    centers = meta.get("centers", [])
+    dists_px = []
+    if len(centers) >= 2:
+        for i in range(len(centers)):
+            for j in range(i+1, len(centers)):
+                dx = float(centers[i]["x"]) - float(centers[j]["x"])
+                dy = float(centers[i]["y"]) - float(centers[j]["y"])
+                d = (dx*dx + dy*dy) ** 0.5
+                dists_px.append(d)
+    meta["center_distances_px"] = dists_px
+
+    if mm_per_px is not None and dists_px:
+        meta["center_distances_mm"] = [d * mm_per_px for d in dists_px]
+
     if target is not None and tol is not None and mm_per_px is not None:
-        target = float(target)
-        tol = float(tol)
+        target = float(target); tol = float(tol)
 
-        avg = meta.get("diameter_mm_avg", None)
+        # --- ROI 평균 기준 ---
+        if judge_mode == "roi_avg":
+            avg = meta.get("diameter_mm_avg", None)
+            if avg is None:
+                return img, meta, False, "NO_MEASURE"
 
-        if avg is not None:
-            if (target - tol) <= avg <= (target + tol):
-                ok = True
-                reason = "OK"
-            else:
-                ok = False
-                reason = "OUT_OF_TOL"
-        else:
-            ok = False
-            reason = "NO_MEASURE"
+            ok = (target - tol) <= float(avg) <= (target + tol)
+            meta.update({
+                "judge_mode": "roi_avg",
+                "judge_value": float(avg),
+                "target_mm": target,
+                "tol_mm": tol,
+            })
+            return img, meta, bool(ok), "OK" if ok else "OUT_OF_TOL"
 
-        meta.update({
-            "target_mm": target,
-            "tol_mm": tol,
-            "judge_value": avg,
-        })
+        # --- circle 개별 기준 ---
+        elif judge_mode == "each_circle":
+            vals = meta.get("diameters_mm", [])
+            flags = []
+            for v in vals:
+                v = float(v)
+                flags.append((target - tol) <= v <= (target + tol))
 
-        return img, meta, ok, reason
+            ok = all(flags) if flags else False
+            meta.update({
+                "judge_mode": "each_circle",
+                "judge_flags": flags,     # 각 circle OK/NG
+                "target_mm": target,
+                "tol_mm": tol,
+            })
+            return img, meta, bool(ok), "OK" if ok else "OUT_OF_TOL"
 
     return img, meta, True, "OK"
 
