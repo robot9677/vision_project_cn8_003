@@ -105,7 +105,7 @@ def _find_circle(crop, params, ctx):
         dp=float(params.get("dp", 1.2)),
         minDist=float(params.get("min_dist", 20)),
         param1=float(params.get("param1", 100)),
-        param2=float(params.get("param2", 28)),
+        param2=float(params.get("param2", 20)),
         minRadius=int(params.get("min_radius", 0)),
         maxRadius=int(params.get("max_radius", 0)),
     )
