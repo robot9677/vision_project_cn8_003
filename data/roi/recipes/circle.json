@@ -21,7 +21,7 @@
             "max_radius": 120,
             "blur": 5,
             "expected": 3,
-            "coverage_min": 0.70,
+            "coverage_min": 0.68,
             "smooth_radius": true,
             "smooth_alpha": 0.25
           }
