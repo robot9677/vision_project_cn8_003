@@ -30,7 +30,7 @@
           "tool": "measure.circle_size",
           "params": {
             "judge_mode": "each_circle",
-            "target_mm": 30.0,
+            "target_mm": 25.0,
             "tol_mm": 0.5
           }
         }
