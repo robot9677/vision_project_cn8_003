@@ -261,6 +261,38 @@ def draw_rois(
             if txt:
                 cv2.putText(img,txt,(x + 10, y + h - 10),cv2.FONT_HERSHEY_SIMPLEX,0.35,(0, 255, 255),1,cv2.LINE_AA,)
 
+        # --- tolerance 결과 표시 ---
+        if metrics and isinstance(metrics, dict):
+            judge = metrics.get("judge_value", None)
+            target = metrics.get("target_mm", None)
+            tol = metrics.get("tol_mm", None)
+
+            if judge is not None and target is not None and tol is not None:
+                try:
+                    judge = float(judge)
+                    target = float(target)
+                    tol = float(tol)
+
+                    if (target - tol) <= judge <= (target + tol):
+                        col = (0, 255, 0)   # OK
+                        txt = "OK"
+                    else:
+                        col = (0, 0, 255)   # NG
+                        txt = "NG"
+
+                    cv2.putText(
+                        img,
+                        txt,
+                        (x + w - 40, y + 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        col,
+                        2,
+                        cv2.LINE_AA,
+                    )
+                except Exception:
+                    pass
+
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
         qr_overlay_color = color
