@@ -28,7 +28,10 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "target_mm": 30.0,
+            "tol_mm": 0.5
+          }
         }
       ],
       "tool_decision": "all_ok"
@@ -57,7 +60,10 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "target_mm": 30.0,
+            "tol_mm": 0.5
+          }
         }
       ],
       "tool_decision": "all_ok"
@@ -86,7 +92,10 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "target_mm": 30.0,
+            "tol_mm": 0.5
+          }
         }
       ],
       "tool_decision": "all_ok"

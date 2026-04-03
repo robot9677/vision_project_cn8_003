@@ -602,6 +602,35 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
             f"ref_idx={calib_info.get('ref_index')} "
             f"ref_px={calib_info.get('ref_px')}"
         )
+    
+        # --- tolerance 판정 ---
+    target = params.get("target_mm", None)
+    tol = params.get("tol_mm", None)
+
+    if target is not None and tol is not None and mm_per_px is not None:
+        target = float(target)
+        tol = float(tol)
+
+        avg = meta.get("diameter_mm_avg", None)
+
+        if avg is not None:
+            if (target - tol) <= avg <= (target + tol):
+                ok = True
+                reason = "OK"
+            else:
+                ok = False
+                reason = "OUT_OF_TOL"
+        else:
+            ok = False
+            reason = "NO_MEASURE"
+
+        meta.update({
+            "target_mm": target,
+            "tol_mm": tol,
+            "judge_value": avg,
+        })
+
+        return img, meta, ok, reason
 
     return img, meta, True, "OK"
 
