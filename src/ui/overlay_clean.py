@@ -234,6 +234,35 @@ def draw_rois(
                     1,
                     cv2.LINE_AA,
                 )
+                
+        # --- circle 통계 표시 ---
+        if metrics:
+            unit = metrics.get("unit_mode", "px")
+
+            if unit == "mm":
+                avg = metrics.get("diameter_mm_avg")
+                dmin = metrics.get("diameter_mm_min")
+                dmax = metrics.get("diameter_mm_max")
+
+                txt = f"AVG:{avg:.2f}  MIN:{dmin:.2f}  MAX:{dmax:.2f}"
+
+            else:
+                avg = metrics.get("diameter_px_avg")
+                dmin = metrics.get("diameter_px_min")
+                dmax = metrics.get("diameter_px_max")
+
+                txt = f"AVG:{avg:.1f}px  MIN:{dmin:.1f}px  MAX:{dmax:.1f}px"
+
+            cv2.putText(
+                img,
+                txt,
+                (x + 10, y + h - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""

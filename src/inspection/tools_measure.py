@@ -542,21 +542,59 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
 
     meta = {
         "circle_measure_count": int(len(circles)),
+
+        # --- raw px ---
         "radii_px": radii_px,
         "diameters_px": diameters_px,
+
+        # --- 통계 (px) ---
+        "radius_px_avg": float(sum(radii_px) / len(radii_px)) if radii_px else 0.0,
+        "radius_px_min": float(min(radii_px)) if radii_px else 0.0,
+        "radius_px_max": float(max(radii_px)) if radii_px else 0.0,
+
+        "diameter_px_avg": float(sum(diameters_px) / len(diameters_px)) if diameters_px else 0.0,
+        "diameter_px_min": float(min(diameters_px)) if diameters_px else 0.0,
+        "diameter_px_max": float(max(diameters_px)) if diameters_px else 0.0,
+
+        # --- center ---
+        "centers": [
+            {
+                "x": float(c.get("x", 0)) if isinstance(c, dict) else float(c[0]),
+                "y": float(c.get("y", 0)) if isinstance(c, dict) else float(c[1]),
+            }
+            for c in circles
+        ],
+
+        # --- calibration ---
         "unit_mode": "px",
         "calibration_mode": str(calibration.get("mode", "none")).strip().lower() if isinstance(calibration, dict) else "none",
         "calibration_ok": bool(mm_per_px is not None),
         "calibration_reason": calib_reason,
+
         "calibration_selector": calib_info.get("selector"),
         "calibration_ref_index": calib_info.get("ref_index"),
         "calibration_ref_px": calib_info.get("ref_px"),
     }
 
     if mm_per_px is not None:
-        meta["mm_per_px"] = float(mm_per_px)
-        meta["diameters_mm"] = [float(v) * float(mm_per_px) for v in diameters_px]
-        meta["unit_mode"] = "mm"
+        radii_mm = [r * mm_per_px for r in radii_px]
+        diameters_mm = [d * mm_per_px for d in diameters_px]
+
+        meta.update({
+            "unit_mode": "mm",
+            "mm_per_px": float(mm_per_px),
+
+            "radii_mm": radii_mm,
+            "diameters_mm": diameters_mm,
+
+            "radius_mm_avg": float(sum(radii_mm) / len(radii_mm)) if radii_mm else 0.0,
+            "radius_mm_min": float(min(radii_mm)) if radii_mm else 0.0,
+            "radius_mm_max": float(max(radii_mm)) if radii_mm else 0.0,
+
+            "diameter_mm_avg": float(sum(diameters_mm) / len(diameters_mm)) if diameters_mm else 0.0,
+            "diameter_mm_min": float(min(diameters_mm)) if diameters_mm else 0.0,
+            "diameter_mm_max": float(max(diameters_mm)) if diameters_mm else 0.0,
+        })
 
     if calib_info:
         print(
@@ -564,7 +602,7 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
             f"ref_idx={calib_info.get('ref_index')} "
             f"ref_px={calib_info.get('ref_px')}"
         )
-        
+
     return img, meta, True, "OK"
 
 def register_measure_tools() -> None:
