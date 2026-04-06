@@ -494,6 +494,49 @@ def draw_rois(
                         )
                 except Exception:
                     pass
+                
+        # --- ROI 간 거리 표시 ---
+        if metrics and isinstance(metrics, dict):
+            roi_links = metrics.get("roi_distance_links") or []
+
+            if roi_links:
+                try:
+                    for link in roi_links[:3]:
+                        p1 = (int(float(link.get("x1", 0))), int(float(link.get("y1", 0))))
+                        p2 = (int(float(link.get("x2", 0))), int(float(link.get("y2", 0))))
+
+                        cv2.line(img, p1, p2, (0, 255, 255), 1, cv2.LINE_AA)
+                        cv2.circle(img, p1, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+                        cv2.circle(img, p2, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+                        mx = int((p1[0] + p2[0]) / 2)
+                        my = int((p1[1] + p2[1]) / 2)
+
+                        if "distance_mm" in link:
+                            txt = (
+                                f"R{int(link.get('from_roi_id', -1))}-"
+                                f"R{int(link.get('to_roi_id', -1))}: "
+                                f"{float(link['distance_mm']):.2f} mm"
+                            )
+                        else:
+                            txt = (
+                                f"R{int(link.get('from_roi_id', -1))}-"
+                                f"R{int(link.get('to_roi_id', -1))}: "
+                                f"{float(link.get('distance_px', 0.0)):.1f} px"
+                            )
+
+                        cv2.putText(
+                            img,
+                            txt,
+                            (mx - 55, my - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            (0, 255, 255),
+                            1,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""

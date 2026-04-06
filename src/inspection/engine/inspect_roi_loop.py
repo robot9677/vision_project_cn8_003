@@ -1,10 +1,89 @@
 import os
 import time
 import cv2
+import numpy as np
 
 from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
 
+def _get_first_center_abs(roi, metrics):
+    if not isinstance(metrics, dict):
+        return None
+
+    centers = metrics.get("centers") or []
+    if centers:
+        c = centers[0]
+        x = float(roi.get("x", 0)) + float(c.get("x", 0))
+        y = float(roi.get("y", 0)) + float(c.get("y", 0))
+        return x, y
+
+    circles = metrics.get("circles") or []
+    if circles:
+        c = circles[0]
+        if isinstance(c, dict):
+            x = float(roi.get("x", 0)) + float(c.get("x", 0))
+            y = float(roi.get("y", 0)) + float(c.get("y", 0))
+        else:
+            x = float(roi.get("x", 0)) + float(c[0])
+            y = float(roi.get("y", 0)) + float(c[1])
+        return x, y
+
+    return None
+
+
+def _apply_roi_distance_links(*, results, rois, recipe):
+    roi_map = {int(r.get("id")): r for r in (rois or []) if r.get("id") is not None}
+    link_cfgs = (recipe or {}).get("roi_distance_links") or []
+
+    for item in link_cfgs:
+        from_roi_id = int(item.get("from_roi_id", -1))
+        to_roi_id = int(item.get("to_roi_id", -1))
+
+        from_res = results.get(str(from_roi_id))
+        to_res = results.get(str(to_roi_id))
+        from_roi = roi_map.get(from_roi_id)
+        to_roi = roi_map.get(to_roi_id)
+
+        if from_res is None or to_res is None or from_roi is None or to_roi is None:
+            continue
+
+        from_metrics = getattr(from_res, "metrics", None)
+        to_metrics = getattr(to_res, "metrics", None)
+
+        if not isinstance(from_metrics, dict) or not isinstance(to_metrics, dict):
+            continue
+
+        p1 = _get_first_center_abs(from_roi, from_metrics)
+        p2 = _get_first_center_abs(to_roi, to_metrics)
+
+        if p1 is None or p2 is None:
+            continue
+
+        x1, y1 = p1
+        x2, y2 = p2
+
+        dx = float(x1) - float(x2)
+        dy = float(y1) - float(y2)
+        dist_px = float((dx * dx + dy * dy) ** 0.5)
+
+        link = {
+            "from_roi_id": int(from_roi_id),
+            "to_roi_id": int(to_roi_id),
+            "x1": float(x1),
+            "y1": float(y1),
+            "x2": float(x2),
+            "y2": float(y2),
+            "distance_px": dist_px,
+        }
+
+        mm_per_px = from_metrics.get("mm_per_px", None)
+        if mm_per_px is None:
+            mm_per_px = to_metrics.get("mm_per_px", None)
+
+        if mm_per_px is not None:
+            link["distance_mm"] = float(dist_px) * float(mm_per_px)
+
+        from_metrics.setdefault("roi_distance_links", []).append(link)
 
 def process_all_rois(
     *,
@@ -153,4 +232,10 @@ def process_all_rois(
             if metrics.get("_tool_steps") is not None:
                 print(f"[DBG TOOLS ROI{roi_id}] {metrics.get('_tool_steps')}")
 
+    _apply_roi_distance_links(
+        results=results,
+        rois=getattr(inspector.roi_mgr, "rois", []),
+        recipe=inspector.recipe or {},
+    )
+    
     return results
