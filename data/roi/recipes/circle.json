@@ -28,7 +28,11 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "judge_mode": "roi_avg",
+            "target_mm": 25.4,
+            "tol_mm": 0.3
+          }
         }
       ],
       "tool_decision": "all_ok"
@@ -57,7 +61,11 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "judge_mode": "roi_avg",
+            "target_mm": 26.2,
+            "tol_mm": 0.3
+          }
         }
       ],
       "tool_decision": "all_ok"
@@ -86,7 +94,11 @@
         },
         {
           "tool": "measure.circle_size",
-          "params": {}
+          "params": {
+            "judge_mode": "roi_avg",
+            "target_mm": 23.2,
+            "tol_mm": 0.3
+          }
         }
       ],
       "tool_decision": "all_ok"
