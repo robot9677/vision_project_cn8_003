@@ -420,6 +420,229 @@ def _draw_roi_distance_links(img, metrics):
     except Exception:
         pass
 
+def _draw_qr_overlay(
+    img,
+    rois,
+    x,
+    y,
+    h,
+    ok,
+    reason,
+    color,
+    metrics,
+    roi_text_scale,
+    roi_text_thickness,
+):
+    qr_overlay_text = ""
+    qr_overlay_color = color
+
+    if metrics and isinstance(metrics, dict):
+        qr_text = str(metrics.get("qr_text", "") or "").strip()
+        qr_detected = bool(metrics.get("qr_detected", False))
+
+        if qr_detected or ("QR" in str(reason).upper()):
+            if ok:
+                if qr_text:
+                    qr_overlay_text = f"OK: {qr_text}"
+                else:
+                    qr_overlay_text = "OK: QR SCAN OK"
+                qr_overlay_color = cfg.COLOR_OK
+            else:
+                if reason:
+                    qr_overlay_text = str(reason)
+                else:
+                    qr_overlay_text = "NG: QR SCAN FAIL"
+                qr_overlay_color = cfg.COLOR_NG
+
+    if not qr_overlay_text:
+        return
+
+    roi1 = next((rr for rr in rois if int(rr.get("id", 0)) == 1), None)
+
+    qx = int(x + 2)
+    qy = int(y + h + 18)
+
+    if roi1:
+        if "rect" in roi1 and roi1.get("rect") is not None:
+            rx1, ry1, rw1, rh1 = roi1["rect"]
+        else:
+            rx1 = int(roi1.get("x", 0))
+            ry1 = int(roi1.get("y", 0))
+            rw1 = int(roi1.get("w", 0))
+            rh1 = int(roi1.get("h", 0))
+
+        qx = int(rx1 + 2)
+        qy = int(ry1 + rh1 + 18)
+
+    draw_text(
+        img,
+        qr_overlay_text,
+        (qx, qy),
+        color=qr_overlay_color,
+        scale=roi_text_scale * 2.0,
+        thickness=roi_text_thickness,
+        align="lt",
+    )
+
+def _build_roi_label_lines(
+    *,
+    roi_id,
+    label,
+    x,
+    y,
+    w,
+    h,
+    angle,
+    active_id,
+    compact,
+    show_metrics,
+    roi_results,
+    rid_str,
+):
+    line1 = f"{label}" if roi_id is not None else label
+    line2 = "" if compact else f"x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}"
+    line3 = "SELECTED" if (roi_id == active_id and not compact) else ""
+
+    if show_metrics and roi_results is not None:
+        rv = roi_results.get(rid_str) if isinstance(roi_results, dict) else None
+        if rv is None and isinstance(roi_results, dict):
+            rv = roi_results.get(roi_id)
+
+        if rv:
+            metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
+
+            def _fmt(k, v):
+                try:
+                    fv = float(v)
+                    if k in ("score", "trk_score"):
+                        return f"s:{fv:.2f}"
+                    if k in ("white_ratio",):
+                        return f"wr:{fv:.2f}"
+                    if k in ("edge_energy", "lap_var", "laplacian_var"):
+                        return f"e:{fv:.1f}"
+                    if k in ("mean", "mean_gray", "mean_raw"):
+                        return f"m:{fv:.1f}"
+                    return f"{k}:{fv:.2f}"
+                except Exception:
+                    sv = str(v)
+                    if k in ("qr_data", "barcode", "text"):
+                        sv = sv[:12]
+                        return f"qr:{sv}"
+                    return f"{k}:{sv[:12]}"
+
+            parts = []
+            if isinstance(metrics, dict):
+                order = ["mean", "score", "trk_score", "white_ratio", "edge_energy", "qr_data"]
+                for k in order:
+                    if k in metrics and metrics[k] is not None:
+                        parts.append(_fmt(k, metrics[k]))
+                    if len(parts) >= 3:
+                        break
+
+            if parts:
+                line2 = " ".join(parts)
+
+    return [line1, line2] + ([line3] if line3 else [])
+
+
+def _draw_roi_label_block(
+    img,
+    *,
+    x,
+    y,
+    w,
+    h,
+    angle,
+    lines,
+    compact,
+    roi_text_color,
+    roi_text_scale,
+    roi_text_thickness,
+    base_font,
+    base_font_scale,
+    base_thickness,
+    line_spacing,
+):
+    h_img, w_img = img.shape[:2]
+
+    if compact:
+        lines2 = [s for s in lines if s]
+        tx = int(x + 2)
+        ty = int(y - 16 if y > 16 else y + h + 14)
+
+        for i, t in enumerate(lines2):
+            draw_text(
+                img,
+                t,
+                (tx, ty + (i * 10)),
+                color=roi_text_color,
+                scale=roi_text_scale,
+                thickness=roi_text_thickness,
+                align="lt",
+            )
+        return
+
+    sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
+    heights = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0][1] for s in lines]
+    max_w = max(sz[0] for sz in sizes) if sizes else 0
+    total_h = sum(heights) + max(0, (len(lines) - 1)) * line_spacing
+
+    margin = 10
+    cx = x + w / 2
+    cy = y + h / 2
+
+    label_local = np.array([0.0, -(h / 2.0 + margin + total_h)], dtype=float)
+
+    th = np.radians(angle)
+    c = np.cos(th)
+    s = np.sin(th)
+    rot = np.array([[c, -s], [s, c]], dtype=float)
+
+    label_pt = np.array([cx, cy], dtype=float) + rot @ label_local
+
+    bg_x1 = int(label_pt[0] - max_w / 2 - 4)
+    bg_y1 = int(label_pt[1] - 4)
+    bg_x2 = bg_x1 + max_w + 8
+    bg_y2 = bg_y1 + total_h + 8
+
+    if bg_x1 < 2:
+        bg_x2 += (2 - bg_x1)
+        bg_x1 = 2
+    if bg_x2 > w_img - 2:
+        shift = bg_x2 - (w_img - 2)
+        bg_x1 -= shift
+        bg_x2 -= shift
+    if bg_y1 < 2:
+        bg_y2 += (2 - bg_y1)
+        bg_y1 = 2
+    if bg_y2 > h_img - 2:
+        shift = bg_y2 - (h_img - 2)
+        bg_y1 -= shift
+        bg_y2 -= shift
+
+    top_text_y = bg_y1 + 4 + heights[0]
+
+    temp = img.copy()
+    draw_rect(temp, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(0, 0, 0), fill=True)
+    draw_rect(img, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(50, 50, 50), thickness=1)
+    alpha = 0.4
+    cv2.addWeighted(temp, alpha, img, 1 - alpha, 0, img)
+
+    cur_y = top_text_y + heights[0]
+    for i, t in enumerate(lines):
+        tx = bg_x1 + 4
+        draw_text(
+            img,
+            t,
+            (tx, cur_y),
+            color=roi_text_color,
+            scale=roi_text_scale,
+            thickness=roi_text_thickness,
+            align="lt",
+        )
+        if i + 1 < len(lines):
+            cur_y += heights[i + 1] + line_spacing
+
 def draw_rois(
     img,
     rois=None,
@@ -529,182 +752,53 @@ def draw_rois(
         _draw_roi_distance_links(img, metrics)
 
         # QR scan result text (ROI 하단, QR일 때만)
-        qr_overlay_text = ""
-        qr_overlay_color = color
-
-        if metrics and isinstance(metrics, dict):
-            qr_text = str(metrics.get("qr_text", "") or "").strip()
-            qr_detected = bool(metrics.get("qr_detected", False))
-
-            # QR 스캔 결과만 표시
-            if qr_detected or ("QR" in str(reason).upper()):
-                if ok:
-                    if qr_text:
-                        qr_overlay_text = f"OK: {qr_text}"
-                    else:
-                        qr_overlay_text = "OK: QR SCAN OK"
-                    qr_overlay_color = cfg.COLOR_OK
-                else:
-                    if reason:
-                        qr_overlay_text = str(reason)
-                    else:
-                        qr_overlay_text = "NG: QR SCAN FAIL"
-                    qr_overlay_color = cfg.COLOR_NG
-
-        if qr_overlay_text:
-            roi1 = next((rr for rr in rois if int(rr.get("id", 0)) == 1), None)
-
-            qx = int(x + 2)
-            qy = int(y + h + 18)
-
-            if roi1:
-                if "rect" in roi1 and roi1.get("rect") is not None:
-                    rx1, ry1, rw1, rh1 = roi1["rect"]
-                else:
-                    rx1 = int(roi1.get("x", 0))
-                    ry1 = int(roi1.get("y", 0))
-                    rw1 = int(roi1.get("w", 0))
-                    rh1 = int(roi1.get("h", 0))
-
-                qx = int(rx1 + 2)
-                qy = int(ry1 + rh1 + 18)
-
-            draw_text(
-                img,
-                qr_overlay_text,
-                (qx, qy),
-                color=qr_overlay_color,
-                scale=roi_text_scale * 2.0,
-                thickness=roi_text_thickness,
-                align="lt",
-            )
+        _draw_qr_overlay(
+            img,
+            rois,
+            x,
+            y,
+            h,
+            ok,
+            reason,
+            color,
+            metrics,
+            roi_text_scale,
+            roi_text_thickness,
+        )
 
         # prepare label lines
-        line1 = f"{label}" if roi_id is not None else label
+        lines = _build_roi_label_lines(
+            roi_id=roi_id,
+            label=label,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            angle=angle,
+            active_id=active_id,
+            compact=compact,
+            show_metrics=show_metrics,
+            roi_results=roi_results,
+            rid_str=rid_str,
+        )
 
-        if compact:
-            line2 = ""
-        else:
-            line2 = f"x:{x} y:{y} w:{w} h:{h} a:{angle:.1f}"
-
-        line3 = "SELECTED" if (roi_id == active_id and not compact) else ""
-
-        # metric summary (DEV only)
-        if show_metrics and roi_results is not None:
-            rv = roi_results.get(rid_str) if isinstance(roi_results, dict) else None
-            if rv is None and isinstance(roi_results, dict):
-                rv = roi_results.get(roi_id)
-            if rv:
-                metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
-
-                def _fmt(k, v):
-                    try:
-                        fv = float(v)
-                        if k in ("score", "trk_score"):
-                            return f"s:{fv:.2f}"
-                        if k in ("white_ratio",):
-                            return f"wr:{fv:.2f}"
-                        if k in ("edge_energy", "lap_var", "laplacian_var"):
-                            return f"e:{fv:.1f}"
-                        if k in ("mean", "mean_gray", "mean_raw"):
-                            return f"m:{fv:.1f}"
-                        return f"{k}:{fv:.2f}"
-                    except Exception:
-                        sv = str(v)
-                        if k in ("qr_data", "barcode", "text"):
-                            sv = sv[:12]
-                            return f"qr:{sv}"
-                        return f"{k}:{sv[:12]}"
-
-                parts = []
-                if isinstance(metrics, dict):
-                    order = ["mean", "score", "trk_score", "white_ratio", "edge_energy", "qr_data"]
-                    for k in order:
-                        if k in metrics and metrics[k] is not None:
-                            parts.append(_fmt(k, metrics[k]))
-                        if len(parts) >= 3:
-                            break
-
-                if parts:
-                    line2 = " ".join(parts)
-
-        lines = [line1, line2] + ([line3] if line3 else [])
-
-        # draw semi-transparent background
-        if compact:
-            lines2 = [s for s in lines if s]
-
-            # EDIT와 동일하게 수평 텍스트 + ROI 상단 기준 위치
-            tx = int(x + 2)
-            ty = int(y -16 if y > 16 else y + h + 14)
-            # ty = int(y + 12)
-
-            for i, t in enumerate(lines2):
-                draw_text(
-                    img,
-                    t,
-                    (tx, ty + (i * 10)),
-                    color=roi_text_color,
-                    scale=roi_text_scale,
-                    thickness=roi_text_thickness,
-                    align="lt",
-                )
-        else:
-            # text sizing
-            sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
-            heights = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0][1] for s in lines]
-            max_w = max(sz[0] for sz in sizes) if sizes else 0
-            total_h = sum(heights) + max(0, (len(lines)-1)) * line_spacing
-
-            margin = 10
-
-            # rotated ROI 기준 상단 방향 라벨 anchor
-            label_local = np.array([0.0, -(h / 2.0 + margin + total_h)], dtype=float)
-
-            th = np.radians(angle)
-            c = np.cos(th)
-            s = np.sin(th)
-
-            rot = np.array([[c, -s], [s, c]], dtype=float)
-
-            label_pt = np.array([cx, cy], dtype=float) + rot @ label_local
-
-            bg_x1 = int(label_pt[0] - max_w / 2 - 4)
-            bg_y1 = int(label_pt[1] - 4)
-            bg_x2 = bg_x1 + max_w + 8
-            bg_y2 = bg_y1 + total_h + 8
-
-            # clamp
-            if bg_x1 < 2:
-                bg_x2 += (2 - bg_x1)
-                bg_x1 = 2
-            if bg_x2 > w_img - 2:
-                shift = bg_x2 - (w_img - 2)
-                bg_x1 -= shift
-                bg_x2 -= shift
-            if bg_y1 < 2:
-                bg_y2 += (2 - bg_y1)
-                bg_y1 = 2
-            if bg_y2 > h_img - 2:
-                shift = bg_y2 - (h_img - 2)
-                bg_y1 -= shift
-                bg_y2 -= shift
-
-            top_text_y = bg_y1 + 4 + heights[0]
-
-            temp = img.copy()
-            draw_rect(temp, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(0,0,0), fill=True)
-            draw_rect(img, (bg_x1, bg_y1), (bg_x2, bg_y2), color=(50,50,50), thickness=1)
-            alpha = 0.4
-            cv2.addWeighted(temp, alpha, img, 1-alpha, 0, img)
-
-            # draw text lines
-            cur_y = top_text_y + heights[0]
-            for i, t in enumerate(lines):
-                tx = bg_x1 + 4
-                draw_text(img, t, (tx, cur_y), color=roi_text_color, scale=roi_text_scale, thickness=roi_text_thickness, align="lt")
-                if i+1 < len(lines):
-                    cur_y += heights[i+1] + line_spacing
+        _draw_roi_label_block(
+            img,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            angle=angle,
+            lines=lines,
+            compact=compact,
+            roi_text_color=roi_text_color,
+            roi_text_scale=roi_text_scale,
+            roi_text_thickness=roi_text_thickness,
+            base_font=base_font,
+            base_font_scale=base_font_scale,
+            base_thickness=base_thickness,
+            line_spacing=line_spacing,
+        )
 
 
 def draw_overall_banner(img, overall_ok, info=None):
