@@ -1,8 +1,19 @@
 {
+  
   "decision": {
     "mode": "allow_fail_count",
     "max_fail": 0
   },
+    "roi_distance_links": [
+    {
+      "from_roi_id": 2,
+      "to_roi_id": 3
+    },
+    {
+      "from_roi_id": 3,
+      "to_roi_id": 4
+    }
+  ],
   "inspections": [
     {
       "id": "circle_detect_ROI2",
