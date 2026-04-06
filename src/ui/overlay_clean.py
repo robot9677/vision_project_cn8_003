@@ -727,7 +727,7 @@ def draw_rois(
     roi_text_scale = 0.25
     roi_text_thickness = 1
 
-    for idx, r in enumerate(rois):
+    for r in rois:
         # normalize roi dict/object to {id, x,y,w,h, name/label}
         roi_id, label, x, y, w, h, angle = _normalize_roi_entry(r)
 
@@ -737,10 +737,7 @@ def draw_rois(
         rid_str, ok, metrics, reason = _resolve_roi_result(roi_results, roi_id)
         color, thickness = _resolve_roi_draw_style(roi_id, active_id, ok, base_thickness)
 
-        # draw rectangle
-        # ----- rotated rectangle -----
-        angle = float(r.get("angle", 0.0)) if isinstance(r, dict) else float(getattr(r, "angle", 0.0))
-
+        # rotated ROI box
         cx = x + w / 2
         cy = y + h / 2
 
@@ -760,7 +757,7 @@ def draw_rois(
         # distance judge
         _draw_distance_overlay(img, x, y, h, metrics)
 
-         # distance links
+        # distance links
         _draw_roi_distance_links(img, metrics)
 
         # QR scan result text (ROI 하단, QR일 때만)
