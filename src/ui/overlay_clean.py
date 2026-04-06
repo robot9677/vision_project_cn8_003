@@ -432,33 +432,103 @@ def _draw_roi_distance_links(img, x, y, h, metrics):
             if not txt:
                 continue
 
-            tx = x + 10
-            ty = y + h + 18 + (row_idx * 15)
-
-            cv2.putText(
-                img,
-                txt,
-                (tx, ty),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                (0, 0, 0),
-                3,
-                cv2.LINE_AA,
-            )
-
-            cv2.putText(
-                img,
-                txt,
-                (tx, ty),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                col,
-                1,
-                cv2.LINE_AA,
-            )
-
     except Exception:
         pass
+
+def _draw_roi_distance_list(img, roi_results):
+    if not isinstance(roi_results, dict):
+        return
+
+    rows = []
+    seen = set()
+
+    for k in sorted(roi_results.keys(), key=lambda v: int(v) if str(v).isdigit() else 9999):
+        rv = roi_results.get(k)
+        if isinstance(rv, dict):
+            metrics = rv.get("metrics")
+        else:
+            metrics = getattr(rv, "metrics", None)
+
+        if not isinstance(metrics, dict):
+            continue
+
+        for link in (metrics.get("roi_distance_links") or []):
+            from_roi_id = int(link.get("from_roi_id", -1))
+            to_roi_id = int(link.get("to_roi_id", -1))
+            pair = (from_roi_id, to_roi_id)
+
+            if pair in seen:
+                continue
+            seen.add(pair)
+
+            col = (0, 255, 255)
+            if link.get("ok", None) is True:
+                col = (0, 255, 0)
+            elif link.get("ok", None) is False:
+                col = (0, 0, 255)
+
+            txt = None
+            judge_unit = str(link.get("judge_unit", "")).strip().lower()
+
+            if judge_unit == "mm" and "distance_mm" in link:
+                val = float(link["distance_mm"])
+                target = link.get("target_mm", None)
+                tol = link.get("tol_mm", None)
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f} ({lo:.2f}~{hi:.2f})"
+                else:
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f}"
+            elif judge_unit == "px":
+                val = float(link.get("distance_px", 0.0))
+                target = link.get("target_px", None)
+                tol = link.get("tol_px", None)
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f} ({lo:.1f}~{hi:.1f})"
+                else:
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f}"
+            elif "distance_mm" in link:
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link['distance_mm']):.2f}"
+            else:
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link.get('distance_px', 0.0)):.1f}"
+
+            if txt:
+                rows.append((txt, col))
+
+    if not rows:
+        return
+
+    h_img, w_img = img.shape[:2]
+    start_x = 18
+    start_y = h_img - 92 - ((len(rows) - 1) * 15)
+
+    for i, (txt, col) in enumerate(rows[:6]):
+        ty = start_y + (i * 15)
+
+        cv2.putText(
+            img,
+            txt,
+            (start_x, ty),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (0, 0, 0),
+            3,
+            cv2.LINE_AA,
+        )
+
+        cv2.putText(
+            img,
+            txt,
+            (start_x, ty),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            col,
+            1,
+            cv2.LINE_AA,
+        )
 
 def _draw_qr_overlay(
     img,
@@ -848,6 +918,8 @@ def draw_rois(
             base_thickness=base_thickness,
             line_spacing=line_spacing,
         )
+
+        _draw_roi_distance_list(img, roi_results)
 
 
 def draw_overall_banner(img, overall_ok, info=None):
