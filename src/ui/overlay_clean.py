@@ -431,9 +431,9 @@ def _draw_roi_distance_links(img, x, y, h, metrics):
 
             if not txt:
                 continue
-            
+
             tx = x + 10
-            ty = y + h + 30 + (row_idx * 15)
+            ty = y + h + 18 + (row_idx * 15)
 
             cv2.putText(
                 img,
