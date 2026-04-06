@@ -45,7 +45,7 @@
           "tool": "measure.circle_size",
           "params": {
             "judge_mode": "roi_avg",
-            "target_mm": 25.4,
+            "target_mm": 32,
             "tol_mm": 0.8
           }
         }
@@ -78,7 +78,7 @@
           "tool": "measure.circle_size",
           "params": {
             "judge_mode": "roi_avg",
-            "target_mm": 24.2,
+            "target_mm": 24,
             "tol_mm": 0.8
           }
         }
@@ -111,7 +111,7 @@
           "tool": "measure.circle_size",
           "params": {
             "judge_mode": "roi_avg",
-            "target_mm": 23.2,
+            "target_mm": 16,
             "tol_mm": 0.8
           }
         }
