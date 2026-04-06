@@ -36,7 +36,11 @@ def _apply_roi_distance_links(*, results, rois, recipe):
     roi_map = {int(r.get("id")): r for r in (rois or []) if r.get("id") is not None}
     link_cfgs = (recipe or {}).get("roi_distance_links") or []
 
+    print(f"[DBG ROI DIST CFG] {link_cfgs}")
+    print(f"[DBG ROI DIST RESULTS] keys={list(results.keys())}")
+
     for item in link_cfgs:
+        print(f"[DBG ROI DIST ITEM] {item}")
         from_roi_id = int(item.get("from_roi_id", -1))
         to_roi_id = int(item.get("to_roi_id", -1))
 
@@ -45,11 +49,26 @@ def _apply_roi_distance_links(*, results, rois, recipe):
         from_roi = roi_map.get(from_roi_id)
         to_roi = roi_map.get(to_roi_id)
 
+        print(
+            f"[DBG ROI DIST REF] "
+            f"from_res={from_res is not None} "
+            f"to_res={to_res is not None} "
+            f"from_roi={from_roi is not None} "
+            f"to_roi={to_roi is not None}"
+        )
+
         if from_res is None or to_res is None or from_roi is None or to_roi is None:
             continue
 
+
         from_metrics = getattr(from_res, "metrics", None)
         to_metrics = getattr(to_res, "metrics", None)
+
+        print(
+            f"[DBG ROI DIST METRICS] "
+            f"from_type={type(from_metrics)} "
+            f"to_type={type(to_metrics)}"
+        )
 
         if not isinstance(from_metrics, dict) or not isinstance(to_metrics, dict):
             continue
@@ -57,6 +76,8 @@ def _apply_roi_distance_links(*, results, rois, recipe):
         p1 = _get_first_center_abs(from_roi, from_metrics)
         p2 = _get_first_center_abs(to_roi, to_metrics)
 
+        print(f"[DBG ROI DIST CENTER] p1={p1} p2={p2}")
+        
         if p1 is None or p2 is None:
             continue
 
