@@ -36,12 +36,18 @@ def load_recipe(path: str) -> Dict[str, Any]:
             row["params"] = row.get("params", {}) if isinstance(row.get("params", {}), dict) else {}
             inspections.append(row)
 
-    return {
+    recipe = {
         "default": default,
         "overrides": overrides,
         "decision": decision,
         "inspections": inspections,
     }
+
+    for k, v in raw.items():
+        if k not in recipe:
+            recipe[k] = deepcopy(v)
+
+    return recipe
 
 
 def get_roi_cfg(recipe: Dict[str, Any], roi_id: Any) -> Dict[str, Any]:
