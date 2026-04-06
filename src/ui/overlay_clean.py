@@ -384,17 +384,67 @@ def _draw_roi_distance_links(img, metrics):
 
     try:
         for link in roi_links[:3]:
+            link_ok = link.get("ok", None)
+            col = (0, 255, 255)
+            if link_ok is True:
+                col = (0, 255, 0)
+            elif link_ok is False:
+                col = (0, 0, 255)
+
             p1 = (int(float(link.get("x1", 0))), int(float(link.get("y1", 0))))
             p2 = (int(float(link.get("x2", 0))), int(float(link.get("y2", 0))))
 
-            cv2.line(img, p1, p2, (0, 255, 255), 1, cv2.LINE_AA)
-            cv2.circle(img, p1, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-            cv2.circle(img, p2, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+            cv2.line(img, p1, p2, col, 1, cv2.LINE_AA)
+            cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
+            cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
 
             mx = int((p1[0] + p2[0]) / 2)
             my = int((p1[1] + p2[1]) / 2)
 
-            if "distance_mm" in link:
+            txt = None
+            judge_unit = str(link.get("judge_unit", "")).strip().lower()
+
+            if judge_unit == "mm" and "distance_mm" in link:
+                val = float(link["distance_mm"])
+                target = link.get("target_mm", None)
+                tol = link.get("tol_mm", None)
+
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = (
+                        f"R{int(link.get('from_roi_id', -1))}-"
+                        f"R{int(link.get('to_roi_id', -1))}: "
+                        f"{val:.2f} mm ({lo:.2f}~{hi:.2f})"
+                    )
+                else:
+                    txt = (
+                        f"R{int(link.get('from_roi_id', -1))}-"
+                        f"R{int(link.get('to_roi_id', -1))}: "
+                        f"{val:.2f} mm"
+                    )
+
+            elif judge_unit == "px":
+                val = float(link.get("distance_px", 0.0))
+                target = link.get("target_px", None)
+                tol = link.get("tol_px", None)
+
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = (
+                        f"R{int(link.get('from_roi_id', -1))}-"
+                        f"R{int(link.get('to_roi_id', -1))}: "
+                        f"{val:.1f} px ({lo:.1f}~{hi:.1f})"
+                    )
+                else:
+                    txt = (
+                        f"R{int(link.get('from_roi_id', -1))}-"
+                        f"R{int(link.get('to_roi_id', -1))}: "
+                        f"{val:.1f} px"
+                    )
+
+            elif "distance_mm" in link:
                 txt = (
                     f"R{int(link.get('from_roi_id', -1))}-"
                     f"R{int(link.get('to_roi_id', -1))}: "
@@ -410,10 +460,10 @@ def _draw_roi_distance_links(img, metrics):
             cv2.putText(
                 img,
                 txt,
-                (mx - 55, my - 8),
+                (mx - 70, my - 8),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.4,
-                (0, 255, 255),
+                col,
                 1,
                 cv2.LINE_AA,
             )

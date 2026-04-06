@@ -109,13 +109,55 @@ def _apply_roi_distance_links(*, results, rois, recipe, debug=False):
         if mm_per_px is not None:
             link["distance_mm"] = float(dist_px) * float(mm_per_px)
 
+        judge_ok = None
+
+        target_mm = item.get("target_mm", None)
+        tol_mm = item.get("tol_mm", None)
+        target_px = item.get("target_px", None)
+        tol_px = item.get("tol_px", None)
+
+        if target_mm is not None and tol_mm is not None and "distance_mm" in link:
+            target_mm = float(target_mm)
+            tol_mm = float(tol_mm)
+            val_mm = float(link["distance_mm"])
+            judge_ok = (target_mm - tol_mm) <= val_mm <= (target_mm + tol_mm)
+
+            link["judge_unit"] = "mm"
+            link["target_mm"] = target_mm
+            link["tol_mm"] = tol_mm
+            link["ok"] = bool(judge_ok)
+
+        elif target_px is not None and tol_px is not None:
+            target_px = float(target_px)
+            tol_px = float(tol_px)
+            val_px = float(link["distance_px"])
+            judge_ok = (target_px - tol_px) <= val_px <= (target_px + tol_px)
+
+            link["judge_unit"] = "px"
+            link["target_px"] = target_px
+            link["tol_px"] = tol_px
+            link["ok"] = bool(judge_ok)
+
         from_metrics.setdefault("roi_distance_links", []).append(link)
+
+        if judge_ok is False:
+            prev_ok = bool(getattr(from_res, "ok", True))
+            prev_reason = str(getattr(from_res, "reason", "OK"))
+            new_reason = prev_reason if not prev_ok else f"ROI_DISTANCE_OUT_OF_TOL:R{from_roi_id}->{to_roi_id}"
+
+            results[str(from_roi_id)] = ROIResult(
+                roi_id=int(from_roi_id),
+                ok=False,
+                reason=new_reason,
+                metrics=from_metrics,
+            )
 
         _dbg(
             f"[DBG ROI DIST] "
             f"R{from_roi_id}->R{to_roi_id} "
             f"px={dist_px:.1f} "
             f"mm={link.get('distance_mm', None)} "
+            f"ok={link.get('ok', None)} "
             f"cnt={len(from_metrics.get('roi_distance_links', []))}"
         )
 

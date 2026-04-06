@@ -4,14 +4,18 @@
     "mode": "allow_fail_count",
     "max_fail": 0
   },
-    "roi_distance_links": [
+  "roi_distance_links": [
     {
       "from_roi_id": 2,
-      "to_roi_id": 3
+      "to_roi_id": 3,
+      "target_mm": 44.0,
+      "tol_mm": 2.5
     },
     {
       "from_roi_id": 3,
-      "to_roi_id": 4
+      "to_roi_id": 4,
+      "target_mm": 40.0,
+      "tol_mm": 2.5
     }
   ],
   "inspections": [
