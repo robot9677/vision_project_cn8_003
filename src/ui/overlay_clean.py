@@ -383,7 +383,7 @@ def _draw_roi_distance_links(img, x, y, h, metrics):
         return
 
     try:
-        for link in roi_links[:3]:
+        for row_idx, link in enumerate(roi_links[:3]):
             link_ok = link.get("ok", None)
             col = (0, 255, 255)
             if link_ok is True:
@@ -398,6 +398,40 @@ def _draw_roi_distance_links(img, x, y, h, metrics):
             cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
             cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
 
+            txt = None
+            from_roi_id = int(link.get("from_roi_id", -1))
+            to_roi_id = int(link.get("to_roi_id", -1))
+            judge_unit = str(link.get("judge_unit", "")).strip().lower()
+
+            if judge_unit == "mm" and "distance_mm" in link:
+                val = float(link["distance_mm"])
+                target = link.get("target_mm", None)
+                tol = link.get("tol_mm", None)
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f} ({lo:.2f}~{hi:.2f})"
+                else:
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f}"
+
+            elif judge_unit == "px":
+                val = float(link.get("distance_px", 0.0))
+                target = link.get("target_px", None)
+                tol = link.get("tol_px", None)
+                if target is not None and tol is not None:
+                    lo = float(target) - float(tol)
+                    hi = float(target) + float(tol)
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f} ({lo:.1f}~{hi:.1f})"
+                else:
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f}"
+            elif "distance_mm" in link:
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link['distance_mm']):.2f}"
+            else:
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link.get('distance_px', 0.0)):.1f}"
+
+            if not txt:
+                continue
+            
             tx = x + 10
             ty = y + h + 30 + (row_idx * 15)
 
