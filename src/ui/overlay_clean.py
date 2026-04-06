@@ -503,7 +503,7 @@ def _draw_roi_distance_list(img, roi_results):
 
     h_img, w_img = img.shape[:2]
     start_x = 18
-    start_y = h_img - 92 - ((len(rows) - 1) * 15)
+    start_y = h_img - 100 - ((len(rows) - 1) * 15)
 
     for i, (txt, col) in enumerate(rows[:6]):
         ty = start_y + (i * 15)
