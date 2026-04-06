@@ -3,12 +3,15 @@
   "recipe_name": "circle",
   "camera_profile": "default",
   "calibration": {
-    "_comment": "자동 처리시 active 값을 ref_circle_30mm 로 처리",
-    "active": "ref_circle_30mm",
+    "active": "fixed_split_test",
     "presets": {
       "fixed_default": {
         "mode": "fixed",
         "mm_per_px": 0.157
+      },
+      "fixed_split_test": {
+        "mode": "fixed",
+        "mm_per_px": 0.135
       },
       "ref_circle_30mm": {
         "mode": "reference_circle",

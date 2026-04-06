@@ -1,7 +1,7 @@
 {
   "decision": {
     "mode": "allow_fail_count",
-    "max_fail": 1
+    "max_fail": 0
   },
   "inspections": [
     {
@@ -20,7 +20,7 @@
             "min_radius": 80,
             "max_radius": 120,
             "blur": 5,
-            "expected": 3,
+            "expected": 1,
             "coverage_min": 0.68,
             "smooth_radius": true,
             "smooth_alpha": 0.25
@@ -28,21 +28,65 @@
         },
         {
           "tool": "measure.circle_size",
+          "params": {}
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "circle_detect_ROI3",
+      "enabled": true,
+      "roi_id": 3,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.circle",
           "params": {
-            "judge_mode": "each_circle",
-            "target_mm": 25.0,
-            "tol_mm": 0.5
+            "dp": 1.2,
+            "min_dist": 80,
+            "param1": 80,
+            "param2": 22,
+            "min_radius": 70,
+            "max_radius": 110,
+            "blur": 5,
+            "expected": 1,
+            "coverage_min": 0.68,
+            "smooth_radius": true,
+            "smooth_alpha": 0.25
           }
         },
         {
-          "tool": "measure.circle_distance",
+          "tool": "measure.circle_size",
+          "params": {}
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "circle_detect_ROI4",
+      "enabled": true,
+      "roi_id": 4,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.circle",
           "params": {
-            "pair_mode": "adjacent",
-            "order_mode": "x",
-            "judge_mode": "each_pair",
-            "target_mm_list": [43.60, 39.60],
-            "tol_mm": 0.50
+            "dp": 1.2,
+            "min_dist": 80,
+            "param1": 80,
+            "param2": 22,
+            "min_radius": 60,
+            "max_radius": 100,
+            "blur": 5,
+            "expected": 1,
+            "coverage_min": 0.68,
+            "smooth_radius": true,
+            "smooth_alpha": 0.25
           }
+        },
+        {
+          "tool": "measure.circle_size",
+          "params": {}
         }
       ],
       "tool_decision": "all_ok"
