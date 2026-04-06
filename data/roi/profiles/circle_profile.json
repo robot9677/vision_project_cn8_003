@@ -11,7 +11,7 @@
       },
       "fixed_split_test": {
         "mode": "fixed",
-        "mm_per_px": 0.135
+        "mm_per_px": 0.165
       },
       "ref_circle_30mm": {
         "mode": "reference_circle",
