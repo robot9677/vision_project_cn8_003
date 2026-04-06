@@ -61,6 +61,364 @@ def draw_status_bar(img, text):
     # cv2.addWeighted(dark, alpha, img, 1.0 - alpha, 0, img)
     draw_text(img, text, (cfg.MARGIN if hasattr(cfg, "MARGIN") else 8, int(bar_h/2)+6), color=cfg.COLOR_TEXT, scale=cfg.FONT_SCALE, thickness=cfg.FONT_THICK, align="lt")
 
+def _draw_circle_overlay(img, x, y, w, h, metrics):
+    if not (metrics and isinstance(metrics, dict)):
+        return
+
+    # --- detected circles / ref ---
+    if "circles" in metrics:
+        ref_idx = metrics.get("calibration_ref_index", None)
+
+        for i, c in enumerate(metrics["circles"]):
+            if isinstance(c, dict):
+                ccx = int(c.get("x", 0)) + x
+                ccy = int(c.get("y", 0)) + y
+                rr = int(c.get("r", 0))
+            else:
+                ccx = int(c[0]) + x
+                ccy = int(c[1]) + y
+                rr = int(c[2])
+
+            draw_dashed_circle(
+                img,
+                (ccx, ccy),
+                rr,
+                (0, 255, 0),
+                thickness=1,
+                dash_len=8,
+            )
+
+            if ref_idx is not None and int(ref_idx) == i:
+                cv2.putText(
+                    img,
+                    "REF",
+                    (ccx - 18, ccy - rr - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.circle(
+                    img,
+                    (ccx, ccy),
+                    4,
+                    (0, 255, 255),
+                    -1,
+                    lineType=cv2.LINE_AA,
+                )
+
+    # --- mm / px label ---
+    mm_list = metrics.get("diameters_mm")
+    px_list = metrics.get("diameters_px")
+
+    for i, c in enumerate(metrics.get("circles", [])):
+        if isinstance(c, dict):
+            cx = int(c["x"]) + x
+            cy = int(c["y"]) + y
+        else:
+            cx = int(c[0]) + x
+            cy = int(c[1]) + y
+
+        text = None
+        if isinstance(mm_list, list) and i < len(mm_list):
+            text = f"{float(mm_list[i]):.1f} mm"
+        elif isinstance(px_list, list) and i < len(px_list):
+            text = f"{float(px_list[i]):.1f} px"
+
+        if not text:
+            continue
+
+        col = (0, 255, 0)
+        flags = metrics.get("judge_flags")
+        if isinstance(flags, list) and i < len(flags) and not flags[i]:
+            col = (0, 0, 255)
+
+        cv2.putText(
+            img,
+            text,
+            (cx - 40, cy - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            col,
+            1,
+            cv2.LINE_AA,
+        )
+
+    # --- circle stats ---
+    unit = metrics.get("unit_mode", "px")
+    if unit == "mm":
+        avg = metrics.get("diameter_mm_avg", None)
+        dmin = metrics.get("diameter_mm_min", None)
+        dmax = metrics.get("diameter_mm_max", None)
+        txt = (
+            f"AVG:{float(avg):.2f}  MIN:{float(dmin):.2f}  MAX:{float(dmax):.2f}"
+            if avg is not None and dmin is not None and dmax is not None
+            else None
+        )
+    else:
+        avg = metrics.get("diameter_px_avg", None)
+        dmin = metrics.get("diameter_px_min", None)
+        dmax = metrics.get("diameter_px_max", None)
+        txt = (
+            f"AVG:{float(avg):.1f}px  MIN:{float(dmin):.1f}px  MAX:{float(dmax):.1f}px"
+            if avg is not None and dmin is not None and dmax is not None
+            else None
+        )
+
+    if txt:
+        cv2.putText(
+            img,
+            txt,
+            (x + 10, y + h - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            (0, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+    # --- spec ---
+    target = metrics.get("target_mm")
+    tol = metrics.get("tol_mm")
+    if target is not None and tol is not None:
+        try:
+            lo = float(target) - float(tol)
+            hi = float(target) + float(tol)
+            txt = f"SPEC:{lo:.2f}~{hi:.2f} mm"
+            cv2.putText(
+                img,
+                txt,
+                (x + 10, y + h + 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (200, 200, 0),
+                1,
+                cv2.LINE_AA,
+            )
+        except Exception:
+            pass
+
+    # --- result ---
+    judge = metrics.get("judge_value", None)
+    if judge is not None and target is not None and tol is not None:
+        try:
+            judge = float(judge)
+            target = float(target)
+            tol = float(tol)
+            if (target - tol) <= judge <= (target + tol):
+                col = (0, 255, 0)
+                txt = "OK"
+            else:
+                col = (0, 0, 255)
+                txt = "NG"
+
+            cv2.putText(
+                img,
+                txt,
+                (x + w - 40, y + 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                col,
+                2,
+                cv2.LINE_AA,
+            )
+        except Exception:
+            pass
+
+
+def _draw_distance_overlay(img, x, y, h, metrics):
+    if not (metrics and isinstance(metrics, dict)):
+        return
+
+    pairs = metrics.get("distance_pairs") or []
+    has_single_judge = metrics.get("distance_judge_value", None) is not None
+    has_multi_judge = isinstance(metrics.get("distance_judge_flags"), list)
+
+    if pairs and not has_single_judge and not has_multi_judge:
+        try:
+            rows = []
+            for p in pairs:
+                pi = int(p.get("i", -1))
+                pj = int(p.get("j", -1))
+
+                x1 = p.get("x1", None)
+                y1 = p.get("y1", None)
+                x2 = p.get("x2", None)
+                y2 = p.get("y2", None)
+
+                if None not in (x1, y1, x2, y2):
+                    p1 = (int(x + float(x1)), int(y + float(y1)))
+                    p2 = (int(x + float(x2)), int(y + float(y2)))
+                    cv2.line(img, p1, p2, (0, 255, 255), 1, cv2.LINE_AA)
+                    cv2.circle(img, p1, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+                    cv2.circle(img, p2, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+                if "distance_mm" in p:
+                    rows.append(f"D[{pi}-{pj}]: {float(p['distance_mm']):.2f} mm")
+                else:
+                    rows.append(f"D[{pi}-{pj}]: {float(p.get('distance_px', 0.0)):.1f} px")
+
+            for row_idx, txt in enumerate(rows[:3]):
+                cv2.putText(
+                    img,
+                    txt,
+                    (x + 10, y + h + 30 + (row_idx * 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (0, 255, 255),
+                    1,
+                    cv2.LINE_AA,
+                )
+        except Exception:
+            pass
+
+    details = metrics.get("distance_judge_details") or []
+    if details:
+        try:
+            for row_idx, d in enumerate(details[:3]):
+                col = (0, 255, 0) if bool(d.get("ok", False)) else (0, 0, 255)
+
+                lx1 = d.get("x1", None)
+                ly1 = d.get("y1", None)
+                lx2 = d.get("x2", None)
+                ly2 = d.get("y2", None)
+
+                if None not in (lx1, ly1, lx2, ly2):
+                    p1 = (int(x + float(lx1)), int(y + float(ly1)))
+                    p2 = (int(x + float(lx2)), int(y + float(ly2)))
+                    cv2.line(img, p1, p2, col, 1, cv2.LINE_AA)
+                    cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
+                    cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
+
+                unit = str(d.get("unit", "")).strip().lower()
+                val = float(d.get("value", 0.0))
+                target = float(d.get("target", 0.0))
+                tol = float(d.get("tol", 0.0))
+                di = int(d.get("i", -1))
+                dj = int(d.get("j", -1))
+
+                if unit == "mm":
+                    txt = f"D[{di}-{dj}]: {val:.2f} mm ({target - tol:.2f}~{target + tol:.2f})"
+                else:
+                    txt = f"D[{di}-{dj}]: {val:.1f} px ({target - tol:.1f}~{target + tol:.1f})"
+
+                cv2.putText(
+                    img,
+                    txt,
+                    (x + 10, y + h + 30 + (row_idx * 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    col,
+                    1,
+                    cv2.LINE_AA,
+                )
+        except Exception:
+            pass
+
+    if not details:
+        dval = metrics.get("distance_judge_value", None)
+        dunit = str(metrics.get("distance_judge_unit", "")).strip().lower()
+        di = metrics.get("distance_judge_i", None)
+        dj = metrics.get("distance_judge_j", None)
+
+        if dval is not None and di is not None and dj is not None:
+            try:
+                txt = None
+                col = (0, 255, 0)
+
+                if dunit == "mm":
+                    target = metrics.get("distance_target_mm", None)
+                    tol = metrics.get("distance_tol_mm", None)
+                    if target is not None and tol is not None:
+                        lo = float(target) - float(tol)
+                        hi = float(target) + float(tol)
+                        val = float(dval)
+                        col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
+                        txt = f"D[{int(di)}-{int(dj)}]: {val:.2f} mm ({lo:.2f}~{hi:.2f})"
+
+                elif dunit == "px":
+                    target = metrics.get("distance_target_px", None)
+                    tol = metrics.get("distance_tol_px", None)
+                    if target is not None and tol is not None:
+                        lo = float(target) - float(tol)
+                        hi = float(target) + float(tol)
+                        val = float(dval)
+                        col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
+                        txt = f"D[{int(di)}-{int(dj)}]: {val:.1f} px ({lo:.1f}~{hi:.1f})"
+
+                if txt:
+                    lx1 = metrics.get("distance_judge_x1", None)
+                    ly1 = metrics.get("distance_judge_y1", None)
+                    lx2 = metrics.get("distance_judge_x2", None)
+                    ly2 = metrics.get("distance_judge_y2", None)
+
+                    if None not in (lx1, ly1, lx2, ly2):
+                        p1 = (int(x + float(lx1)), int(y + float(ly1)))
+                        p2 = (int(x + float(lx2)), int(y + float(ly2)))
+                        cv2.line(img, p1, p2, col, 1, cv2.LINE_AA)
+                        cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
+                        cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
+
+                    cv2.putText(
+                        img,
+                        txt,
+                        (x + 10, y + h + 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4,
+                        col,
+                        1,
+                        cv2.LINE_AA,
+                    )
+            except Exception:
+                pass
+
+
+def _draw_roi_distance_links(img, metrics):
+    if not (metrics and isinstance(metrics, dict)):
+        return
+
+    roi_links = metrics.get("roi_distance_links") or []
+    if not roi_links:
+        return
+
+    try:
+        for link in roi_links[:3]:
+            p1 = (int(float(link.get("x1", 0))), int(float(link.get("y1", 0))))
+            p2 = (int(float(link.get("x2", 0))), int(float(link.get("y2", 0))))
+
+            cv2.line(img, p1, p2, (0, 255, 255), 1, cv2.LINE_AA)
+            cv2.circle(img, p1, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+            cv2.circle(img, p2, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+            mx = int((p1[0] + p2[0]) / 2)
+            my = int((p1[1] + p2[1]) / 2)
+
+            if "distance_mm" in link:
+                txt = (
+                    f"R{int(link.get('from_roi_id', -1))}-"
+                    f"R{int(link.get('to_roi_id', -1))}: "
+                    f"{float(link['distance_mm']):.2f} mm"
+                )
+            else:
+                txt = (
+                    f"R{int(link.get('from_roi_id', -1))}-"
+                    f"R{int(link.get('to_roi_id', -1))}: "
+                    f"{float(link.get('distance_px', 0.0)):.1f} px"
+                )
+
+            cv2.putText(
+                img,
+                txt,
+                (mx - 55, my - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+    except Exception:
+        pass
 
 def draw_rois(
     img,
@@ -161,382 +519,14 @@ def draw_rois(
         # center point
         cv2.circle(img, (int(cx), int(cy)), 3, color, -1, lineType=cv2.LINE_AA)
 
-        if metrics and isinstance(metrics, dict) and "circles" in metrics:
-            ref_idx = metrics.get("calibration_ref_index", None)
+        # circle draw
+        _draw_circle_overlay(img, x, y, w, h, metrics)
 
-            for i, c in enumerate(metrics["circles"]):
-                if isinstance(c, dict):
-                    ccx = int(c.get("x", 0)) + x
-                    ccy = int(c.get("y", 0)) + y
-                    rr = int(c.get("r", 0))
-                else:
-                    ccx = int(c[0]) + x
-                    ccy = int(c[1]) + y
-                    rr = int(c[2])
+        # distance judge
+        _draw_distance_overlay(img, x, y, h, metrics)
 
-                draw_dashed_circle(
-                    img,
-                    (ccx, ccy),
-                    rr,
-                    (0, 255, 0),
-                    thickness=1,
-                    dash_len=8,
-                )
-
-                if ref_idx is not None and int(ref_idx) == i:
-                    cv2.putText(
-                        img,
-                        "REF",
-                        (ccx - 18, ccy - rr - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        (0, 255, 255),
-                        2,
-                        cv2.LINE_AA,
-                    )
-                    cv2.circle(
-                        img,
-                        (ccx, ccy),
-                        4,
-                        (0, 255, 255),
-                        -1,
-                        lineType=cv2.LINE_AA,
-                    )
-        # mm  / px 표시
-        if metrics:
-            mm_list = metrics.get("diameters_mm")
-            px_list = metrics.get("diameters_px")
-
-            for i, c in enumerate(metrics.get("circles", [])):
-                if isinstance(c, dict):
-                    cx = int(c["x"]) + x
-                    cy = int(c["y"]) + y
-                else:
-                    cx = int(c[0]) + x
-                    cy = int(c[1]) + y
-
-                text = None
-                if isinstance(mm_list, list) and i < len(mm_list):
-                    text = f"{float(mm_list[i]):.1f} mm"
-                elif isinstance(px_list, list) and i < len(px_list):
-                    text = f"{float(px_list[i]):.1f} px"
-
-                if not text:
-                    continue
-
-                col = (0, 255, 0)
-
-                flags = metrics.get("judge_flags")
-                if isinstance(flags, list) and i < len(flags):
-                    if not flags[i]:
-                        col = (0, 0, 255)
-
-                cv2.putText(
-                    img,
-                    text,
-                    (cx - 40, cy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    col,
-                    1,
-                    cv2.LINE_AA,
-                )
-
-        # --- circle 통계 표시 ---
-        if metrics and isinstance(metrics, dict):
-            unit = metrics.get("unit_mode", "px")
-
-            if unit == "mm":
-                avg = metrics.get("diameter_mm_avg", None)
-                dmin = metrics.get("diameter_mm_min", None)
-                dmax = metrics.get("diameter_mm_max", None)
-
-                if avg is not None and dmin is not None and dmax is not None:
-                    txt = f"AVG:{float(avg):.2f}  MIN:{float(dmin):.2f}  MAX:{float(dmax):.2f}"
-                else:
-                    txt = None
-            else:
-                avg = metrics.get("diameter_px_avg", None)
-                dmin = metrics.get("diameter_px_min", None)
-                dmax = metrics.get("diameter_px_max", None)
-
-                if avg is not None and dmin is not None and dmax is not None:
-                    txt = f"AVG:{float(avg):.1f}px  MIN:{float(dmin):.1f}px  MAX:{float(dmax):.1f}px"
-                else:
-                    txt = None
-
-            if txt:
-                cv2.putText(img,txt,(x + 10, y + h - 10),cv2.FONT_HERSHEY_SIMPLEX,0.35,(0, 255, 255),1,cv2.LINE_AA,)
-
-        # --- tolerance 범위 표시 ---
-        if metrics and isinstance(metrics, dict):
-            target = metrics.get("target_mm")
-            tol = metrics.get("tol_mm")
-
-            if target is not None and tol is not None:
-                try:
-                    lo = float(target) - float(tol)
-                    hi = float(target) + float(tol)
-                    txt = f"SPEC:{lo:.2f}~{hi:.2f} mm"
-
-                    cv2.putText(
-                        img,
-                        txt,
-                        (x + 10, y + h + 15),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        (200, 200, 0),
-                        1,
-                        cv2.LINE_AA,
-                    )
-                except Exception:
-                    pass
-
-        # --- tolerance 결과 표시 ---
-        if metrics and isinstance(metrics, dict):
-            judge = metrics.get("judge_value", None)
-            target = metrics.get("target_mm", None)
-            tol = metrics.get("tol_mm", None)
-
-            if judge is not None and target is not None and tol is not None:
-                try:
-                    judge = float(judge)
-                    target = float(target)
-                    tol = float(tol)
-
-                    if (target - tol) <= judge <= (target + tol):
-                        col = (0, 255, 0)   # OK
-                        txt = "OK"
-                    else:
-                        col = (0, 0, 255)   # NG
-                        txt = "NG"
-
-                    cv2.putText(
-                        img,
-                        txt,
-                        (x + w - 40, y + 15),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        col,
-                        2,
-                        cv2.LINE_AA,
-                    )
-                except Exception:
-                    pass
-
-        # --- distance 측정값 표시 (judge 없을 때) ---
-        if metrics and isinstance(metrics, dict):
-            pairs = metrics.get("distance_pairs") or []
-            has_single_judge = metrics.get("distance_judge_value", None) is not None
-            has_multi_judge = isinstance(metrics.get("distance_judge_flags"), list)
-
-            if pairs and not has_single_judge and not has_multi_judge:
-                try:
-                    rows = []
-
-                    for p in pairs:
-                        pi = int(p.get("i", -1))
-                        pj = int(p.get("j", -1))
-
-                        x1 = p.get("x1", None)
-                        y1 = p.get("y1", None)
-                        x2 = p.get("x2", None)
-                        y2 = p.get("y2", None)
-
-                        if None not in (x1, y1, x2, y2):
-                            p1 = (int(x + float(x1)), int(y + float(y1)))
-                            p2 = (int(x + float(x2)), int(y + float(y2)))
-
-                            cv2.line(
-                                img,
-                                p1,
-                                p2,
-                                (0, 255, 255),
-                                1,
-                                cv2.LINE_AA,
-                            )
-                            cv2.circle(img, p1, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-                            cv2.circle(img, p2, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-
-                        if "distance_mm" in p:
-                            rows.append(
-                                f"D[{pi}-{pj}]: {float(p['distance_mm']):.2f} mm"
-                            )
-                        else:
-                            rows.append(
-                                f"D[{pi}-{pj}]: {float(p.get('distance_px', 0.0)):.1f} px"
-                            )
-
-                    for row_idx, txt in enumerate(rows[:3]):
-                        cv2.putText(
-                            img,
-                            txt,
-                            (x + 10, y + h + 30 + (row_idx * 15)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.4,
-                            (0, 255, 255),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                except Exception:
-                    pass
-
-
-        # --- distance judge 결과 표시 (each_pair) ---
-        if metrics and isinstance(metrics, dict):
-            details = metrics.get("distance_judge_details") or []
-
-            if details:
-                try:
-                    for row_idx, d in enumerate(details[:3]):
-                        col = (0, 255, 0) if bool(d.get("ok", False)) else (0, 0, 255)
-
-                        lx1 = d.get("x1", None)
-                        ly1 = d.get("y1", None)
-                        lx2 = d.get("x2", None)
-                        ly2 = d.get("y2", None)
-
-                        if None not in (lx1, ly1, lx2, ly2):
-                            p1 = (int(x + float(lx1)), int(y + float(ly1)))
-                            p2 = (int(x + float(lx2)), int(y + float(ly2)))
-
-                            cv2.line(img, p1, p2, col, 1, cv2.LINE_AA)
-                            cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
-                            cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
-
-                        unit = str(d.get("unit", "")).strip().lower()
-                        val = float(d.get("value", 0.0))
-                        target = float(d.get("target", 0.0))
-                        tol = float(d.get("tol", 0.0))
-                        di = int(d.get("i", -1))
-                        dj = int(d.get("j", -1))
-
-                        if unit == "mm":
-                            txt = f"D[{di}-{dj}]: {val:.2f} mm ({target - tol:.2f}~{target + tol:.2f})"
-                        else:
-                            txt = f"D[{di}-{dj}]: {val:.1f} px ({target - tol:.1f}~{target + tol:.1f})"
-
-                        cv2.putText(
-                            img,
-                            txt,
-                            (x + 10, y + h + 30 + (row_idx * 15)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.4,
-                            col,
-                            1,
-                            cv2.LINE_AA,
-                        )
-                except Exception:
-                    pass
-
-        # --- distance judge 결과 표시 ---
-        if metrics and isinstance(metrics, dict) and not (metrics.get("distance_judge_details") or []):
-            dval = metrics.get("distance_judge_value", None)
-            dunit = str(metrics.get("distance_judge_unit", "")).strip().lower()
-            di = metrics.get("distance_judge_i", None)
-            dj = metrics.get("distance_judge_j", None)
-
-            if dval is not None and di is not None and dj is not None:
-                try:
-                    txt = None
-                    col = (0, 255, 0)
-
-                    if dunit == "mm":
-                        target = metrics.get("distance_target_mm", None)
-                        tol = metrics.get("distance_tol_mm", None)
-                        if target is not None and tol is not None:
-                            lo = float(target) - float(tol)
-                            hi = float(target) + float(tol)
-                            val = float(dval)
-                            col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
-                            txt = f"D[{int(di)}-{int(dj)}]: {val:.2f} mm ({lo:.2f}~{hi:.2f})"
-
-                    elif dunit == "px":
-                        target = metrics.get("distance_target_px", None)
-                        tol = metrics.get("distance_tol_px", None)
-                        if target is not None and tol is not None:
-                            lo = float(target) - float(tol)
-                            hi = float(target) + float(tol)
-                            val = float(dval)
-                            col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
-                            txt = f"D[{int(di)}-{int(dj)}]: {val:.1f} px ({lo:.1f}~{hi:.1f})"
-
-                    if txt:
-                        lx1 = metrics.get("distance_judge_x1", None)
-                        ly1 = metrics.get("distance_judge_y1", None)
-                        lx2 = metrics.get("distance_judge_x2", None)
-                        ly2 = metrics.get("distance_judge_y2", None)
-
-                        if None not in (lx1, ly1, lx2, ly2):
-                            p1 = (int(x + float(lx1)), int(y + float(ly1)))
-                            p2 = (int(x + float(lx2)), int(y + float(ly2)))
-
-                            cv2.line(
-                                img,
-                                p1,
-                                p2,
-                                col,
-                                1,
-                                cv2.LINE_AA,
-                            )
-                            cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
-                            cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
-
-                        cv2.putText(
-                            img,
-                            txt,
-                            (x + 10, y + h + 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.4,
-                            col,
-                            1,
-                            cv2.LINE_AA,
-                        )
-                except Exception:
-                    pass
-                
-        # --- ROI 간 거리 표시 ---
-        if metrics and isinstance(metrics, dict):
-            roi_links = metrics.get("roi_distance_links") or []
-
-            if roi_links:
-                try:
-                    for link in roi_links[:3]:
-                        p1 = (int(float(link.get("x1", 0))), int(float(link.get("y1", 0))))
-                        p2 = (int(float(link.get("x2", 0))), int(float(link.get("y2", 0))))
-
-                        cv2.line(img, p1, p2, (0, 255, 255), 1, cv2.LINE_AA)
-                        cv2.circle(img, p1, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-                        cv2.circle(img, p2, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
-
-                        mx = int((p1[0] + p2[0]) / 2)
-                        my = int((p1[1] + p2[1]) / 2)
-
-                        if "distance_mm" in link:
-                            txt = (
-                                f"R{int(link.get('from_roi_id', -1))}-"
-                                f"R{int(link.get('to_roi_id', -1))}: "
-                                f"{float(link['distance_mm']):.2f} mm"
-                            )
-                        else:
-                            txt = (
-                                f"R{int(link.get('from_roi_id', -1))}-"
-                                f"R{int(link.get('to_roi_id', -1))}: "
-                                f"{float(link.get('distance_px', 0.0)):.1f} px"
-                            )
-
-                        cv2.putText(
-                            img,
-                            txt,
-                            (mx - 55, my - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.4,
-                            (0, 255, 255),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                except Exception:
-                    pass
+         # distance links
+        _draw_roi_distance_links(img, metrics)
 
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
