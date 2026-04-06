@@ -324,6 +324,63 @@ def draw_rois(
                 except Exception:
                     pass
 
+        # --- distance 측정값 표시 (judge 없을 때) ---
+        if metrics and isinstance(metrics, dict):
+            pairs = metrics.get("distance_pairs") or []
+            has_single_judge = metrics.get("distance_judge_value", None) is not None
+            has_multi_judge = isinstance(metrics.get("distance_judge_flags"), list)
+
+            if pairs and not has_single_judge and not has_multi_judge:
+                try:
+                    rows = []
+
+                    for p in pairs:
+                        pi = int(p.get("i", -1))
+                        pj = int(p.get("j", -1))
+
+                        x1 = p.get("x1", None)
+                        y1 = p.get("y1", None)
+                        x2 = p.get("x2", None)
+                        y2 = p.get("y2", None)
+
+                        if None not in (x1, y1, x2, y2):
+                            p1 = (int(x + float(x1)), int(y + float(y1)))
+                            p2 = (int(x + float(x2)), int(y + float(y2)))
+
+                            cv2.line(
+                                img,
+                                p1,
+                                p2,
+                                (0, 255, 255),
+                                1,
+                                cv2.LINE_AA,
+                            )
+                            cv2.circle(img, p1, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+                            cv2.circle(img, p2, 3, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+                        if "distance_mm" in p:
+                            rows.append(
+                                f"D[{pi}-{pj}]: {float(p['distance_mm']):.2f} mm"
+                            )
+                        else:
+                            rows.append(
+                                f"D[{pi}-{pj}]: {float(p.get('distance_px', 0.0)):.1f} px"
+                            )
+
+                    for row_idx, txt in enumerate(rows[:3]):
+                        cv2.putText(
+                            img,
+                            txt,
+                            (x + 10, y + h + 30 + (row_idx * 15)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            (0, 255, 255),
+                            1,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
+                
         # --- distance judge 결과 표시 ---
         if metrics and isinstance(metrics, dict):
             dval = metrics.get("distance_judge_value", None)

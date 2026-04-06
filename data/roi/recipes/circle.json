@@ -36,7 +36,10 @@
         },
         {
           "tool": "measure.circle_distance",
-          "params": {}
+          "params": {
+            "pair_mode": "adjacent",
+            "order_mode": "x"
+          }
         }
       ],
       "tool_decision": "all_ok"
