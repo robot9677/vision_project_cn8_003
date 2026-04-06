@@ -380,9 +380,57 @@ def draw_rois(
                         )
                 except Exception:
                     pass
-                
-        # --- distance judge 결과 표시 ---
+
+
+        # --- distance judge 결과 표시 (each_pair) ---
         if metrics and isinstance(metrics, dict):
+            details = metrics.get("distance_judge_details") or []
+
+            if details:
+                try:
+                    for row_idx, d in enumerate(details[:3]):
+                        col = (0, 255, 0) if bool(d.get("ok", False)) else (0, 0, 255)
+
+                        lx1 = d.get("x1", None)
+                        ly1 = d.get("y1", None)
+                        lx2 = d.get("x2", None)
+                        ly2 = d.get("y2", None)
+
+                        if None not in (lx1, ly1, lx2, ly2):
+                            p1 = (int(x + float(lx1)), int(y + float(ly1)))
+                            p2 = (int(x + float(lx2)), int(y + float(ly2)))
+
+                            cv2.line(img, p1, p2, col, 1, cv2.LINE_AA)
+                            cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
+                            cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
+
+                        unit = str(d.get("unit", "")).strip().lower()
+                        val = float(d.get("value", 0.0))
+                        target = float(d.get("target", 0.0))
+                        tol = float(d.get("tol", 0.0))
+                        di = int(d.get("i", -1))
+                        dj = int(d.get("j", -1))
+
+                        if unit == "mm":
+                            txt = f"D[{di}-{dj}]: {val:.2f} mm ({target - tol:.2f}~{target + tol:.2f})"
+                        else:
+                            txt = f"D[{di}-{dj}]: {val:.1f} px ({target - tol:.1f}~{target + tol:.1f})"
+
+                        cv2.putText(
+                            img,
+                            txt,
+                            (x + 10, y + h + 30 + (row_idx * 15)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            col,
+                            1,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
+
+        # --- distance judge 결과 표시 ---
+        if metrics and isinstance(metrics, dict) and not (metrics.get("distance_judge_details") or []):
             dval = metrics.get("distance_judge_value", None)
             dunit = str(metrics.get("distance_judge_unit", "")).strip().lower()
             di = metrics.get("distance_judge_i", None)

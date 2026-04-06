@@ -38,7 +38,10 @@
           "tool": "measure.circle_distance",
           "params": {
             "pair_mode": "adjacent",
-            "order_mode": "x"
+            "order_mode": "x",
+            "judge_mode": "each_pair",
+            "target_mm_list": [43.60, 39.60],
+            "tol_mm": 0.50
           }
         }
       ],

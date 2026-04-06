@@ -738,17 +738,95 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
     judge_unit = str(
         params.get("judge_unit", "mm" if mm_per_px is not None else "px")
     ).strip().lower()
+    judge_mode = str(params.get("judge_mode", "single_pair")).strip().lower()
+
+    if judge_unit == "mm":
+        target_single = params.get("target_mm", None)
+        tol_single = params.get("tol_mm", None)
+        target_list = params.get("target_mm_list", None)
+        tol_list = params.get("tol_mm_list", None)
+    else:
+        target_single = params.get("target_px", None)
+        tol_single = params.get("tol_px", None)
+        target_list = params.get("target_px_list", None)
+        tol_list = params.get("tol_px_list", None)
+
+    if judge_mode == "each_pair":
+        if not pairs:
+            return img, meta, False, "NO_DISTANCE_PAIR"
+
+        if judge_unit == "mm" and mm_per_px is None:
+            return img, meta, False, "NO_SCALE"
+
+        if target_list is None:
+            if target_single is None:
+                return img, meta, True, "OK"
+            target_vals = [float(target_single)] * len(pairs)
+        else:
+            target_vals = [float(v) for v in target_list]
+
+        if tol_list is None:
+            if tol_single is None:
+                return img, meta, True, "OK"
+            tol_vals = [float(tol_single)] * len(pairs)
+        else:
+            tol_vals = [float(v) for v in tol_list]
+
+        if len(target_vals) != len(pairs):
+            return img, meta, False, "BAD_TARGET_LIST"
+
+        if len(tol_vals) != len(pairs):
+            return img, meta, False, "BAD_TOL_LIST"
+
+        flags = []
+        details = []
+
+        for idx, pair in enumerate(pairs):
+            if judge_unit == "mm":
+                judge_value = float(pair.get("distance_mm", 0.0))
+            else:
+                judge_value = float(pair.get("distance_px", 0.0))
+
+            target = float(target_vals[idx])
+            tol = float(tol_vals[idx])
+            ok = (target - tol) <= judge_value <= (target + tol)
+
+            flags.append(bool(ok))
+            details.append({
+                "pair_index": int(idx),
+                "i": int(pair["i"]),
+                "j": int(pair["j"]),
+                "x1": float(pair["x1"]),
+                "y1": float(pair["y1"]),
+                "x2": float(pair["x2"]),
+                "y2": float(pair["y2"]),
+                "unit": judge_unit,
+                "value": float(judge_value),
+                "target": float(target),
+                "tol": float(tol),
+                "ok": bool(ok),
+            })
+
+        meta.update({
+            "distance_judge_mode": "each_pair",
+            "distance_judge_unit": judge_unit,
+            "distance_judge_flags": flags,
+            "distance_judge_details": details,
+        })
+
+        if judge_unit == "mm":
+            meta["distance_target_mm_list"] = target_vals
+            meta["distance_tol_mm_list"] = tol_vals
+        else:
+            meta["distance_target_px_list"] = target_vals
+            meta["distance_tol_px_list"] = tol_vals
+
+        ok_all = all(flags) if flags else False
+        return img, meta, bool(ok_all), "OK" if ok_all else "DISTANCE_OUT_OF_TOL"
 
     pair_index = int(params.get("pair_index", 0))
 
-    if judge_unit == "mm":
-        target = params.get("target_mm", None)
-        tol = params.get("tol_mm", None)
-    else:
-        target = params.get("target_px", None)
-        tol = params.get("tol_px", None)
-
-    if target is None or tol is None:
+    if target_single is None or tol_single is None:
         return img, meta, True, "OK"
 
     if not pairs:
@@ -764,10 +842,11 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
             return img, meta, False, "NO_SCALE"
 
         judge_value = float(pair["distance_mm"])
-        target = float(target)
-        tol = float(tol)
+        target = float(target_single)
+        tol = float(tol_single)
 
         meta.update({
+            "distance_judge_mode": "single_pair",
             "distance_judge_unit": "mm",
             "distance_judge_value": judge_value,
             "distance_target_mm": target,
@@ -782,10 +861,11 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
         })
     else:
         judge_value = float(pair["distance_px"])
-        target = float(target)
-        tol = float(tol)
+        target = float(target_single)
+        tol = float(tol_single)
 
         meta.update({
+            "distance_judge_mode": "single_pair",
             "distance_judge_unit": "px",
             "distance_judge_value": judge_value,
             "distance_target_px": target,
