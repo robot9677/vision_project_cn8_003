@@ -32,6 +32,7 @@ def _get_first_center_abs(roi, metrics):
 
 
 def _apply_roi_distance_links(*, results, rois, recipe):
+    print("[DBG ROI DIST ENTRY]")
     roi_map = {int(r.get("id")): r for r in (rois or []) if r.get("id") is not None}
     link_cfgs = (recipe or {}).get("roi_distance_links") or []
 
@@ -240,6 +241,7 @@ def process_all_rois(
             if metrics.get("_tool_steps") is not None:
                 print(f"[DBG TOOLS ROI{roi_id}] {metrics.get('_tool_steps')}")
 
+    print("[DBG ROI DIST CALL]")
     _apply_roi_distance_links(
         results=results,
         rois=getattr(inspector.roi_mgr, "rois", []),
