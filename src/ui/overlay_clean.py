@@ -324,6 +324,52 @@ def draw_rois(
                 except Exception:
                     pass
 
+        # --- distance judge 결과 표시 ---
+        if metrics and isinstance(metrics, dict):
+            dval = metrics.get("distance_judge_value", None)
+            dunit = str(metrics.get("distance_judge_unit", "")).strip().lower()
+            di = metrics.get("distance_judge_i", None)
+            dj = metrics.get("distance_judge_j", None)
+
+            if dval is not None and di is not None and dj is not None:
+                try:
+                    txt = None
+                    col = (0, 255, 0)
+
+                    if dunit == "mm":
+                        target = metrics.get("distance_target_mm", None)
+                        tol = metrics.get("distance_tol_mm", None)
+                        if target is not None and tol is not None:
+                            lo = float(target) - float(tol)
+                            hi = float(target) + float(tol)
+                            val = float(dval)
+                            col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
+                            txt = f"D[{int(di)}-{int(dj)}]: {val:.2f} mm ({lo:.2f}~{hi:.2f})"
+
+                    elif dunit == "px":
+                        target = metrics.get("distance_target_px", None)
+                        tol = metrics.get("distance_tol_px", None)
+                        if target is not None and tol is not None:
+                            lo = float(target) - float(tol)
+                            hi = float(target) + float(tol)
+                            val = float(dval)
+                            col = (0, 255, 0) if (lo <= val <= hi) else (0, 0, 255)
+                            txt = f"D[{int(di)}-{int(dj)}]: {val:.1f} px ({lo:.1f}~{hi:.1f})"
+
+                    if txt:
+                        cv2.putText(
+                            img,
+                            txt,
+                            (x + 10, y + h + 30),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            col,
+                            1,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
+
         # QR scan result text (ROI 하단, QR일 때만)
         qr_overlay_text = ""
         qr_overlay_color = color

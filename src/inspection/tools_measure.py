@@ -609,21 +609,6 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     target = params.get("target_mm", None)
     tol = params.get("tol_mm", None)
 
-    # --- circle 간 거리 (px/mm) ---
-    centers = meta.get("centers", [])
-    dists_px = []
-    if len(centers) >= 2:
-        for i in range(len(centers)):
-            for j in range(i+1, len(centers)):
-                dx = float(centers[i]["x"]) - float(centers[j]["x"])
-                dy = float(centers[i]["y"]) - float(centers[j]["y"])
-                d = (dx*dx + dy*dy) ** 0.5
-                dists_px.append(d)
-    meta["center_distances_px"] = dists_px
-
-    if mm_per_px is not None and dists_px:
-        meta["center_distances_mm"] = [d * mm_per_px for d in dists_px]
-
     if target is not None and tol is not None and mm_per_px is not None:
         target = float(target); tol = float(tol)
 
@@ -661,6 +646,130 @@ def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
 
     return img, meta, True, "OK"
 
+def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    metrics = ctx.get("metrics", {}) if isinstance(ctx, dict) else {}
+
+    centers = metrics.get("centers") or []
+    if not centers:
+        circles = metrics.get("circles") or []
+        centers = [
+            {
+                "x": float(c.get("x", 0)) if isinstance(c, dict) else float(c[0]),
+                "y": float(c.get("y", 0)) if isinstance(c, dict) else float(c[1]),
+            }
+            for c in circles
+        ]
+
+    mm_per_px = metrics.get("mm_per_px", None)
+
+    pair_mode = str(params.get("pair_mode", "all")).strip().lower()
+    pair_indices = []
+
+    if pair_mode == "adjacent":
+        pair_indices = [(i, i + 1) for i in range(max(0, len(centers) - 1))]
+    else:
+        for i in range(len(centers)):
+            for j in range(i + 1, len(centers)):
+                pair_indices.append((i, j))
+
+    pairs = []
+    dists_px = []
+    dists_mm = []
+
+    for pair_no, (i, j) in enumerate(pair_indices):
+        xi = float(centers[i].get("x", 0))
+        yi = float(centers[i].get("y", 0))
+        xj = float(centers[j].get("x", 0))
+        yj = float(centers[j].get("y", 0))
+
+        dx = xi - xj
+        dy = yi - yj
+        dist_px = float((dx * dx + dy * dy) ** 0.5)
+
+        item = {
+            "pair_index": int(pair_no),
+            "i": int(i),
+            "j": int(j),
+            "distance_px": dist_px,
+        }
+
+        dists_px.append(dist_px)
+
+        if mm_per_px is not None:
+            dist_mm = float(dist_px) * float(mm_per_px)
+            item["distance_mm"] = dist_mm
+            dists_mm.append(dist_mm)
+
+        pairs.append(item)
+
+    meta = {
+        "distance_pair_count": int(len(pairs)),
+        "distance_pairs": pairs,
+        "center_distances_px": dists_px,
+    }
+
+    if mm_per_px is not None and dists_mm:
+        meta["center_distances_mm"] = dists_mm
+
+    judge_unit = str(
+        params.get("judge_unit", "mm" if mm_per_px is not None else "px")
+    ).strip().lower()
+
+    pair_index = int(params.get("pair_index", 0))
+
+    if judge_unit == "mm":
+        target = params.get("target_mm", None)
+        tol = params.get("tol_mm", None)
+    else:
+        target = params.get("target_px", None)
+        tol = params.get("tol_px", None)
+
+    if target is None or tol is None:
+        return img, meta, True, "OK"
+
+    if not pairs:
+        return img, meta, False, "NO_DISTANCE_PAIR"
+
+    if pair_index < 0 or pair_index >= len(pairs):
+        return img, meta, False, "BAD_PAIR_INDEX"
+
+    pair = pairs[pair_index]
+
+    if judge_unit == "mm":
+        if "distance_mm" not in pair:
+            return img, meta, False, "NO_SCALE"
+
+        judge_value = float(pair["distance_mm"])
+        target = float(target)
+        tol = float(tol)
+
+        meta.update({
+            "distance_judge_unit": "mm",
+            "distance_judge_value": judge_value,
+            "distance_target_mm": target,
+            "distance_tol_mm": tol,
+            "distance_judge_pair_index": int(pair_index),
+            "distance_judge_i": int(pair["i"]),
+            "distance_judge_j": int(pair["j"]),
+        })
+    else:
+        judge_value = float(pair["distance_px"])
+        target = float(target)
+        tol = float(tol)
+
+        meta.update({
+            "distance_judge_unit": "px",
+            "distance_judge_value": judge_value,
+            "distance_target_px": target,
+            "distance_tol_px": tol,
+            "distance_judge_pair_index": int(pair_index),
+            "distance_judge_i": int(pair["i"]),
+            "distance_judge_j": int(pair["j"]),
+        })
+
+    ok = (target - tol) <= judge_value <= (target + tol)
+    return img, meta, bool(ok), "OK" if ok else "DISTANCE_OUT_OF_TOL"
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -670,3 +779,4 @@ def register_measure_tools() -> None:
     register_tool("measure.presence_blob", _presence_blob)
     register_tool("measure.washer", _washer_presence)
     register_tool("measure.circle_size", _circle_size)
+    register_tool("measure.circle_distance", _circle_distance)

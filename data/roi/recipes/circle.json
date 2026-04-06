@@ -33,6 +33,10 @@
             "target_mm": 25.0,
             "tol_mm": 0.5
           }
+        },
+        {
+          "tool": "measure.circle_distance",
+          "params": {}
         }
       ],
       "tool_decision": "all_ok"
