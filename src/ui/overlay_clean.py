@@ -643,6 +643,61 @@ def _draw_roi_label_block(
         if i + 1 < len(lines):
             cur_y += heights[i + 1] + line_spacing
 
+def _normalize_roi_entry(r):
+    if isinstance(r, dict):
+        roi_id = r.get("id")
+        label = r.get("label") or r.get("name") or f"ROI{roi_id}"
+        rect = r.get("rect", r.get("bbox", (r.get("x", 0), r.get("y", 0), r.get("w", 0), r.get("h", 0))))
+        x = int(rect[0])
+        y = int(rect[1])
+        w = int(rect[2])
+        h = int(rect[3])
+        angle = float(r.get("angle", 0.0))
+    else:
+        roi_id = getattr(r, "id", None)
+        label = getattr(r, "name", getattr(r, "label", f"ROI{roi_id}"))
+        x = int(getattr(r, "x", 0))
+        y = int(getattr(r, "y", 0))
+        w = int(getattr(r, "w", 0))
+        h = int(getattr(r, "h", 0))
+        angle = float(getattr(r, "angle", 0.0))
+
+    return roi_id, label, x, y, w, h, angle
+
+
+def _resolve_roi_result(roi_results, roi_id):
+    rid_str = str(roi_id)
+    rv = None
+    ok = None
+    metrics = None
+    reason = ""
+
+    if roi_results is not None and isinstance(roi_results, dict):
+        rv = roi_results.get(rid_str) if rid_str in roi_results else roi_results.get(roi_id)
+
+    if rv is not None:
+        ok = rv.get("ok") if isinstance(rv, dict) else getattr(rv, "ok", None)
+        metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
+        reason = rv.get("reason", "") if isinstance(rv, dict) else getattr(rv, "reason", "")
+
+    return rid_str, ok, metrics, reason
+
+
+def _resolve_roi_draw_style(roi_id, active_id, ok, base_thickness):
+    color = cfg.COLOR_ROI if hasattr(cfg, "COLOR_ROI") else (0, 200, 200)
+    thickness = base_thickness
+
+    if ok is True:
+        color = cfg.COLOR_OK
+    elif ok is False:
+        color = cfg.COLOR_NG
+
+    if roi_id == active_id:
+        thickness = thickness + 1
+        color = cfg.COLOR_ROI_ACTIVE if hasattr(cfg, "COLOR_ROI_ACTIVE") else color
+
+    return color, thickness
+
 def draw_rois(
     img,
     rois=None,
@@ -663,7 +718,6 @@ def draw_rois(
         # if older code passed a roi_mgr, try to adapt
         rois = []
 
-    h_img, w_img = img.shape[:2]
     base_font = cfg.FONT
     base_font_scale = cfg.FONT_SCALE
     base_thickness = cfg.FONT_THICK
@@ -675,55 +729,13 @@ def draw_rois(
 
     for idx, r in enumerate(rois):
         # normalize roi dict/object to {id, x,y,w,h, name/label}
-        if isinstance(r, dict):
-            roi_id = r.get("id")
-            label = r.get("label") or r.get("name") or f"ROI{roi_id}"
-            x = int(r.get("rect", r.get("bbox", (r.get("x",0), r.get("y",0), r.get("w",0), r.get("h",0))))[0])
-            y = int(r.get("rect", r.get("bbox", (r.get("x",0), r.get("y",0), r.get("w",0), r.get("h",0))))[1])
-            w = int(r.get("rect", r.get("bbox", (r.get("x",0), r.get("y",0), r.get("w",0), r.get("h",0))))[2])
-            h = int(r.get("rect", r.get("bbox", (r.get("x",0), r.get("y",0), r.get("w",0), r.get("h",0))))[3])
-        else:
-            # object-like
-            roi_id = getattr(r, "id", None)
-            label = getattr(r, "name", getattr(r, "label", f"ROI{roi_id}"))
-            x = int(getattr(r, "x", 0)); y = int(getattr(r, "y", 0))
-            w = int(getattr(r, "w", 0)); h = int(getattr(r, "h", 0))
+        roi_id, label, x, y, w, h, angle = _normalize_roi_entry(r)
 
         if show_only_selected and active_id is not None and roi_id != active_id:
             continue
 
-        # determine color by default
-        color = cfg.COLOR_ROI if hasattr(cfg, "COLOR_ROI") else (0,200,200)
-        thickness = base_thickness
-
-        # check roi_results for status/metrics
-        rid_str = str(roi_id)
-        rv = None
-        ok = None
-        metrics = None
-        reason = ""
-
-        if roi_results is not None:
-            if isinstance(roi_results, dict):
-                rv = roi_results.get(rid_str) if rid_str in roi_results else roi_results.get(roi_id)
-
-            if rv is not None:
-                ok = rv.get("ok") if isinstance(rv, dict) else getattr(rv, "ok", None)
-                metrics = rv.get("metrics") if isinstance(rv, dict) else getattr(rv, "metrics", None)
-                reason = rv.get("reason", "") if isinstance(rv, dict) else getattr(rv, "reason", "")
-
-                if ok is True:
-                    color = cfg.COLOR_OK
-                elif ok is False:
-                    color = cfg.COLOR_NG
-                else:
-                    # keep default
-                    pass
-
-        if roi_id == active_id:
-            thickness = thickness + 1
-            # override active color if configured
-            color = cfg.COLOR_ROI_ACTIVE if hasattr(cfg, "COLOR_ROI_ACTIVE") else color
+        rid_str, ok, metrics, reason = _resolve_roi_result(roi_results, roi_id)
+        color, thickness = _resolve_roi_draw_style(roi_id, active_id, ok, base_thickness)
 
         # draw rectangle
         # ----- rotated rectangle -----
