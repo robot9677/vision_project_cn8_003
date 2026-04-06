@@ -374,7 +374,7 @@ def _draw_distance_overlay(img, x, y, h, metrics):
                 pass
 
 
-def _draw_roi_distance_links(img, metrics):
+def _draw_roi_distance_links(img, x, y, h, metrics):
     if not (metrics and isinstance(metrics, dict)):
         return
 
@@ -398,55 +398,8 @@ def _draw_roi_distance_links(img, metrics):
             cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
             cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
 
-            mx = int((p1[0] + p2[0]) / 2)
-            my = int((p1[1] + p2[1]) / 2)
-
-            from_roi_id = int(link.get("from_roi_id", -1))
-            to_roi_id = int(link.get("to_roi_id", -1))
-
-            offset_y = -28 if from_roi_id == 2 else 28
-            
-            txt = None
-            judge_unit = str(link.get("judge_unit", "")).strip().lower()
-
-            if judge_unit == "mm" and "distance_mm" in link:
-                val = float(link["distance_mm"])
-                target = link.get("target_mm", None)
-                tol = link.get("tol_mm", None)
-
-                if target is not None and tol is not None:
-                    lo = float(target) - float(tol)
-                    hi = float(target) + float(tol)
-                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f} ({lo:.2f}~{hi:.2f})"
-                else:
-                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f}"
-
-            elif judge_unit == "px":
-                val = float(link.get("distance_px", 0.0))
-                target = link.get("target_px", None)
-                tol = link.get("tol_px", None)
-
-                if target is not None and tol is not None:
-                    lo = float(target) - float(tol)
-                    hi = float(target) + float(tol)
-                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f} ({lo:.1f}~{hi:.1f})"
-                else:
-                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f}"
-
-            elif "distance_mm" in link:
-                txt = f"R{from_roi_id}-{to_roi_id} {float(link['distance_mm']):.2f}"
-            else:
-                txt = f"R{from_roi_id}-{to_roi_id} {float(link.get('distance_px', 0.0)):.1f}"
-
-            if not txt:
-                continue
-
-            (tw, th), baseline = cv2.getTextSize(
-                txt, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1
-            )
-
-            tx = int(mx - (tw / 2))
-            ty = int(my + offset_y)
+            tx = x + 10
+            ty = y + h + 30 + (row_idx * 15)
 
             cv2.putText(
                 img,
@@ -469,6 +422,7 @@ def _draw_roi_distance_links(img, metrics):
                 1,
                 cv2.LINE_AA,
             )
+
     except Exception:
         pass
 
@@ -810,7 +764,7 @@ def draw_rois(
         _draw_distance_overlay(img, x, y, h, metrics)
 
         # distance links
-        _draw_roi_distance_links(img, metrics)
+        _draw_roi_distance_links(img, x, y, h, metrics)
 
         # QR scan result text (ROI 하단, QR일 때만)
         _draw_qr_overlay(
