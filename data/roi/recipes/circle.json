@@ -8,14 +8,14 @@
     {
       "from_roi_id": 2,
       "to_roi_id": 3,
-      "target_mm": 42.0,
-      "tol_mm": 2.5
+      "target_mm": 44.5,
+      "tol_mm": 1.5
     },
     {
       "from_roi_id": 3,
       "to_roi_id": 4,
-      "target_mm": 40.0,
-      "tol_mm": 2.5
+      "target_mm": 40.5,
+      "tol_mm": 1.5
     }
   ],
   "inspections": [
@@ -46,7 +46,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 32,
-            "tol_mm": 0.8
+            "tol_mm": 1.2
           }
         }
       ],
@@ -79,7 +79,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 24,
-            "tol_mm": 0.8
+            "tol_mm": 1.0
           }
         }
       ],
@@ -112,7 +112,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 16,
-            "tol_mm": 0.8
+            "tol_mm": 1.0
           }
         }
       ],
