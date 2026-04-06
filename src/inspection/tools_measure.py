@@ -660,27 +660,44 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
             for c in circles
         ]
 
+    points = [
+        {
+            "orig_index": int(i),
+            "x": float(c.get("x", 0)),
+            "y": float(c.get("y", 0)),
+        }
+        for i, c in enumerate(centers)
+    ]
+
+    order_mode = str(params.get("order_mode", "x")).strip().lower()
+    if order_mode == "x":
+        points = sorted(points, key=lambda p: (p["x"], p["y"]))
+    elif order_mode == "y":
+        points = sorted(points, key=lambda p: (p["y"], p["x"]))
+
     mm_per_px = metrics.get("mm_per_px", None)
 
     pair_mode = str(params.get("pair_mode", "all")).strip().lower()
     pair_indices = []
 
     if pair_mode == "adjacent":
-        pair_indices = [(i, i + 1) for i in range(max(0, len(centers) - 1))]
+        pair_indices = [(i, i + 1) for i in range(max(0, len(points) - 1))]
     else:
-        for i in range(len(centers)):
-            for j in range(i + 1, len(centers)):
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
                 pair_indices.append((i, j))
-
     pairs = []
     dists_px = []
     dists_mm = []
 
     for pair_no, (i, j) in enumerate(pair_indices):
-        xi = float(centers[i].get("x", 0))
-        yi = float(centers[i].get("y", 0))
-        xj = float(centers[j].get("x", 0))
-        yj = float(centers[j].get("y", 0))
+        pi = points[i]
+        pj = points[j]
+
+        xi = float(pi["x"])
+        yi = float(pi["y"])
+        xj = float(pj["x"])
+        yj = float(pj["y"])
 
         dx = xi - xj
         dy = yi - yj
@@ -688,8 +705,14 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
 
         item = {
             "pair_index": int(pair_no),
-            "i": int(i),
-            "j": int(j),
+            "i": int(pi["orig_index"]),
+            "j": int(pj["orig_index"]),
+            "order_i": int(i),
+            "order_j": int(j),
+            "x1": float(xi),
+            "y1": float(yi),
+            "x2": float(xj),
+            "y2": float(yj),
             "distance_px": dist_px,
         }
 
@@ -706,6 +729,7 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
         "distance_pair_count": int(len(pairs)),
         "distance_pairs": pairs,
         "center_distances_px": dists_px,
+        "distance_order_mode": order_mode,
     }
 
     if mm_per_px is not None and dists_mm:
@@ -751,6 +775,10 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
             "distance_judge_pair_index": int(pair_index),
             "distance_judge_i": int(pair["i"]),
             "distance_judge_j": int(pair["j"]),
+            "distance_judge_x1": float(pair["x1"]),
+            "distance_judge_y1": float(pair["y1"]),
+            "distance_judge_x2": float(pair["x2"]),
+            "distance_judge_y2": float(pair["y2"]),
         })
     else:
         judge_value = float(pair["distance_px"])
@@ -765,6 +793,10 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
             "distance_judge_pair_index": int(pair_index),
             "distance_judge_i": int(pair["i"]),
             "distance_judge_j": int(pair["j"]),
+            "distance_judge_x1": float(pair["x1"]),
+            "distance_judge_y1": float(pair["y1"]),
+            "distance_judge_x2": float(pair["x2"]),
+            "distance_judge_y2": float(pair["y2"]),
         })
 
     ok = (target - tol) <= judge_value <= (target + tol)

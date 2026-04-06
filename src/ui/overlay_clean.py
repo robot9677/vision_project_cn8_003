@@ -357,6 +357,26 @@ def draw_rois(
                             txt = f"D[{int(di)}-{int(dj)}]: {val:.1f} px ({lo:.1f}~{hi:.1f})"
 
                     if txt:
+                        lx1 = metrics.get("distance_judge_x1", None)
+                        ly1 = metrics.get("distance_judge_y1", None)
+                        lx2 = metrics.get("distance_judge_x2", None)
+                        ly2 = metrics.get("distance_judge_y2", None)
+
+                        if None not in (lx1, ly1, lx2, ly2):
+                            p1 = (int(x + float(lx1)), int(y + float(ly1)))
+                            p2 = (int(x + float(lx2)), int(y + float(ly2)))
+
+                            cv2.line(
+                                img,
+                                p1,
+                                p2,
+                                col,
+                                1,
+                                cv2.LINE_AA,
+                            )
+                            cv2.circle(img, p1, 4, col, -1, lineType=cv2.LINE_AA)
+                            cv2.circle(img, p2, 4, col, -1, lineType=cv2.LINE_AA)
+
                         cv2.putText(
                             img,
                             txt,
