@@ -74,7 +74,7 @@
           "tool": "measure.circle_size",
           "params": {
             "judge_mode": "roi_avg",
-            "target_mm": 25.2,
+            "target_mm": 24.2,
             "tol_mm": 0.8
           }
         }
