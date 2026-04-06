@@ -8,7 +8,7 @@
     {
       "from_roi_id": 2,
       "to_roi_id": 3,
-      "target_mm": 40.0,
+      "target_mm": 43.0,
       "tol_mm": 2.5
     },
     {
