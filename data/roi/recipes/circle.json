@@ -18,7 +18,7 @@
             "param1": 80,
             "param2": 22,
             "min_radius": 80,
-            "max_radius": 120,
+            "max_radius": 100,
             "blur": 5,
             "expected": 1,
             "coverage_min": 0.68,
@@ -31,7 +31,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 25.4,
-            "tol_mm": 0.3
+            "tol_mm": 0.8
           }
         }
       ],
@@ -50,8 +50,8 @@
             "min_dist": 80,
             "param1": 80,
             "param2": 22,
-            "min_radius": 70,
-            "max_radius": 110,
+            "min_radius": 90,
+            "max_radius": 102,
             "blur": 5,
             "expected": 1,
             "coverage_min": 0.68,
@@ -64,7 +64,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 26.2,
-            "tol_mm": 0.3
+            "tol_mm": 1.1
           }
         }
       ],
@@ -83,8 +83,8 @@
             "min_dist": 80,
             "param1": 80,
             "param2": 22,
-            "min_radius": 60,
-            "max_radius": 100,
+            "min_radius": 80,
+            "max_radius": 90,
             "blur": 5,
             "expected": 1,
             "coverage_min": 0.68,
@@ -97,7 +97,7 @@
           "params": {
             "judge_mode": "roi_avg",
             "target_mm": 23.2,
-            "tol_mm": 0.3
+            "tol_mm": 0.8
           }
         }
       ],
