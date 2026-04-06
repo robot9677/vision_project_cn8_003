@@ -85,6 +85,14 @@ def _apply_roi_distance_links(*, results, rois, recipe):
 
         from_metrics.setdefault("roi_distance_links", []).append(link)
 
+        print(
+            f"[DBG ROI DIST] "
+            f"R{from_roi_id}->R{to_roi_id} "
+            f"px={dist_px:.1f} "
+            f"mm={link.get('distance_mm', None)} "
+            f"cnt={len(from_metrics.get('roi_distance_links', []))}"
+        )
+
 def process_all_rois(
     *,
     inspector,
@@ -237,5 +245,5 @@ def process_all_rois(
         rois=getattr(inspector.roi_mgr, "rois", []),
         recipe=inspector.recipe or {},
     )
-    
+
     return results
