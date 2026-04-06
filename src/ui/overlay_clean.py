@@ -401,6 +401,11 @@ def _draw_roi_distance_links(img, metrics):
             mx = int((p1[0] + p2[0]) / 2)
             my = int((p1[1] + p2[1]) / 2)
 
+            from_roi_id = int(link.get("from_roi_id", -1))
+            to_roi_id = int(link.get("to_roi_id", -1))
+
+            offset_y = -28 if from_roi_id == 2 else 28
+            
             txt = None
             judge_unit = str(link.get("judge_unit", "")).strip().lower()
 
@@ -412,17 +417,9 @@ def _draw_roi_distance_links(img, metrics):
                 if target is not None and tol is not None:
                     lo = float(target) - float(tol)
                     hi = float(target) + float(tol)
-                    txt = (
-                        f"R{int(link.get('from_roi_id', -1))}-"
-                        f"R{int(link.get('to_roi_id', -1))}: "
-                        f"{val:.2f} mm ({lo:.2f}~{hi:.2f})"
-                    )
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f} ({lo:.2f}~{hi:.2f})"
                 else:
-                    txt = (
-                        f"R{int(link.get('from_roi_id', -1))}-"
-                        f"R{int(link.get('to_roi_id', -1))}: "
-                        f"{val:.2f} mm"
-                    )
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.2f}"
 
             elif judge_unit == "px":
                 val = float(link.get("distance_px", 0.0))
@@ -432,35 +429,40 @@ def _draw_roi_distance_links(img, metrics):
                 if target is not None and tol is not None:
                     lo = float(target) - float(tol)
                     hi = float(target) + float(tol)
-                    txt = (
-                        f"R{int(link.get('from_roi_id', -1))}-"
-                        f"R{int(link.get('to_roi_id', -1))}: "
-                        f"{val:.1f} px ({lo:.1f}~{hi:.1f})"
-                    )
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f} ({lo:.1f}~{hi:.1f})"
                 else:
-                    txt = (
-                        f"R{int(link.get('from_roi_id', -1))}-"
-                        f"R{int(link.get('to_roi_id', -1))}: "
-                        f"{val:.1f} px"
-                    )
+                    txt = f"R{from_roi_id}-{to_roi_id} {val:.1f}"
 
             elif "distance_mm" in link:
-                txt = (
-                    f"R{int(link.get('from_roi_id', -1))}-"
-                    f"R{int(link.get('to_roi_id', -1))}: "
-                    f"{float(link['distance_mm']):.2f} mm"
-                )
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link['distance_mm']):.2f}"
             else:
-                txt = (
-                    f"R{int(link.get('from_roi_id', -1))}-"
-                    f"R{int(link.get('to_roi_id', -1))}: "
-                    f"{float(link.get('distance_px', 0.0)):.1f} px"
-                )
+                txt = f"R{from_roi_id}-{to_roi_id} {float(link.get('distance_px', 0.0)):.1f}"
+
+            if not txt:
+                continue
+
+            (tw, th), baseline = cv2.getTextSize(
+                txt, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1
+            )
+
+            tx = int(mx - (tw / 2))
+            ty = int(my + offset_y)
 
             cv2.putText(
                 img,
                 txt,
-                (mx - 70, my - 8),
+                (tx, ty),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (0, 0, 0),
+                3,
+                cv2.LINE_AA,
+            )
+
+            cv2.putText(
+                img,
+                txt,
+                (tx, ty),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.4,
                 col,
