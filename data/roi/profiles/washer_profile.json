@@ -35,7 +35,7 @@
         "enabled": true,
         "targets": "all",
         "enable_rotation": false,
-        "angle_range": 3.0,
+        "angle_range": 5.0,
         "angle_step": 1.0,
         "max_abs_angle": 8.0,
         "search_margin_x": 100,
