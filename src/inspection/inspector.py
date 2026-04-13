@@ -337,7 +337,7 @@ class Inspector:
 
         if not self._roi_debug_window_init:
             cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("ROI DEBUG", 900, 500)
+            cv2.resizeWindow("ROI DEBUG", 900, 350)
             self._roi_debug_window_init = True
 
         cv2.imshow("ROI DEBUG", grid)
