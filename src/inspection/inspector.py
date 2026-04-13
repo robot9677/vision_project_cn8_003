@@ -294,8 +294,8 @@ class Inspector:
         raw_vis = _to_bgr(raw_crop)
         last_vis = _to_bgr(last_img)
 
-        cell_w = 110
-        cell_h = 70
+        cell_w = 110*2
+        cell_h = 70*2
 
         def _fit_cell(im, title, color):
             canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
