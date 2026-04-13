@@ -1,6 +1,6 @@
 {
   "product_name": "vision_inspection_basic",
-  "recipe_name": "circle",
+  "recipe_name": "barcode",
   "camera_profile": "default",
   "calibration": {
     "active": "fixed_split_test",
