@@ -587,6 +587,8 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
         "washer_mode": "blob",
     }
 
+    print(f"[DBG WASHER] edge={edge_count} mean={mean_val:.1f} min_edge={min_edge} min_mean={min_mean} ok={ok}")
+
     return bw, meta, ok, "OK" if ok else "WASHER_MISSING"
 
 def _circle_size(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
