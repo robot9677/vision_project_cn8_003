@@ -521,6 +521,8 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
 
         ok = (edge_count >= min_edge) and (mean_val >= min_mean)
 
+        print(f"[DBG WASHER] edge={edge_count} mean={mean_val:.1f} min_edge={min_edge} min_mean={min_mean} ok={ok}")
+
         dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
         cv2.rectangle(dbg, (0, y1), (w - 1, y2 - 1), (0, 255, 255), 1)
         dbg[y1:y2, :, 1] = np.maximum(dbg[y1:y2, :, 1], band)
