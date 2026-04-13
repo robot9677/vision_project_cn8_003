@@ -29,6 +29,6 @@
   },
   "tracker": {
   "fallback_score_thr": 0.62,
-  "global_reacquire_interval": 999
+  "global_reacquire_interval": 15
   }
 }
