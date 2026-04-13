@@ -294,8 +294,8 @@ class Inspector:
         raw_vis = _to_bgr(raw_crop)
         last_vis = _to_bgr(last_img)
 
-        cell_w = 110*2
-        cell_h = 70*2
+        cell_w = 110
+        cell_h = 70
 
         def _fit_cell(im, title, color):
             canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
@@ -305,8 +305,8 @@ class Inspector:
                 nw = max(1, int(w * scale))
                 nh = max(1, int(h * scale))
                 resized = cv2.resize(im, (nw, nh), interpolation=cv2.INTER_NEAREST)
-                x0 = (cell_w - nw) // 2
-                y0 = 24 + (cell_h - 24 - nh) // 2
+                x0 = (cell_w - nw) # // 2
+                y0 = 24 + (cell_h - 24 - nh)  #// 2
                 canvas[y0:y0+nh, x0:x0+nw] = resized
             cv2.putText(canvas, title, (4, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.2, color, 1)
             cv2.rectangle(canvas, (0, 0), (cell_w - 1, cell_h - 1), (60, 60, 60), 1)
