@@ -302,11 +302,11 @@ class Inspector:
             if im is not None:
                 h, w = im.shape[:2]
                 scale = min((cell_w - 8) / max(1, w), (cell_h - 28) / max(1, h))
-                nw = max(1, int(w * scale))
-                nh = max(1, int(h * scale))
+                nw = max(1, int(w ))#* scale))
+                nh = max(1, int(h ))#* scale))
                 resized = cv2.resize(im, (nw, nh), interpolation=cv2.INTER_NEAREST)
-                x0 = (cell_w - nw) # // 2
-                y0 = 24 + (cell_h - 24 - nh)  #// 2
+                x0 = (cell_w - nw)  // 2
+                y0 = 24 + (cell_h - 24 - nh)  // 2
                 canvas[y0:y0+nh, x0:x0+nw] = resized
             cv2.putText(canvas, title, (4, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.2, color, 1)
             cv2.rectangle(canvas, (0, 0), (cell_w - 1, cell_h - 1), (60, 60, 60), 1)
