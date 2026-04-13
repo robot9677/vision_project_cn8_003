@@ -18,8 +18,8 @@
             "blur": 3,
             "canny_low": 40,
             "canny_high": 120,
-            "band_top": 0.42,
-            "band_bottom": 0.68,
+            "band_top": 0.1,
+            "band_bottom": 0.9,
             "min_edge": 220,
             "min_mean": 45.0
           }
