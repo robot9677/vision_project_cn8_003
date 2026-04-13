@@ -20,7 +20,7 @@
             "canny_high": 120,
             "band_top": 0.42,
             "band_bottom": 0.68,
-            "min_edge": 275,
+            "min_edge": 220,
             "min_mean": 45.0
           }
         }
