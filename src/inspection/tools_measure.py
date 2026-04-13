@@ -465,16 +465,13 @@ def _presence_blob(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any])
 
 def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     """
-    washer 전용 (기존 tools_measure_washer 대체)
-
-    params:
-      - polarity: "white"|"black"
-      - min_area
-      - max_area
-      - min_count
+    washer 전용
+    - legacy edge-band mode 지원
+    - fallback blob mode 지원
     """
+
     if img is None or img.size == 0:
-        return img, {"washer_count": 0}, False, "EMPTY"
+        return img, {"washer_count": 0, "edge_count": 0}, False, "EMPTY"
 
     if img.dtype != np.uint8:
         img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -484,11 +481,91 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
     if img8.ndim == 3:
         img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
 
-    _, bw = cv2.threshold(img8, 0, 255, cv2.THRESH_BINARY)
+    blur = int(params.get("blur", 0))
+    if blur >= 3:
+        if blur % 2 == 0:
+            blur += 1
+        img8 = cv2.GaussianBlur(img8, (blur, blur), 0)
 
-    polarity = str(params.get("polarity", "white")).lower()
-    if polarity == "black":
-        bw = cv2.bitwise_not(bw)
+    mean_val = float(np.mean(img8))
+
+    # -----------------------------
+    # 1) legacy washer mode
+    # -----------------------------
+    use_legacy = (
+        ("min_edge" in params) or
+        ("band_top" in params) or
+        ("band_bottom" in params) or
+        ("canny_low" in params) or
+        ("canny_high" in params)
+    )
+
+    if use_legacy:
+        canny_low = int(params.get("canny_low", 40))
+        canny_high = int(params.get("canny_high", 120))
+
+        edges = cv2.Canny(img8, canny_low, canny_high)
+
+        h, w = edges.shape[:2]
+        band_top = float(params.get("band_top", 0.35))
+        band_bottom = float(params.get("band_bottom", 0.75))
+
+        y1 = max(0, min(h - 1, int(round(h * band_top))))
+        y2 = max(y1 + 1, min(h, int(round(h * band_bottom))))
+
+        band = edges[y1:y2, :]
+        edge_count = int(np.count_nonzero(band))
+
+        min_edge = int(params.get("min_edge", 165))
+        min_mean = float(params.get("min_mean", 0.0))
+
+        ok = (edge_count >= min_edge) and (mean_val >= min_mean)
+
+        dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
+        cv2.rectangle(dbg, (0, y1), (w - 1, y2 - 1), (0, 255, 255), 1)
+        dbg[y1:y2, :, 1] = np.maximum(dbg[y1:y2, :, 1], band)
+
+        meta = {
+            "washer_count": 1 if edge_count > 0 else 0,
+            "edge_count": int(edge_count),
+            "washer_mean": float(mean_val),
+            "washer_band_top": float(band_top),
+            "washer_band_bottom": float(band_bottom),
+            "washer_mode": "legacy_edge_band",
+        }
+
+        if not ok:
+            if edge_count < min_edge:
+                return dbg, meta, False, "WASHER_EDGE_LOW"
+            return dbg, meta, False, "WASHER_MEAN_LOW"
+
+        return dbg, meta, True, "OK"
+
+    # -----------------------------
+    # 2) fallback blob mode
+    # -----------------------------
+    thresh_mode = str(params.get("thresh_mode", "fixed")).lower()
+    if thresh_mode == "mean_offset":
+        offset = float(params.get("offset", 8))
+        thresh = int(np.clip(mean_val + offset, 0, 255))
+    else:
+        thresh = int(params.get("thresh", 180))
+
+    polarity = str(params.get("polarity", "bright")).lower()
+    if polarity == "dark":
+        _, bw = cv2.threshold(img8, thresh, 255, cv2.THRESH_BINARY_INV)
+    else:
+        _, bw = cv2.threshold(img8, thresh, 255, cv2.THRESH_BINARY)
+
+    open_k = int(params.get("open_kernel", 0))
+    if open_k >= 2:
+        kernel = np.ones((open_k, open_k), np.uint8)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel)
+
+    close_k = int(params.get("close_kernel", 0))
+    if close_k >= 2:
+        kernel = np.ones((close_k, close_k), np.uint8)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel)
 
     num, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
 
@@ -497,7 +574,6 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
     min_count = int(params.get("min_count", 1))
 
     count = 0
-
     for i in range(1, num):
         area = int(stats[i, cv2.CC_STAT_AREA])
         if min_area <= area <= max_area:
@@ -506,7 +582,9 @@ def _washer_presence(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
     ok = count >= min_count
 
     meta = {
-        "washer_count": count
+        "washer_count": int(count),
+        "washer_mean": float(mean_val),
+        "washer_mode": "blob",
     }
 
     return bw, meta, ok, "OK" if ok else "WASHER_MISSING"
