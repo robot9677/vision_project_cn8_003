@@ -30,6 +30,7 @@ class Stabilizer:
             "ema_y": float(r["y"]),
             "w": int(r["w"]),
             "h": int(r["h"]),
+            "angle": float(r.get("angle", 0.0)),
             "hist": deque(maxlen=self.window)
         }
 
@@ -54,6 +55,7 @@ class Stabilizer:
             s["ema_y"] = self.alpha * s["ema_y"] + (1.0 - self.alpha) * y
             s["w"] = int(r.get("w", s["w"]))
             s["h"] = int(r.get("h", s["h"]))
+            s["angle"] = float(r.get("angle", s.get("angle", 0.0)))
 
             # shift magnitude between current raw and ema
             dx = x - s["ema_x"]
