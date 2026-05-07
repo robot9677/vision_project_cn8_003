@@ -71,8 +71,8 @@ class Stabilizer:
                 "x": s["ema_x"],
                 "y": s["ema_y"],
                 "w": s["w"],
-                "h": s["h"]
-                "angle": s.get("angle", 0.0),
+                "h": s["h"],
+                "angle": s.get("angle", 0.0)
             })
 
         # stability: all ROIs have small recent shifts
