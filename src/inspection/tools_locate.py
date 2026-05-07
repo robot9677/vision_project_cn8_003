@@ -246,10 +246,25 @@ def _find_line(crop, params, ctx):
             angle = math.degrees(math.atan2(dy, dx))
             length = float(math.hypot(dx, dy))
 
+            angle_norm = float(angle)
+            while angle_norm > 90.0:
+                angle_norm -= 180.0
+            while angle_norm <= -90.0:
+                angle_norm += 180.0
+
+            expected_abs_angle = params.get("expected_abs_angle_deg", None)
+            angle_tol = float(params.get("angle_tol_deg", 180.0))
+
+            if expected_abs_angle is not None:
+                expected_abs_angle = float(expected_abs_angle)
+                if abs(abs(angle_norm) - expected_abs_angle) > angle_tol:
+                    continue
+
             found.append({
                 "x1": x1, "y1": y1,
                 "x2": x2, "y2": y2,
                 "angle": float(angle),
+                "angle_norm": float(angle_norm),
                 "length": length,
             })
             cv2.line(dbg, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -286,10 +301,25 @@ def _find_line(crop, params, ctx):
         ok = False
         reason = "LINE_COUNT_HIGH"
 
+    best = None
+    if found:
+        found = sorted(found, key=lambda v: v["length"], reverse=True)
+        best = found[0]
+
     meta = {
         "line_count": int(count),
         "lines": found,
     }
+
+    if best is not None:
+        meta["line_p1"] = [int(best["x1"]), int(best["y1"])]
+        meta["line_p2"] = [int(best["x2"]), int(best["y2"])]
+        meta["line_center"] = [
+            float((best["x1"] + best["x2"]) / 2.0),
+            float((best["y1"] + best["y2"]) / 2.0),
+        ]
+        meta["line_angle_deg"] = float(best.get("angle_norm", best["angle"]))
+        meta["line_length"] = float(best["length"])
 
     if best is not None:
         meta["line_p1"] = [int(best["x1"]), int(best["y1"])]
