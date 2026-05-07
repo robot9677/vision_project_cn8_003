@@ -226,6 +226,49 @@ def _draw_circle_overlay(img, x, y, w, h, metrics):
         except Exception:
             pass
 
+def _draw_line_overlay(img, x, y, metrics):
+    if not (metrics and isinstance(metrics, dict)):
+        return
+
+    p1 = metrics.get("line_p1")
+    p2 = metrics.get("line_p2")
+    ctr = metrics.get("line_center")
+    ang = metrics.get("line_angle_deg", None)
+
+    if p1 is None or p2 is None:
+        lines = metrics.get("lines") or []
+        if not lines:
+            return
+        ln = lines[0]
+        p1 = [int(ln["x1"]), int(ln["y1"])]
+        p2 = [int(ln["x2"]), int(ln["y2"])]
+        ctr = [
+            float((ln["x1"] + ln["x2"]) / 2.0),
+            float((ln["y1"] + ln["y2"]) / 2.0),
+        ]
+        ang = float(ln.get("angle_norm", ln.get("angle", 0.0)))
+
+    gp1 = (int(x + p1[0]), int(y + p1[1]))
+    gp2 = (int(x + p2[0]), int(y + p2[1]))
+
+    cv2.line(img, gp1, gp2, (0, 255, 255), 2, cv2.LINE_AA)
+
+    if ctr is not None:
+        gc = (int(x + ctr[0]), int(y + ctr[1]))
+        cv2.circle(img, gc, 4, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+
+        if ang is not None:
+            txt = f"{float(ang):.1f} deg"
+            cv2.putText(
+                img,
+                txt,
+                (gc[0] + 6, gc[1] - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
 def _draw_distance_overlay(img, x, y, h, metrics):
     if not (metrics and isinstance(metrics, dict)):
@@ -863,6 +906,9 @@ def draw_rois(
 
         # circle draw
         _draw_circle_overlay(img, x, y, w, h, metrics)
+
+        # line draw
+        _draw_line_overlay(img, x, y, metrics)
 
         # distance judge
         _draw_distance_overlay(img, x, y, h, metrics)

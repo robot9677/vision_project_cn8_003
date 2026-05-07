@@ -1,0 +1,33 @@
+{
+  "default": {
+    "type": "none"
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
+  },
+  "inspections": [
+    {
+      "id": "line_roi2",
+      "enabled": true,
+      "roi_id": 2,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.line",
+          "params": {
+            "blur": 3,
+            "canny1": 50,
+            "canny2": 150,
+            "rho": 1,
+            "theta_deg": 1.0,
+            "threshold": 40,
+            "min_length": 40,
+            "max_gap": 10,
+            "min_count": 1
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    }
+  ]
+}

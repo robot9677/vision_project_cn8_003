@@ -254,6 +254,21 @@ def _find_line(crop, params, ctx):
             })
             cv2.line(dbg, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
+    best = None
+    if found:
+        found = sorted(found, key=lambda v: v["length"], reverse=True)
+        best = found[0]
+
+        ang = float(best["angle"])
+        if ang > 90.0:
+            ang -= 180.0
+        elif ang <= -90.0:
+            ang += 180.0
+
+        best["angle_norm"] = float(ang)
+        best["cx"] = float((best["x1"] + best["x2"]) / 2.0)
+        best["cy"] = float((best["y1"] + best["y2"]) / 2.0)
+
     count = len(found)
     expected = params.get("expected")
     min_count = params.get("min_count")
@@ -275,6 +290,14 @@ def _find_line(crop, params, ctx):
         "line_count": int(count),
         "lines": found,
     }
+
+    if best is not None:
+        meta["line_p1"] = [int(best["x1"]), int(best["y1"])]
+        meta["line_p2"] = [int(best["x2"]), int(best["y2"])]
+        meta["line_center"] = [float(best["cx"]), float(best["cy"])]
+        meta["line_angle_deg"] = float(best.get("angle_norm", best["angle"]))
+        meta["line_length"] = float(best["length"])
+
     return dbg, meta, bool(ok), reason
 
 
