@@ -284,6 +284,8 @@ def _find_line(crop, params, ctx):
         best["cx"] = float((best["x1"] + best["x2"]) / 2.0)
         best["cy"] = float((best["y1"] + best["y2"]) / 2.0)
 
+    print("[DBG LINE]", [(round(v.get("angle_norm", v["angle"]), 2), round(v["length"], 1)) for v in found[:8]])
+
     count = len(found)
     expected = params.get("expected")
     min_count = params.get("min_count")
