@@ -286,13 +286,14 @@ def _find_line(crop, params, ctx):
 
     roi_angle_deg = float(params.get("roi_angle_deg", 0.0))
 
-    global_ang = float(best["angle_norm"]) + roi_angle_deg
-    while global_ang > 90.0:
-        global_ang -= 180.0
-    while global_ang <= -90.0:
-        global_ang += 180.0
+    if best is not None:
+        global_ang = float(best["angle_norm"]) + roi_angle_deg
+        while global_ang > 90.0:
+            global_ang -= 180.0
+        while global_ang <= -90.0:
+            global_ang += 180.0
 
-    best["angle_global"] = float(global_ang)
+        best["angle_global"] = float(global_ang)
 
     print("[DBG LINE]", [(round(v.get("angle_norm", v["angle"]), 2), round(v["length"], 1)) for v in found[:8]])
 
