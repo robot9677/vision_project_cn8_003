@@ -964,6 +964,51 @@ def _circle_distance(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any
     ok = (target - tol) <= judge_value <= (target + tol)
     return img, meta, bool(ok), "OK" if ok else "DISTANCE_OUT_OF_TOL"
 
+def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    metrics = ctx.get("metrics", {}) if isinstance(ctx, dict) else {}
+
+    judge_mode = str(params.get("judge_mode", "global")).strip().lower()
+
+    if judge_mode == "local":
+        value = metrics.get("line_angle_local_deg", None)
+    else:
+        value = metrics.get("line_angle_global_deg", None)
+
+    if value is None:
+        value = metrics.get("line_angle_deg", None)
+
+    if value is None:
+        lines = metrics.get("lines") or []
+        if not lines:
+            return img, {"line_angle_count": 0}, False, "NO_LINE"
+        ln = lines[0]
+        value = float(ln.get("angle_norm", ln.get("angle", 0.0)))
+
+    target = params.get("target_angle_deg", None)
+    tol = params.get("tol_angle_deg", None)
+
+    meta = {
+        "line_angle_count": 1,
+        "line_angle_judge_mode": judge_mode,
+        "line_angle_value_deg": float(value),
+    }
+
+    if target is None or tol is None:
+        return img, meta, True, "OK"
+
+    target = float(target)
+    tol = float(tol)
+
+    ok = (target - tol) <= float(value) <= (target + tol)
+
+    meta.update({
+        "line_angle_target_deg": float(target),
+        "line_angle_tol_deg": float(tol),
+        "line_angle_ok": bool(ok),
+    })
+
+    return img, meta, bool(ok), "OK" if ok else "ANGLE_OUT_OF_TOL"
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -974,3 +1019,4 @@ def register_measure_tools() -> None:
     register_tool("measure.washer", _washer_presence)
     register_tool("measure.circle_size", _circle_size)
     register_tool("measure.circle_distance", _circle_distance)
+    register_tool("measure.line_angle", _line_angle)

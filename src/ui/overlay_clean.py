@@ -289,6 +289,40 @@ def _draw_line_overlay(img, x, y, w, h, angle, metrics):
             1,
             cv2.LINE_AA,
         )
+        
+    target = metrics.get("line_angle_target_deg", None)
+    tol = metrics.get("line_angle_tol_deg", None)
+    judge_ok = metrics.get("line_angle_ok", None)
+
+    if target is not None and tol is not None:
+        lo = float(target) - float(tol)
+        hi = float(target) + float(tol)
+
+        spec_txt = f"SPEC:{lo:.1f}~{hi:.1f} deg"
+        cv2.putText(
+            img,
+            spec_txt,
+            (x + 10, y + h + 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (200, 200, 0),
+            1,
+            cv2.LINE_AA,
+        )
+
+        if judge_ok is not None:
+            col = (0, 255, 0) if bool(judge_ok) else (0, 0, 255)
+            txt2 = "OK" if bool(judge_ok) else "NG"
+            cv2.putText(
+                img,
+                txt2,
+                (x + w - 40, y + 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                col,
+                2,
+                cv2.LINE_AA,
+            )
 
 def _draw_distance_overlay(img, x, y, h, metrics):
     if not (metrics and isinstance(metrics, dict)):

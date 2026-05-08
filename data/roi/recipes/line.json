@@ -11,24 +11,32 @@
       "enabled": true,
       "roi_id": 2,
       "type": "toolchain",
-      "tools": [
-        {
-          "tool": "locate.line",
-          "params": {
-            "blur": 3,
-            "canny1": 50,
-            "canny2": 150,
-            "rho": 1,
-            "theta_deg": 1.0,
-            "threshold": 40,
-            "min_length": 40,
-            "max_gap": 10,
-            "min_count": 1,
-            "expected_abs_angle_deg": 0.0,
-            "angle_tol_deg": 12.0
-          }
-        }
-      ],
+        "tools": [
+            {
+                "tool": "locate.line",
+                "params": {
+                "blur": 3,
+                "canny1": 50,
+                "canny2": 150,
+                "rho": 1,
+                "theta_deg": 1.0,
+                "threshold": 40,
+                "min_length": 40,
+                "max_gap": 10,
+                "min_count": 1,
+                "expected_abs_angle_deg": 0.0,
+                "angle_tol_deg": 12.0
+                }
+            },
+            {
+                "tool": "measure.line_angle",
+                "params": {
+                "judge_mode": "global",
+                "target_angle_deg": 45.0,
+                "tol_angle_deg": 3.0
+                }
+            }
+        ],
       "tool_decision": "all_ok"
     }
   ]

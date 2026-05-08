@@ -284,6 +284,16 @@ def _find_line(crop, params, ctx):
         best["cx"] = float((best["x1"] + best["x2"]) / 2.0)
         best["cy"] = float((best["y1"] + best["y2"]) / 2.0)
 
+    roi_angle_deg = float(params.get("roi_angle_deg", 0.0))
+
+    global_ang = float(best["angle_norm"]) + roi_angle_deg
+    while global_ang > 90.0:
+        global_ang -= 180.0
+    while global_ang <= -90.0:
+        global_ang += 180.0
+
+    best["angle_global"] = float(global_ang)
+
     print("[DBG LINE]", [(round(v.get("angle_norm", v["angle"]), 2), round(v["length"], 1)) for v in found[:8]])
 
     count = len(found)
@@ -320,14 +330,9 @@ def _find_line(crop, params, ctx):
             float((best["x1"] + best["x2"]) / 2.0),
             float((best["y1"] + best["y2"]) / 2.0),
         ]
-        meta["line_angle_deg"] = float(best.get("angle_norm", best["angle"]))
-        meta["line_length"] = float(best["length"])
-
-    if best is not None:
-        meta["line_p1"] = [int(best["x1"]), int(best["y1"])]
-        meta["line_p2"] = [int(best["x2"]), int(best["y2"])]
-        meta["line_center"] = [float(best["cx"]), float(best["cy"])]
-        meta["line_angle_deg"] = float(best.get("angle_norm", best["angle"]))
+        meta["line_angle_local_deg"] = float(best.get("angle_norm", best["angle"]))
+        meta["line_angle_global_deg"] = float(best.get("angle_global", best.get("angle_norm", best["angle"])))
+        meta["line_angle_deg"] = float(best.get("angle_global", best.get("angle_norm", best["angle"])))
         meta["line_length"] = float(best["length"])
 
     return dbg, meta, bool(ok), reason

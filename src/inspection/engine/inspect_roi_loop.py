@@ -229,6 +229,19 @@ def process_all_rois(
         for cfg in inspection_cfgs:
             cfg = dict(cfg)
             cfg["product_profile"] = inspector.runtime_cfg.get("_product_profile", {}) or {}
+
+            roi_angle_deg = float(roi.get("angle", 0.0)) + float(roi_dangle)
+
+            tools = []
+            for step in (cfg.get("tools") or []):
+                step = dict(step)
+                params = dict(step.get("params") or {})
+                params["roi_angle_deg"] = float(roi_angle_deg)
+                step["params"] = params
+                tools.append(step)
+
+            if tools:
+                cfg["tools"] = tools
             
             job_ok, metrics, job_reason, job_type = inspector._run_inspection_job(
                 crop=crop,
