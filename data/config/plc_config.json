@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "backend": "modbus_rtu_slave",
 
   "serial": {

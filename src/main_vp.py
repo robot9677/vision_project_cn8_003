@@ -443,6 +443,42 @@ class VisionApp:
                 cache_every_n=int(cfg.get("auto_inspect_every_n", 3)),
             )
 
+    def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
+        st = self.state
+
+        cmd = self.plc.poll_command()
+        if cmd != "inspect":
+            return
+
+        if st.edit_mode:
+            st.status = "PLC INSPECT REJECTED: EDIT MODE"
+            self.plc.set_error()
+            return
+
+        try:
+            self.plc.set_busy()
+
+            run_inspect_once(
+                cam=self.cam,
+                inspector=self.inspector,
+                runtime_cfg=self.runtime_cfg,
+                state=st,
+                frame_gray8=frame_gray8,
+                vis_bgr=vis_bgr,
+                avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
+                use_cache=False,
+                cache_every_n=1,
+            )
+
+            ok = bool(st.last_overall_ok)
+            self.plc.set_done(ok)
+            st.status = f"PLC INSPECT DONE: {'OK' if ok else 'NG'}"
+
+        except Exception as e:
+            print("[PLC] inspect failed:", e)
+            st.status = f"PLC INSPECT ERROR: {e}"
+            self.plc.set_error()
+
     def _render_run_frame(self, vis, frame_gray8):
         st = self.state
         run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
@@ -758,6 +794,8 @@ class VisionApp:
                 self.editor.update(vis)
             else:
                 self._render_run_frame(vis, frame_gray8)
+
+            self._run_plc_inspect_tick(frame_gray8, vis)
 
             if not st.edit_mode:
                 self._run_auto_inspect_tick(frame_gray8, vis)
