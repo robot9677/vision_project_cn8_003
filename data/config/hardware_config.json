@@ -1,0 +1,38 @@
+﻿{
+  "active_camera_set": "b0429_single",
+  "active_light_set": "mock_single",
+
+  "camera_sets": {
+    "b0429_single": {
+      "mode": "single",
+      "backend": "gstreamer",
+      "cameras": [
+        {
+          "id": "cam1",
+          "name": "B0429_AR0234",
+          "device": "/dev/video0",
+          "width": 1280,
+          "height": 720,
+          "fps": 30,
+          "pipeline_type": "b0429_gray16_to_gray8",
+          "input_format": "GRAY16_LE",
+          "output_format": "GRAY8",
+          "camera_profile": "default"
+        }
+      ]
+    }
+  },
+
+  "light_sets": {
+    "mock_single": {
+      "backend": "mock",
+      "lights": [
+        {
+          "id": "light1",
+          "camera_id": "cam1",
+          "brightness": 70
+        }
+      ]
+    }
+  }
+}
