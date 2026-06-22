@@ -1,6 +1,11 @@
+import os
 import select
 import sys
 import time
+
+SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
 from app.app_paths import PLC_CONFIG_PATH
 from plc.plc_config_loader import load_plc_config
