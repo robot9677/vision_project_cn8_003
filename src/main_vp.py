@@ -17,6 +17,9 @@ from inspection.stabilizer import Stabilizer
 from inspection.normalize import normalize_frame
 from inspection.logger import save_snapshot, save_template_copy
 
+from plc.plc_config_loader import load_plc_config
+from plc.plc_controller import create_plc_controller
+
 from ui import overlay_clean as overlay
 from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
@@ -30,6 +33,7 @@ from modes.run_renderer import draw_run_tracking
 from runtime.runtime_config_loader import load_runtime_config
 from app.app_setup import ensure_dirs
 from app.app_paths import (
+    PLC_CONFIG_PATH,
     HARDWARE_CONFIG_PATH,
     PRODUCT_PROFILE_PATH,
     PROFILES_DIR,
@@ -138,6 +142,7 @@ class VisionApp:
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.hardware_cfg = load_hardware_config(HARDWARE_CONFIG_PATH)
+        self.plc_cfg = load_plc_config(PLC_CONFIG_PATH)
 
         profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
         profile_path = PRODUCT_PROFILE_PATH
@@ -170,6 +175,9 @@ class VisionApp:
         self.runtime_cfg["_product_profile"] = self.product_profile
         self.runtime_cfg["_hardware_config"] = self.hardware_cfg
         self.runtime_cfg["_camera_info"] = self.camera_info
+
+        self.plc = create_plc_controller(self.plc_cfg)
+        self.runtime_cfg["_plc_config"] = self.plc_cfg
         
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
@@ -722,6 +730,7 @@ class VisionApp:
     def run(self):
         st = self.state
         self.cam.open()
+        self.plc.start()
 
         last_ok_frame_time = time.time()
 
@@ -765,6 +774,11 @@ class VisionApp:
 
             if st.quit_requested:
                 break
+
+        try:
+            self.plc.stop()
+        except Exception as e:
+            print("[PLC] stop failed:", e)
 
         self.cam.release()
         cv2.destroyAllWindows()

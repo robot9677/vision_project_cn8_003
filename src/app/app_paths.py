@@ -5,6 +5,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 CONFIG_DIR = os.path.join(DATA_DIR, "config")
+
 ROI_DIR = os.path.join(DATA_DIR, "roi")
 
 ROI_PATH = os.path.join(ROI_DIR, "roi.json") # fallback
@@ -14,6 +15,7 @@ DEFAULT_RECIPE_PATH = os.path.join(RECIPES_DIR, "tape_presence.json")
 
 RUNTIME_CONFIG_PATH = os.path.join(ROI_DIR, "runtime_config.json")
 HARDWARE_CONFIG_PATH = os.path.join(CONFIG_DIR, "hardware_config.json")
+PLC_CONFIG_PATH = os.path.join(CONFIG_DIR, "plc_config.json")
 
 PROFILES_DIR = os.path.join(ROI_DIR, "profiles")
 PRODUCT_PROFILE_PATH = os.path.join(ROI_DIR, "product_profile.json")  # fallback only
