@@ -8,7 +8,8 @@ from enum import Enum
 import cv2
 import numpy as np
 
-from capture.camera_gst import CameraGST
+from capture.camera_factory import create_camera_from_hardware_config
+from hardware.hardware_config_loader import load_hardware_config
 from roi.roi_manager import ROIManager
 from roi.roi_editor import ROIEditor
 from inspection.inspector import Inspector
@@ -29,6 +30,7 @@ from modes.run_renderer import draw_run_tracking
 from runtime.runtime_config_loader import load_runtime_config
 from app.app_setup import ensure_dirs
 from app.app_paths import (
+    HARDWARE_CONFIG_PATH,
     PRODUCT_PROFILE_PATH,
     PROFILES_DIR,
     TEMPLATE_PATH,
@@ -64,18 +66,6 @@ class UICmd(Enum):
 # Config
 # =========================
 DEV_MODE = True
-
-DEV    = "/dev/video0"
-WIDTH  = 1280
-HEIGHT = 720
-FPS    = 30
-
-GST_PIPELINE = (
-    f"v4l2src device={DEV} ! "
-    f"video/x-raw,format=GRAY16_LE,width={WIDTH},height={HEIGHT},framerate={FPS}/1 ! "
-    "videoconvert ! video/x-raw,format=GRAY8 ! "
-    "appsink drop=true max-buffers=1 sync=false"
-)
 
 POSE_ROI_ID_STR = "1"          # pose 판단 ROI (문자열 키)
 POSE_METRIC_KEY = "blob_count" # pose 판단 metric
@@ -147,6 +137,7 @@ class VisionApp:
         ensure_dirs(DATA_DIR, ROI_DIR, LOGS_ROOT)
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
+        self.hardware_cfg = load_hardware_config(HARDWARE_CONFIG_PATH)
 
         profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
         profile_path = PRODUCT_PROFILE_PATH
@@ -159,17 +150,31 @@ class VisionApp:
         self.product_profile = load_product_profile(profile_path)
         print("[PROFILE]", profile_path)
 
-        self.cam = CameraGST(GST_PIPELINE)
-        camera_profile = self.product_profile.get("camera_profile", "default")
+        self.cam, self.camera_info = create_camera_from_hardware_config(self.hardware_cfg)
+
+        self.frame_width = int(self.camera_info.get("width", 1280))
+        self.frame_height = int(self.camera_info.get("height", 720))
+
+        camera_profile = self.product_profile.get(
+            "camera_profile",
+            self.camera_info.get("camera_profile", "default"),
+        )
+
         if hasattr(self.cam, "set_profile"):
             self.cam.set_profile(camera_profile)
-        print("[MAIN] CameraGST created")
+
+        print("[MAIN] camera created", self.camera_info.get("name", "camera"))
+        print("[MAIN] camera device", self.camera_info.get("device", ""))
+        print("[MAIN] camera size", self.frame_width, self.frame_height)
 
         self.runtime_cfg["_product_profile"] = self.product_profile
+        self.runtime_cfg["_hardware_config"] = self.hardware_cfg
+        self.runtime_cfg["_camera_info"] = self.camera_info
+        
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
         selected_recipe_path = recipe_candidate if os.path.exists(recipe_candidate) else DEFAULT_RECIPE_PATH
-        self.roi_mgr = ROIManager(frame_size=(WIDTH, HEIGHT))
+        self.roi_mgr = ROIManager(frame_size=(self.frame_width, self.frame_height))
 
         profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
 
@@ -214,7 +219,7 @@ class VisionApp:
 
         self.win = "Static Mode - ROI Setup"
         cv2.namedWindow(self.win, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.win, WIDTH, HEIGHT)
+        cv2.resizeWindow(self.win, self.frame_width, self.frame_height)
         cv2.setMouseCallback(self.win, self._mouse_router)
         self.UICmd = UICmd
         self.baseline_path = os.path.join(ROI_DIR, "baseline_profile.json")

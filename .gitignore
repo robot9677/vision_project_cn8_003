@@ -4,6 +4,8 @@ data/*
 # but keep roi folder and its contents
 !data/roi/
 !data/roi/**
+!data/config/
+!data/config/**
 data/roi/roi.json
 
 # keep placeholders for images and logs
