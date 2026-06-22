@@ -46,7 +46,7 @@ def load_hardware_config(path: str) -> Dict[str, Any]:
         print(f"[HW CONFIG] not found, use default: {path}")
         return DEFAULT_HARDWARE_CONFIG.copy()
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8-sig") as f:
         cfg = json.load(f)
 
     if not isinstance(cfg, dict):
