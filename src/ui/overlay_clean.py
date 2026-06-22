@@ -283,13 +283,9 @@ def _draw_line_overlay(img, x, y, w, h, angle, metrics):
             img,
             txt,
             (gc[0] + 6, gc[1] - 8),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            (0, 255, 255),
-            1,
-            cv2.LINE_AA,
+            cv2.FONT_HERSHEY_SIMPLEX,0.45,(0, 255, 255),1,cv2.LINE_AA,
         )
-        
+
     target = metrics.get("line_angle_target_deg", None)
     tol = metrics.get("line_angle_tol_deg", None)
     judge_ok = metrics.get("line_angle_ok", None)
