@@ -1,6 +1,8 @@
 @echo off
 
- git add .
+ git add .gitignore
+ git add src
+ git add data/config
  git commit -m "auto deploy"
  git push origin main
 
