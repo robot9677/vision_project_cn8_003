@@ -1,0 +1,47 @@
+{
+  "product_name": "headlamp_adjust",
+  "recipe_name": "headlamp_adjust",
+  "camera_profile": "default",
+  "enable_modules": {
+    "enhance": true,
+    "measure": true,
+    "locate": true,
+    "identify": false,
+    "pose_check": true,
+    "tracker": true,
+    "auto_inspect": false
+  },
+  "ui": {
+    "show_pose_guide": true,
+    "show_sample_hint": true,
+    "show_dev_hud": true
+  },
+  "align": {
+    "enabled": true,
+    "min_score": 0.7,
+    "hold_min_score": 0.64,
+    "grace_frames": 15,
+    "fallback_mode": "hold",
+    "anchors": [
+      {
+        "id": "anchor1",
+        "roi_id": 1,
+        "enabled": true,
+        "targets": "all",
+        "enable_rotation": false,
+        "search_margin_x": 120,
+        "search_margin_y": 120,
+        "template_source": "file_or_runtime",
+        "template_path": "data/roi/profiles/align_template_headlamp_adjust.png"
+      }
+    ]
+  },
+  "rois": [
+    { "id": 1, "name": "adjust_bolt_1", "type": "inspect" },
+    { "id": 2, "name": "adjust_bolt_2", "type": "inspect" },
+    { "id": 3, "name": "normal_bolt_1", "type": "inspect" },
+    { "id": 4, "name": "normal_bolt_2", "type": "inspect" },
+    { "id": 5, "name": "normal_bolt_3", "type": "inspect" },
+    { "id": 6, "name": "wire_bracket_lock", "type": "inspect" }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "default": {
+    "type": "none"
+  },
+  "decision": {
+    "mode": "any_fail_is_ng"
+  },
+  "inspections": [
+    {
+      "id": "adjust_bolt_1_no_plus",
+      "enabled": true,
+      "roi_id": 1,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.edge_energy",
+          "params": {
+            "ksize": 3,
+            "thresh_max": 8.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "adjust_bolt_2_no_plus",
+      "enabled": true,
+      "roi_id": 2,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.edge_energy",
+          "params": {
+            "ksize": 3,
+            "thresh_max": 8.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "normal_bolt_1_presence",
+      "enabled": true,
+      "roi_id": 3,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.edge_energy",
+          "params": {
+            "ksize": 3,
+            "thresh_min": 6.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "normal_bolt_2_presence",
+      "enabled": true,
+      "roi_id": 4,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.edge_energy",
+          "params": {
+            "ksize": 3,
+            "thresh_min": 6.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "normal_bolt_3_presence",
+      "enabled": true,
+      "roi_id": 5,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.edge_energy",
+          "params": {
+            "ksize": 3,
+            "thresh_min": 6.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    },
+    {
+      "id": "wire_bracket_lock_angle",
+      "enabled": true,
+      "roi_id": 6,
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "locate.line",
+          "params": {
+            "blur": 3,
+            "canny1": 50,
+            "canny2": 150,
+            "threshold": 40,
+            "min_length": 40,
+            "max_gap": 10,
+            "min_count": 1
+          }
+        },
+        {
+          "tool": "measure.line_angle",
+          "params": {
+            "judge_mode": "global",
+            "target_angle_deg": 0.0,
+            "tol_angle_deg": 5.0
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
+    }
+  ]
+}
