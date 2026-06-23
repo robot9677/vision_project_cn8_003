@@ -34,7 +34,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_max": 8.0
+            "thresh_max": 22.0
           }
         }
       ],
