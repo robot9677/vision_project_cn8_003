@@ -3,6 +3,7 @@ import time
 import cv2
 import numpy as np
 
+from inspection.recipe import get_roi_cfg, has_explicit_inspections
 from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
 
@@ -184,7 +185,7 @@ def process_all_rois(
         if r.get("id") is not None
     }
 
-    use_explicit_inspections = inspector.recipe is not None and "inspections" in inspector.recipe
+    use_explicit_inspections = has_explicit_inspections(inspector.recipe or {})
 
     for roi in getattr(inspector.roi_mgr, "rois", []):
         roi_id = int(roi.get("id"))
@@ -219,6 +220,9 @@ def process_all_rois(
         for item in (inspector.recipe.get("inspections") or []):
             if int(item.get("roi_id", -1)) == roi_id and bool(item.get("enabled", True)):
                 inspection_cfgs.append(item)
+
+        if not use_explicit_inspections:
+            inspection_cfgs = [get_roi_cfg(inspector.recipe or {}, roi_id)]
 
         job_results = []
         merged_metrics = {}
