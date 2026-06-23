@@ -108,8 +108,8 @@
           "tool": "measure.line_angle",
           "params": {
             "judge_mode": "global",
-            "target_angle_deg": 0.0,
-            "tol_angle_deg": 5.0
+            "target_angle_deg": 90.0,
+            "tol_angle_deg": 8.0
           }
         }
       ],
