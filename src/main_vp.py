@@ -20,6 +20,8 @@ from inspection.logger import save_snapshot, save_template_copy
 from plc.plc_config_loader import load_plc_config
 from plc.plc_controller import create_plc_controller
 
+from light.light_controller import create_light_controller_from_hardware_config
+
 from ui import overlay_clean as overlay
 from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
@@ -178,6 +180,9 @@ class VisionApp:
 
         self.plc = create_plc_controller(self.plc_cfg)
         self.runtime_cfg["_plc_config"] = self.plc_cfg
+
+        self.light = create_light_controller_from_hardware_config(self.hardware_cfg)
+        self.runtime_cfg["_light_state"] = self.light.get_state()
         
         recipe_name = self.product_profile.get("recipe_name", "tape_presence")
         recipe_candidate = os.path.join(RECIPES_DIR, f"{recipe_name}.json")
@@ -766,6 +771,7 @@ class VisionApp:
     def run(self):
         st = self.state
         self.cam.open()
+        self.light.start()
         self.plc.start()
 
         last_ok_frame_time = time.time()
@@ -817,6 +823,11 @@ class VisionApp:
             self.plc.stop()
         except Exception as e:
             print("[PLC] stop failed:", e)
+
+        try:
+            self.light.stop()
+        except Exception as e:
+            print("[LIGHT] stop failed:", e)
 
         self.cam.release()
         cv2.destroyAllWindows()
