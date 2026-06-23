@@ -25,7 +25,7 @@
     "anchors": [
       {
         "id": "anchor1",
-        "roi_id": 6,
+        "roi_id": 7,
         "enabled": true,
         "targets": "all",
         "enable_rotation": false,
