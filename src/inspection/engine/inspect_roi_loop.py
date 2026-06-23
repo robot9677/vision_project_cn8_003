@@ -5,7 +5,34 @@ import numpy as np
 
 from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
-from inspection.recipe import get_roi_cfg, has_explicit_inspections, has_inspection_for_roi
+from inspection.recipe import get_roi_cfg, has_explicit_inspections
+
+def _norm_roi_name(v):
+    return str(v or "").strip().upper()
+
+
+def _inspection_matches_roi(item, roi):
+    if not isinstance(item, dict):
+        return False
+
+    if not bool(item.get("enabled", True)):
+        return False
+
+    roi_name = _norm_roi_name(roi.get("name", ""))
+    job_name = _norm_roi_name(item.get("roi_name", ""))
+
+    # 1순위: ROI 이름 매칭
+    if job_name and roi_name and job_name == roi_name:
+        return True
+
+    # 2순위: 기존 roi_id 숫자 매칭
+    if item.get("roi_id") is not None:
+        try:
+            return int(item.get("roi_id")) == int(roi.get("id"))
+        except Exception:
+            return False
+
+    return False
 
 def _get_first_center_abs(roi, metrics):
     if not isinstance(metrics, dict):
@@ -192,7 +219,10 @@ def process_all_rois(
         key = str(roi_id)
 
         roi_type = roi_types.get(roi_id, "")
-        roi_has_job = has_inspection_for_roi(inspector.recipe or {}, roi_id)
+        roi_has_job = any(
+            _inspection_matches_roi(item, roi)
+            for item in ((inspector.recipe or {}).get("inspections") or [])
+        )
 
         if use_explicit_inspections:
             if not roi_has_job:
@@ -216,7 +246,7 @@ def process_all_rois(
 
         if use_explicit_inspections:
             for item in (inspector.recipe.get("inspections") or []):
-                if int(item.get("roi_id", -1)) == roi_id and bool(item.get("enabled", True)):
+                if _inspection_matches_roi(item, roi):
                     inspection_cfgs.append(item)
         else:
             inspection_cfgs = [get_roi_cfg(inspector.recipe or {}, roi_id)]

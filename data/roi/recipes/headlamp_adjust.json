@@ -10,6 +10,7 @@
       "id": "adjust_bolt_1_no_plus",
       "enabled": true,
       "roi_id": 1,
+      "roi_name": "ROI1",
       "type": "toolchain",
       "tools": [
         {
@@ -26,6 +27,7 @@
       "id": "adjust_bolt_2_no_plus",
       "enabled": true,
       "roi_id": 2,
+      "roi_name": "ROI2",
       "type": "toolchain",
       "tools": [
         {
@@ -42,6 +44,7 @@
       "id": "normal_bolt_1_presence",
       "enabled": true,
       "roi_id": 3,
+      "roi_name": "ROI3",
       "type": "toolchain",
       "tools": [
         {
@@ -58,6 +61,7 @@
       "id": "normal_bolt_2_presence",
       "enabled": true,
       "roi_id": 4,
+      "roi_name": "ROI4",
       "type": "toolchain",
       "tools": [
         {
@@ -74,6 +78,7 @@
       "id": "normal_bolt_3_presence",
       "enabled": true,
       "roi_id": 5,
+      "roi_name": "ROI5",
       "type": "toolchain",
       "tools": [
         {
@@ -90,6 +95,7 @@
       "id": "wire_bracket_lock_angle",
       "enabled": true,
       "roi_id": 6,
+      "roi_name": "ROI6",
       "type": "toolchain",
       "tools": [
         {
