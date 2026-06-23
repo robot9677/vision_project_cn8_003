@@ -3,9 +3,9 @@ import time
 import cv2
 import numpy as np
 
-from inspection.recipe import get_roi_cfg, has_explicit_inspections
 from inspection.engine.result_model import ROIResult
 from .inspection_runner import _empty_align_result
+from inspection.recipe import get_roi_cfg, has_explicit_inspections, has_inspection_for_roi
 
 def _get_first_center_abs(roi, metrics):
     if not isinstance(metrics, dict):
@@ -192,11 +192,7 @@ def process_all_rois(
         key = str(roi_id)
 
         roi_type = roi_types.get(roi_id, "")
-        roi_has_job = False
-        for item in (inspector.recipe.get("inspections") or []):
-            if int(item.get("roi_id", -1)) == roi_id and bool(item.get("enabled", True)):
-                roi_has_job = True
-                break
+        roi_has_job = has_inspection_for_roi(inspector.recipe or {}, roi_id)
 
         if use_explicit_inspections:
             if not roi_has_job:
@@ -217,9 +213,13 @@ def process_all_rois(
             continue
 
         inspection_cfgs = []
-        for item in (inspector.recipe.get("inspections") or []):
-            if int(item.get("roi_id", -1)) == roi_id and bool(item.get("enabled", True)):
-                inspection_cfgs.append(item)
+
+        if use_explicit_inspections:
+            for item in (inspector.recipe.get("inspections") or []):
+                if int(item.get("roi_id", -1)) == roi_id and bool(item.get("enabled", True)):
+                    inspection_cfgs.append(item)
+        else:
+            inspection_cfgs = [get_roi_cfg(inspector.recipe or {}, roi_id)]
 
         if not use_explicit_inspections:
             inspection_cfgs = [get_roi_cfg(inspector.recipe or {}, roi_id)]
