@@ -5,7 +5,7 @@ import time
 
 
 HOST = "0.0.0.0"
-PORT = 1502
+PORT = 502
 
 UNIT_ID = 0
 
