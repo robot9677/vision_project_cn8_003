@@ -58,7 +58,7 @@ def handle_cmd(ser, text):
 
 
 def main():
-    global rx_count, last_rx_time
+    global rx_count, tx_count, ping_count, last_rx_time
 
     if serial is None:
         raise RuntimeError("pyserial is not installed")
