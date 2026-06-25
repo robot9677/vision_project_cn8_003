@@ -125,7 +125,7 @@
             "judge_mode": "global",
             "angle_mode": "axis",
             "target_angle_deg": 90.0,
-            "tol_angle_deg": 2.0,
+            "tol_angle_deg": 1.0,
             "center_x_min": 18.0
           }
         }
