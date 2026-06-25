@@ -59,3 +59,34 @@ def run_toolchain(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str
     ctx["metrics"]["_last_image"] = cur
     ret_metrics = dict(ctx["metrics"])
     return bool(final_ok), ret_metrics, ("OK" if final_ok else last_reason)
+
+def tool_measure_mean_raw_range(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    if crop is None or crop.size == 0:
+        return crop, {"mean_raw": 0.0}, False, "EMPTY_CROP"
+
+    mean_raw = float(np.mean(crop))
+
+    min_mean_raw = params.get("min_mean_raw", None)
+    max_mean_raw = params.get("max_mean_raw", None)
+
+    ok = True
+    reason = "OK"
+
+    if min_mean_raw is not None and mean_raw < float(min_mean_raw):
+        ok = False
+        reason = "MEAN_RAW_LOW"
+
+    if max_mean_raw is not None and mean_raw > float(max_mean_raw):
+        ok = False
+        reason = "MEAN_RAW_HIGH"
+
+    meta = {
+        "mean_raw": mean_raw,
+        "min_mean_raw": min_mean_raw,
+        "max_mean_raw": max_mean_raw,
+    }
+
+    return crop, meta, ok, reason
+
+
+register_tool("measure.mean_raw_range", tool_measure_mean_raw_range)
