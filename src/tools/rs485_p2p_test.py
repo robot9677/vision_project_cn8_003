@@ -90,33 +90,14 @@ def main():
                 last_rx_time = time.time()
 
                 print(f"[RX #{rx_count}] {data.hex(' ')}  {data!r}")
-                buf.extend(data)
 
-                while b"\n" in buf or b"\r" in buf:
-                    positions = []
+                # PLC에서 어떤 프레임이 오든 즉시 ACK 응답
+                ack = b"ACK\r\n"
+                ser.write(ack)
+                ser.flush()
 
-                    p1 = buf.find(b"\n")
-                    if p1 >= 0:
-                        positions.append(p1)
-
-                    p2 = buf.find(b"\r")
-                    if p2 >= 0:
-                        positions.append(p2)
-
-                    if not positions:
-                        break
-
-                    pos = min(positions)
-                    line = bytes(buf[:pos]).strip()
-                    del buf[:pos + 1]
-
-                    if not line:
-                        continue
-
-                    text = line.decode("utf-8", errors="replace").strip()
-                    print(f"[RX CMD] '{text}'")
-
-                    handle_cmd(ser, text)
+                tx_count += 1
+                print(f"[TX #{tx_count}] {ack.hex(' ')}  {ack!r}")
 
             now = time.time()
 
