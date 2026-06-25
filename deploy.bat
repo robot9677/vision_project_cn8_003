@@ -3,6 +3,11 @@
  git add .gitignore
  git add src
  git add data/config
+ git add data/roi
+
+ git reset -- data/roi/roi.json
+ git reset -- data/roi/profiles/*_roi.json
+
  git commit -m "auto deploy"
  git push origin main
 
