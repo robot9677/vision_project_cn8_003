@@ -16,8 +16,50 @@ TIMEOUT = 0.1
 
 LINE_ENDING = b"\r\n"
 
+rx_count = 0
+tx_count = 0
+ping_count = 0
+last_rx_time = 0.0
+
+
+def tx(ser, text):
+    global tx_count
+
+    data = text.encode("ascii") + LINE_ENDING
+    ser.write(data)
+    ser.flush()
+
+    tx_count += 1
+    print(f"[TX #{tx_count}] {data.hex(' ')}  {data!r}")
+
+
+def handle_cmd(ser, text):
+    global ping_count
+
+    cmd = text.strip().upper()
+
+    if cmd == "PING":
+        ping_count += 1
+        tx(ser, f"PONG,{ping_count}")
+
+    elif cmd in ("START", "INSPECT", "1"):
+        tx(ser, "BUSY")
+        time.sleep(1.0)
+        tx(ser, "OK")
+
+    elif cmd in ("NG", "TEST_NG"):
+        tx(ser, "NG")
+
+    elif cmd in ("HELLO",):
+        tx(ser, "PONG")
+
+    else:
+        tx(ser, "ERR")
+
 
 def main():
+    global rx_count, last_rx_time
+
     if serial is None:
         raise RuntimeError("pyserial is not installed")
 
@@ -32,31 +74,39 @@ def main():
 
     print("[RS485 P2P TEST] started")
     print(f"[RS485 P2P TEST] port={PORT} baud={BAUDRATE} 8N1")
-    print("[RS485 P2P TEST] waiting PLC command: START / INSPECT / 1")
+    print("[RS485 P2P TEST] PLC heartbeat command: PING")
+    print("[RS485 P2P TEST] response: PONG,count")
     print("[RS485 P2P TEST] Ctrl+C to stop")
 
     buf = bytearray()
+    last_status_print = time.time()
 
     try:
         while True:
             data = ser.read(256)
 
             if data:
-                print(f"[RX RAW] {data.hex(' ')}  {data!r}")
+                rx_count += 1
+                last_rx_time = time.time()
+
+                print(f"[RX #{rx_count}] {data.hex(' ')}  {data!r}")
                 buf.extend(data)
 
-                # 줄바꿈 기준 명령 처리
                 while b"\n" in buf or b"\r" in buf:
-                    cut_positions = []
-                    for sep in (b"\n", b"\r"):
-                        p = buf.find(sep)
-                        if p >= 0:
-                            cut_positions.append(p)
+                    positions = []
 
-                    if not cut_positions:
+                    p1 = buf.find(b"\n")
+                    if p1 >= 0:
+                        positions.append(p1)
+
+                    p2 = buf.find(b"\r")
+                    if p2 >= 0:
+                        positions.append(p2)
+
+                    if not positions:
                         break
 
-                    pos = min(cut_positions)
+                    pos = min(positions)
                     line = bytes(buf[:pos]).strip()
                     del buf[:pos + 1]
 
@@ -64,35 +114,26 @@ def main():
                         continue
 
                     text = line.decode("utf-8", errors="replace").strip()
-                    cmd = text.upper()
-
                     print(f"[RX CMD] '{text}'")
 
-                    if cmd in ("START", "INSPECT", "1"):
-                        ser.write(b"BUSY" + LINE_ENDING)
-                        ser.flush()
-                        print("[TX] BUSY")
+                    handle_cmd(ser, text)
 
-                        time.sleep(1.0)
+            now = time.time()
 
-                        ser.write(b"OK" + LINE_ENDING)
-                        ser.flush()
-                        print("[TX] OK")
+            if now - last_status_print >= 2.0:
+                if last_rx_time > 0:
+                    age = now - last_rx_time
+                    print(
+                        f"[STATUS] rx_count={rx_count} tx_count={tx_count} "
+                        f"ping_count={ping_count} last_rx_age={age:.1f}s"
+                    )
+                else:
+                    print(
+                        f"[STATUS] rx_count={rx_count} tx_count={tx_count} "
+                        f"ping_count={ping_count} last_rx=NONE"
+                    )
 
-                    elif cmd in ("PING", "HELLO"):
-                        ser.write(b"PONG" + LINE_ENDING)
-                        ser.flush()
-                        print("[TX] PONG")
-
-                    elif cmd in ("NG", "TEST_NG"):
-                        ser.write(b"NG" + LINE_ENDING)
-                        ser.flush()
-                        print("[TX] NG")
-
-                    else:
-                        ser.write(b"ERR" + LINE_ENDING)
-                        ser.flush()
-                        print("[TX] ERR")
+                last_status_print = now
 
             time.sleep(0.01)
 
