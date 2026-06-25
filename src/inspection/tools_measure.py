@@ -1066,6 +1066,223 @@ def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
 
     return img, meta, bool(final_ok), "OK"
 
+def _mean_raw_range(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    if img is None or img.size == 0:
+        return img, {"mean_raw": 0.0}, False, "EMPTY"
+
+    if img.dtype != np.uint8:
+        img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        img8 = img.copy()
+
+    if img8.ndim == 3:
+        img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+
+    mean_raw = float(np.mean(img8))
+
+    min_mean_raw = params.get("min_mean_raw", None)
+    max_mean_raw = params.get("max_mean_raw", None)
+
+    ok = True
+    reason = "OK"
+
+    if min_mean_raw is not None and mean_raw < float(min_mean_raw):
+        ok = False
+        reason = "MEAN_RAW_LOW"
+
+    if max_mean_raw is not None and mean_raw > float(max_mean_raw):
+        ok = False
+        reason = "MEAN_RAW_HIGH"
+
+    meta = {
+        "mean_raw": float(mean_raw),
+        "min_mean_raw": min_mean_raw,
+        "max_mean_raw": max_mean_raw,
+    }
+
+    return img, meta, bool(ok), reason
+
+
+def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    """
+    브라켓 체결 zone 검사
+
+    OK 조건:
+      1) OK_ZONE에 브라켓 edge/dark 존재
+      2) TIP_ZONE에 하단 걸림부 edge/dark 존재
+      3) NG_ZONE에는 브라켓 흔적이 없어야 함
+
+    애매하면 NG.
+    """
+
+    if img is None or img.size == 0:
+        return img, {"lock_ok": False}, False, "EMPTY"
+
+    if img.dtype != np.uint8:
+        img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        img8 = img.copy()
+
+    if img8.ndim == 3:
+        img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+
+    h, w = img8.shape[:2]
+
+    blur = int(params.get("blur", 3))
+    if blur >= 3:
+        if blur % 2 == 0:
+            blur += 1
+        proc = cv2.GaussianBlur(img8, (blur, blur), 0)
+    else:
+        proc = img8
+
+    canny1 = int(params.get("canny1", 40))
+    canny2 = int(params.get("canny2", 120))
+    edges = cv2.Canny(proc, canny1, canny2)
+
+    dark_thresh = int(params.get("dark_thresh", 80))
+    _, dark = cv2.threshold(proc, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+
+    def _clip_zone(zone):
+        if not isinstance(zone, (list, tuple)) or len(zone) != 4:
+            return None
+
+        x, y, zw, zh = [int(v) for v in zone]
+
+        x1 = max(0, min(w - 1, x))
+        y1 = max(0, min(h - 1, y))
+        x2 = max(x1 + 1, min(w, x1 + zw))
+        y2 = max(y1 + 1, min(h, y1 + zh))
+
+        return x1, y1, x2, y2
+
+    def _zone_metrics(zone):
+        z = _clip_zone(zone)
+        if z is None:
+            return None
+
+        x1, y1, x2, y2 = z
+
+        e = edges[y1:y2, x1:x2]
+        d = dark[y1:y2, x1:x2]
+
+        area = float(max(1, e.size))
+
+        return {
+            "zone": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+            "edge_ratio": float(np.count_nonzero(e)) / area,
+            "dark_ratio": float(np.count_nonzero(d)) / area,
+        }
+
+    ok_zone = params.get("ok_zone")
+    tip_zone = params.get("tip_zone")
+    ng_zones = params.get("ng_zones", []) or []
+
+    ok_info = _zone_metrics(ok_zone)
+    tip_info = _zone_metrics(tip_zone)
+
+    if ok_info is None:
+        return img8, {"lock_ok": False}, False, "BAD_OK_ZONE"
+
+    if tip_info is None:
+        return img8, {"lock_ok": False}, False, "BAD_TIP_ZONE"
+
+    ok_min_edge_ratio = float(params.get("ok_min_edge_ratio", 0.015))
+    ok_min_dark_ratio = params.get("ok_min_dark_ratio", None)
+
+    tip_min_edge_ratio = float(params.get("tip_min_edge_ratio", 0.010))
+    tip_min_dark_ratio = params.get("tip_min_dark_ratio", None)
+
+    ng_max_edge_ratio = float(params.get("ng_max_edge_ratio", 0.020))
+    ng_max_dark_ratio = params.get("ng_max_dark_ratio", None)
+
+    ok_zone_ok = ok_info["edge_ratio"] >= ok_min_edge_ratio
+    if ok_min_dark_ratio is not None:
+        ok_zone_ok = ok_zone_ok and (ok_info["dark_ratio"] >= float(ok_min_dark_ratio))
+
+    tip_zone_ok = tip_info["edge_ratio"] >= tip_min_edge_ratio
+    if tip_min_dark_ratio is not None:
+        tip_zone_ok = tip_zone_ok and (tip_info["dark_ratio"] >= float(tip_min_dark_ratio))
+
+    ng_infos = []
+    ng_zone_ok = True
+    ng_reason = "OK"
+
+    for i, zone in enumerate(ng_zones):
+        info = _zone_metrics(zone)
+        if info is None:
+            continue
+
+        info["index"] = int(i)
+        ng_infos.append(info)
+
+        if info["edge_ratio"] > ng_max_edge_ratio:
+            ng_zone_ok = False
+            ng_reason = "LOCK_NG_ZONE_EDGE"
+
+        if ng_max_dark_ratio is not None and info["dark_ratio"] > float(ng_max_dark_ratio):
+            ng_zone_ok = False
+            ng_reason = "LOCK_NG_ZONE_DARK"
+
+    final_ok = bool(ok_zone_ok and tip_zone_ok and ng_zone_ok)
+
+    reason = "OK"
+    if not ok_zone_ok:
+        reason = "LOCK_OK_ZONE_MISSING"
+    elif not tip_zone_ok:
+        reason = "LOCK_TIP_ZONE_MISSING"
+    elif not ng_zone_ok:
+        reason = ng_reason
+
+    dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
+
+    # OK zone: green
+    z = _clip_zone(ok_zone)
+    if z is not None:
+        x1, y1, x2, y2 = z
+        cv2.rectangle(dbg, (x1, y1), (x2 - 1, y2 - 1), (0, 255, 0), 1)
+
+    # TIP zone: yellow
+    z = _clip_zone(tip_zone)
+    if z is not None:
+        x1, y1, x2, y2 = z
+        cv2.rectangle(dbg, (x1, y1), (x2 - 1, y2 - 1), (0, 255, 255), 1)
+
+    # NG zones: red
+    for zone in ng_zones:
+        z = _clip_zone(zone)
+        if z is None:
+            continue
+        x1, y1, x2, y2 = z
+        cv2.rectangle(dbg, (x1, y1), (x2 - 1, y2 - 1), (0, 0, 255), 1)
+
+    meta = {
+        "lock_ok": bool(final_ok),
+        "lock_reason": reason,
+
+        "ok_zone": ok_info["zone"],
+        "ok_edge_ratio": float(ok_info["edge_ratio"]),
+        "ok_dark_ratio": float(ok_info["dark_ratio"]),
+        "ok_min_edge_ratio": float(ok_min_edge_ratio),
+        "ok_min_dark_ratio": ok_min_dark_ratio,
+        "ok_zone_ok": bool(ok_zone_ok),
+
+        "tip_zone": tip_info["zone"],
+        "tip_edge_ratio": float(tip_info["edge_ratio"]),
+        "tip_dark_ratio": float(tip_info["dark_ratio"]),
+        "tip_min_edge_ratio": float(tip_min_edge_ratio),
+        "tip_min_dark_ratio": tip_min_dark_ratio,
+        "tip_zone_ok": bool(tip_zone_ok),
+
+        "ng_zone_count": int(len(ng_infos)),
+        "ng_zones": ng_infos,
+        "ng_max_edge_ratio": float(ng_max_edge_ratio),
+        "ng_max_dark_ratio": ng_max_dark_ratio,
+        "ng_zone_ok": bool(ng_zone_ok),
+    }
+
+    return dbg, meta, bool(final_ok), reason
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -1077,3 +1294,5 @@ def register_measure_tools() -> None:
     register_tool("measure.circle_size", _circle_size)
     register_tool("measure.circle_distance", _circle_distance)
     register_tool("measure.line_angle", _line_angle)
+    register_tool("measure.mean_raw_range", _mean_raw_range)
+    register_tool("measure.lock_bracket_zones", _lock_bracket_zones)
