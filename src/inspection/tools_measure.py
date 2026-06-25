@@ -1111,6 +1111,7 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
       1) OK_ZONE에 브라켓 edge/dark 존재
       2) TIP_ZONE에 하단 걸림부 edge/dark 존재
       3) NG_ZONE에는 브라켓 흔적이 없어야 함
+      4) TIP_LEFT_EDGE 위치가 정상 범위 안에 있어야 함
 
     애매하면 NG.
     """
@@ -1174,6 +1175,66 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
             "dark_ratio": float(np.count_nonzero(d)) / area,
         }
 
+    def _tip_left_edge_metrics(zone):
+        z = _clip_zone(zone)
+        if z is None:
+            return None
+
+        x1, y1, x2, y2 = z
+
+        roi = proc[y1:y2, x1:x2]
+        if roi is None or roi.size == 0:
+            return {
+                "zone": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                "found": False,
+                "left_x": None,
+                "left_x_local": None,
+                "coverage": 0.0,
+            }
+
+        bright_thresh = int(params.get("tip_bright_thresh", 150))
+        _, bw = cv2.threshold(roi, bright_thresh, 255, cv2.THRESH_BINARY)
+
+        open_k = int(params.get("tip_left_open", 0))
+        if open_k >= 2:
+            ker = np.ones((open_k, open_k), np.uint8)
+            bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, ker)
+
+        close_k = int(params.get("tip_left_close", 0))
+        if close_k >= 2:
+            ker = np.ones((close_k, close_k), np.uint8)
+            bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, ker)
+
+        lefts = []
+
+        for yy in range(bw.shape[0]):
+            xs = np.where(bw[yy, :] > 0)[0]
+            if xs.size > 0:
+                lefts.append(float(xs[0]))
+
+        if not lefts:
+            return {
+                "zone": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                "found": False,
+                "left_x": None,
+                "left_x_local": None,
+                "coverage": 0.0,
+                "bright_thresh": int(bright_thresh),
+            }
+
+        left_x_local = float(np.median(lefts))
+        left_x = float(x1) + left_x_local
+        coverage = float(len(lefts)) / float(max(1, bw.shape[0]))
+
+        return {
+            "zone": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+            "found": True,
+            "left_x": float(left_x),
+            "left_x_local": float(left_x_local),
+            "coverage": float(coverage),
+            "bright_thresh": int(bright_thresh),
+        }
+
     ok_zone = params.get("ok_zone")
     tip_zone = params.get("tip_zone")
     ng_zones = params.get("ng_zones", []) or []
@@ -1224,7 +1285,44 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
             ng_zone_ok = False
             ng_reason = "LOCK_NG_ZONE_DARK"
 
-    final_ok = bool(ok_zone_ok and tip_zone_ok and ng_zone_ok)
+    # -----------------------------
+    # TIP left-edge 위치 검사
+    # -----------------------------
+    tip_left_edge_zone = params.get("tip_left_edge_zone", None)
+    tip_left_info = None
+    tip_left_ok = True
+    tip_left_reason = "OK"
+
+    if tip_left_edge_zone is not None:
+        tip_left_info = _tip_left_edge_metrics(tip_left_edge_zone)
+
+        if tip_left_info is None:
+            tip_left_ok = False
+            tip_left_reason = "BAD_TIP_LEFT_EDGE_ZONE"
+        elif not bool(tip_left_info.get("found", False)):
+            tip_left_ok = False
+            tip_left_reason = "TIP_LEFT_EDGE_MISSING"
+        else:
+            min_coverage = float(params.get("tip_left_min_coverage", 0.40))
+            if float(tip_left_info.get("coverage", 0.0)) < min_coverage:
+                tip_left_ok = False
+                tip_left_reason = "TIP_LEFT_EDGE_COVERAGE_LOW"
+
+            tip_left_x = tip_left_info.get("left_x", None)
+
+            tip_left_x_min = params.get("tip_left_x_min", None)
+            tip_left_x_max = params.get("tip_left_x_max", None)
+
+            if tip_left_x is not None:
+                if tip_left_x_min is not None and float(tip_left_x) < float(tip_left_x_min):
+                    tip_left_ok = False
+                    tip_left_reason = "TIP_LEFT_X_LOW"
+
+                if tip_left_x_max is not None and float(tip_left_x) > float(tip_left_x_max):
+                    tip_left_ok = False
+                    tip_left_reason = "TIP_LEFT_X_HIGH"
+
+    final_ok = bool(ok_zone_ok and tip_zone_ok and ng_zone_ok and tip_left_ok)
 
     reason = "OK"
     if not ok_zone_ok:
@@ -1233,6 +1331,8 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
         reason = "LOCK_TIP_ZONE_MISSING"
     elif not ng_zone_ok:
         reason = ng_reason
+    elif not tip_left_ok:
+        reason = tip_left_reason
 
     dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
 
@@ -1255,6 +1355,17 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
             continue
         x1, y1, x2, y2 = z
         cv2.rectangle(dbg, (x1, y1), (x2 - 1, y2 - 1), (0, 0, 255), 1)
+
+    # TIP left edge zone: magenta
+    if tip_left_edge_zone is not None:
+        z = _clip_zone(tip_left_edge_zone)
+        if z is not None:
+            x1, y1, x2, y2 = z
+            cv2.rectangle(dbg, (x1, y1), (x2 - 1, y2 - 1), (255, 0, 255), 1)
+
+            if tip_left_info is not None and tip_left_info.get("left_x", None) is not None:
+                lx = int(round(float(tip_left_info["left_x"])))
+                cv2.line(dbg, (lx, y1), (lx, y2 - 1), (255, 0, 255), 1)
 
     meta = {
         "lock_ok": bool(final_ok),
@@ -1279,6 +1390,16 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
         "ng_max_edge_ratio": float(ng_max_edge_ratio),
         "ng_max_dark_ratio": ng_max_dark_ratio,
         "ng_zone_ok": bool(ng_zone_ok),
+
+        "tip_left_edge_zone": tip_left_info.get("zone") if isinstance(tip_left_info, dict) else None,
+        "tip_left_edge_found": bool(tip_left_info.get("found", False)) if isinstance(tip_left_info, dict) else False,
+        "tip_left_x": tip_left_info.get("left_x") if isinstance(tip_left_info, dict) else None,
+        "tip_left_x_local": tip_left_info.get("left_x_local") if isinstance(tip_left_info, dict) else None,
+        "tip_left_coverage": tip_left_info.get("coverage") if isinstance(tip_left_info, dict) else None,
+        "tip_left_min_coverage": float(params.get("tip_left_min_coverage", 0.40)),
+        "tip_left_x_min": params.get("tip_left_x_min", None),
+        "tip_left_x_max": params.get("tip_left_x_max", None),
+        "tip_left_ok": bool(tip_left_ok),
     }
 
     return dbg, meta, bool(final_ok), reason
