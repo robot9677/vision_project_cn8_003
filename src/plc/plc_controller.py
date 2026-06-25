@@ -92,16 +92,23 @@ class ModbusRtuSlaveController:
 
     def start(self):
         if serial is None:
-            raise RuntimeError("pyserial is not installed")
+            print("[PLC] pyserial is not installed - PLC disabled")
+            self._ser = None
+            return
 
-        self._ser = serial.Serial(
-            port=self.port,
-            baudrate=self.baudrate,
-            bytesize=self.bytesize,
-            parity=self.parity,
-            stopbits=self.stopbits,
-            timeout=self.timeout,
-        )
+        try:
+            self._ser = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                bytesize=self.bytesize,
+                parity=self.parity,
+                stopbits=self.stopbits,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            self._ser = None
+            print(f"[PLC] port open failed - PLC disabled: port={self.port}, error={e}")
+            return
 
         self.set_idle()
 
@@ -235,7 +242,16 @@ class ModbusRtuSlaveController:
             return
         if self._ser is None:
             return
-        self._ser.write(_append_crc(payload))
+
+        try:
+            self._ser.write(_append_crc(payload))
+        except Exception as e:
+            print("[PLC] write failed:", e)
+            try:
+                self._ser.close()
+            except Exception:
+                pass
+            self._ser = None
 
     def _write_exception(self, addr: int, func: int, code: int):
         if addr == 0:
