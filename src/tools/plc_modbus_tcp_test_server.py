@@ -220,7 +220,7 @@ def main():
 
     print("[MBTCP] Modbus TCP test server start")
     print(f"[MBTCP] listen {HOST}:{PORT}")
-    print("[MBTCP] Jetson IP: 192.168.1.2")
+    print("[MBTCP] Jetson IP: 192.168.1.3")
     print(f"[MBTCP] Unit ID: {UNIT_ID}")
     print(f"[MBTCP] D{COMMAND_REG}=command, D{STATUS_REG}=status, D{RESULT_REG}=result")
 
