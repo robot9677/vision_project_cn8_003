@@ -1025,13 +1025,46 @@ def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
 
     ok = (target - tol) <= float(judge_value) <= (target + tol)
 
+    center_x_min = params.get("center_x_min", None)
+    center_x_max = params.get("center_x_max", None)
+
+    line_center = metrics.get("line_center", None)
+    center_x = None
+
+    if isinstance(line_center, (list, tuple)) and len(line_center) >= 2:
+        center_x = float(line_center[0])
+
+    center_ok = True
+    center_reason = "OK"
+
+    if center_x is not None:
+        if center_x_min is not None and center_x < float(center_x_min):
+            center_ok = False
+            center_reason = "LINE_CENTER_X_LOW"
+
+        if center_x_max is not None and center_x > float(center_x_max):
+            center_ok = False
+            center_reason = "LINE_CENTER_X_HIGH"
+
+    final_ok = bool(ok) and bool(center_ok)
+
     meta.update({
         "line_angle_target_deg": float(target),
         "line_angle_tol_deg": float(tol),
         "line_angle_ok": bool(ok),
+        "line_center_x": center_x,
+        "line_center_x_min": center_x_min,
+        "line_center_x_max": center_x_max,
+        "line_center_x_ok": bool(center_ok),
     })
 
-    return img, meta, bool(ok), "OK" if ok else "ANGLE_OUT_OF_TOL"
+    if not ok:
+        return img, meta, False, "ANGLE_OUT_OF_TOL"
+
+    if not center_ok:
+        return img, meta, False, center_reason
+
+    return img, meta, bool(final_ok), "OK"
 
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
