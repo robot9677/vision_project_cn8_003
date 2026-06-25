@@ -16,7 +16,7 @@
   },
 
   "registers": {
-    "command": 199,
+    "command": 200,
     "status": 201,
     "result": 202
   }
