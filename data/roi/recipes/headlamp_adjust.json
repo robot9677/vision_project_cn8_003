@@ -123,6 +123,7 @@
           "tool": "measure.line_angle",
           "params": {
             "judge_mode": "global",
+            "angle_mode": "axis",
             "target_angle_deg": 90.0,
             "tol_angle_deg": 8.0
           }

@@ -981,8 +981,30 @@ def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
         lines = metrics.get("lines") or []
         if not lines:
             return img, {"line_angle_count": 0}, False, "NO_LINE"
+
         ln = lines[0]
         value = float(ln.get("angle_norm", ln.get("angle", 0.0)))
+
+    raw_value = float(value)
+
+    # -------------------------------------------------
+    # angle_mode:
+    #   direct : 기존 방식. +90 / -90을 다르게 봄
+    #   axis   : 무방향 축 각도. +90 / -90을 같은 수직으로 봄
+    # -------------------------------------------------
+    angle_mode = str(params.get("angle_mode", "direct")).strip().lower()
+
+    judge_value = raw_value
+
+    if angle_mode in ("axis", "undirected", "unsigned"):
+        # -89.4도, +89.4도 모두 89.4도로 판단
+        judge_value = abs(raw_value)
+
+        # 혹시 90도 초과 값이 들어오면 0~90 축각으로 접기
+        if judge_value > 90.0:
+            judge_value = 180.0 - judge_value
+
+        judge_value = abs(judge_value)
 
     target = params.get("target_angle_deg", None)
     tol = params.get("tol_angle_deg", None)
@@ -990,7 +1012,9 @@ def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     meta = {
         "line_angle_count": 1,
         "line_angle_judge_mode": judge_mode,
-        "line_angle_value_deg": float(value),
+        "line_angle_mode": angle_mode,
+        "line_angle_raw_value_deg": float(raw_value),
+        "line_angle_value_deg": float(judge_value),
     }
 
     if target is None or tol is None:
@@ -999,7 +1023,7 @@ def _line_angle(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     target = float(target)
     tol = float(tol)
 
-    ok = (target - tol) <= float(value) <= (target + tol)
+    ok = (target - tol) <= float(judge_value) <= (target + tol)
 
     meta.update({
         "line_angle_target_deg": float(target),
