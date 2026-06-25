@@ -101,29 +101,39 @@
       "tool_decision": "all_ok"
     },
     {
-      "tool": "measure.lock_bracket_zones",
-      "params": {
-        "blur": 3,
-        "canny1": 40,
-        "canny2": 120,
-        "dark_thresh": 85,
+      "id": "wire_bracket_lock_angle",
+      "enabled": true,
+      "roi_id": 6,
+      "roi_name": "ROI6",
+      "type": "toolchain",
+      "tools": [
+        {
+          "tool": "measure.lock_bracket_zones",
+          "params": {
+            "blur": 3,
+            "canny1": 40,
+            "canny2": 120,
+            "dark_thresh": 85,
 
-        "ok_zone": [40, 40, 45, 210],
-        "ok_min_edge_ratio": 0.015,
+            "ok_zone": [40, 40, 45, 210],
+            "ok_min_edge_ratio": 0.015,
 
-        "tip_zone": [45, 210, 110, 50],
-        "tip_min_edge_ratio": 0.010,
+            "tip_zone": [45, 210, 110, 50],
+            "tip_min_edge_ratio": 0.010,
 
-        "tip_left_edge_zone": [60, 225, 100, 15],
-        "tip_bright_thresh": 150,
-        "tip_left_min_coverage": 0.40,
-        "tip_left_x_max": 110.0,
+            "tip_left_edge_zone": [60, 225, 100, 15],
+            "tip_bright_thresh": 150,
+            "tip_left_min_coverage": 0.40,
+            "tip_left_x_max": 110.0,
 
-        "ng_zones": [
-          [0, 40, 40, 210]
-        ],
-        "ng_max_edge_ratio": 0.020
-      }
+            "ng_zones": [
+              [0, 40, 40, 210]
+            ],
+            "ng_max_edge_ratio": 0.020
+          }
+        }
+      ],
+      "tool_decision": "all_ok"
     }
   ]
 }
