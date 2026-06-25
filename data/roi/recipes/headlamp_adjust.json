@@ -124,7 +124,7 @@
             "tip_left_edge_zone": [60, 225, 100, 15],
             "tip_bright_thresh": 150,
             "tip_left_min_coverage": 0.40,
-            "tip_left_x_max": 105.0,
+            "tip_left_x_max": 110.0,
 
             "ng_zones": [
               [0, 40, 40, 210]
