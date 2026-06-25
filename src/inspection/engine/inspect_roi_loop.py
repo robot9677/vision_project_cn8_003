@@ -224,8 +224,20 @@ def process_all_rois(
             for item in ((inspector.recipe or {}).get("inspections") or [])
         )
 
+        if roi_id == 6:
+            print(
+                "[DBG ROI6 MATCH] "
+                f"roi_id={roi.get('id')} "
+                f"roi_name={roi.get('name')} "
+                f"use_explicit={use_explicit_inspections} "
+                f"roi_has_job={roi_has_job} "
+                f"recipe_jobs={[item.get('roi_name') for item in ((inspector.recipe or {}).get('inspections') or [])]}"
+            )
+
         if use_explicit_inspections:
             if not roi_has_job:
+                if roi_id == 6:
+                    print("[DBG ROI6 SKIP] reason=NO_MATCHING_INSPECTION")
                 continue
         else:
             if roi_type != "inspect":
