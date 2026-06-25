@@ -7,7 +7,7 @@ import time
 HOST = "0.0.0.0"
 PORT = 1502
 
-UNIT_ID = 1
+UNIT_ID = 0
 
 # PLC에서 D200/D201/D202로 접근한다고 가정
 COMMAND_REG = 200
