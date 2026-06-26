@@ -108,28 +108,26 @@
       "type": "toolchain",
       "tools": [
         {
-          "tool": "measure.lock_bracket_zones",
+          "tool": "measure.lock_bracket_auto",
           "params": {
             "blur": 3,
-            "canny1": 40,
-            "canny2": 120,
-            "dark_thresh": 85,
 
-            "ok_zone": [40, 40, 45, 210],
-            "ok_min_edge_ratio": 0.015,
+            "connector_bright_thresh": 150,
+            "connector_min_area": 3000,
+            "connector_min_w": 70,
+            "connector_min_h": 90,
+            "connector_close": 5,
 
-            "tip_zone": [45, 210, 110, 50],
-            "tip_min_edge_ratio": 0.010,
-
-            "tip_left_edge_zone": [60, 225, 100, 15],
             "tip_bright_thresh": 150,
             "tip_left_min_coverage": 0.40,
-            "tip_left_x_max": 110.0,
 
-            "ng_zones": [
-              [0, 40, 40, 210]
-            ],
-            "ng_max_edge_ratio": 0.020
+            "tip_band_x0_ratio": -0.09,
+            "tip_band_y0_ratio": 0.95,
+            "tip_band_w_ratio": 0.55,
+            "tip_band_h_ratio": 0.07,
+
+            "tip_left_gap_max": 30.0,
+            "tip_left_norm_max": 0.18
           }
         }
       ],

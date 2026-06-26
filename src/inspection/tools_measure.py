@@ -1404,6 +1404,298 @@ def _lock_bracket_zones(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, 
 
     return dbg, meta, bool(final_ok), reason
 
+def _lock_bracket_auto(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
+    """
+    브라켓 체결 자동 검사
+
+    목적:
+      - 작업자는 ROI6_MAIN 하나만 크게 잡음
+      - 흰 커넥터 본체를 자동 검출
+      - 커넥터 bbox 기준으로 하단 걸림부 위치를 상대좌표로 측정
+      - 설체결/애매함은 NG
+
+    핵심 판정:
+      tip_left_gap = tip_left_x - connector_left_x
+      tip_left_norm = tip_left_gap / connector_width
+
+      정상 체결: tip_left_gap 작음
+      설체결: tip_left_gap 커짐
+    """
+
+    if img is None or img.size == 0:
+        return img, {"lock_auto_ok": False}, False, "EMPTY"
+
+    if img.dtype != np.uint8:
+        img8 = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        img8 = img.copy()
+
+    if img8.ndim == 3:
+        img8 = cv2.cvtColor(img8, cv2.COLOR_BGR2GRAY)
+
+    h, w = img8.shape[:2]
+
+    blur = int(params.get("blur", 3))
+    if blur >= 3:
+        if blur % 2 == 0:
+            blur += 1
+        proc = cv2.GaussianBlur(img8, (blur, blur), 0)
+    else:
+        proc = img8
+
+    def _clip_rect(x, y, rw, rh):
+        x1 = max(0, min(w - 1, int(round(x))))
+        y1 = max(0, min(h - 1, int(round(y))))
+        x2 = max(x1 + 1, min(w, int(round(x + rw))))
+        y2 = max(y1 + 1, min(h, int(round(y + rh))))
+        return x1, y1, x2, y2
+
+    def _clip_zone(zone):
+        if not isinstance(zone, (list, tuple)) or len(zone) != 4:
+            return None
+        x, y, zw, zh = zone
+        return _clip_rect(x, y, zw, zh)
+
+    # -------------------------------------------------
+    # 1) 흰 커넥터 자동 검출
+    # -------------------------------------------------
+    connector_search_zone = params.get("connector_search_zone", None)
+
+    if connector_search_zone is not None:
+        z = _clip_zone(connector_search_zone)
+        if z is None:
+            return img8, {"lock_auto_ok": False}, False, "BAD_CONNECTOR_SEARCH_ZONE"
+        sx1, sy1, sx2, sy2 = z
+        search_img = proc[sy1:sy2, sx1:sx2]
+        search_offset_x = sx1
+        search_offset_y = sy1
+    else:
+        search_img = proc
+        search_offset_x = 0
+        search_offset_y = 0
+
+    connector_thresh = int(params.get("connector_bright_thresh", 150))
+    _, bw = cv2.threshold(search_img, connector_thresh, 255, cv2.THRESH_BINARY)
+
+    open_k = int(params.get("connector_open", 0))
+    if open_k >= 2:
+        ker = np.ones((open_k, open_k), np.uint8)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, ker)
+
+    close_k = int(params.get("connector_close", 5))
+    if close_k >= 2:
+        ker = np.ones((close_k, close_k), np.uint8)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, ker)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
+
+    connector_min_area = int(params.get("connector_min_area", 3000))
+    connector_min_w = int(params.get("connector_min_w", 70))
+    connector_min_h = int(params.get("connector_min_h", 90))
+    connector_max_area = params.get("connector_max_area", None)
+    connector_max_area = int(connector_max_area) if connector_max_area is not None else None
+
+    candidates = []
+
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        x = int(stats[i, cv2.CC_STAT_LEFT]) + search_offset_x
+        y = int(stats[i, cv2.CC_STAT_TOP]) + search_offset_y
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+
+        if area < connector_min_area:
+            continue
+        if connector_max_area is not None and area > connector_max_area:
+            continue
+        if cw < connector_min_w or ch < connector_min_h:
+            continue
+
+        candidates.append({
+            "area": int(area),
+            "x": int(x),
+            "y": int(y),
+            "w": int(cw),
+            "h": int(ch),
+        })
+
+    if not candidates:
+        meta = {
+            "lock_auto_ok": False,
+            "connector_found": False,
+            "connector_bright_thresh": int(connector_thresh),
+            "connector_candidate_count": 0,
+        }
+        return img8, meta, False, "CONNECTOR_NOT_FOUND"
+
+    # 가장 큰 밝은 blob을 흰 커넥터 본체로 사용
+    connector = max(candidates, key=lambda c: c["area"])
+
+    cx = float(connector["x"])
+    cy = float(connector["y"])
+    cw = float(connector["w"])
+    ch = float(connector["h"])
+
+    if cw <= 1 or ch <= 1:
+        return img8, {"lock_auto_ok": False, "connector": connector}, False, "CONNECTOR_BAD_SIZE"
+
+    # -------------------------------------------------
+    # 2) 커넥터 bbox 기준으로 tip search band 자동 생성
+    # -------------------------------------------------
+    # 기본값은 현재 ROI6_MAIN에서 성공했던 tip_left_edge_zone과 유사한 위치가 나오도록 설정
+    tip_x0_ratio = float(params.get("tip_band_x0_ratio", -0.09))
+    tip_y0_ratio = float(params.get("tip_band_y0_ratio", 0.95))
+    tip_w_ratio = float(params.get("tip_band_w_ratio", 0.55))
+    tip_h_ratio = float(params.get("tip_band_h_ratio", 0.07))
+
+    tx = cx + cw * tip_x0_ratio
+    ty = cy + ch * tip_y0_ratio
+    tw = cw * tip_w_ratio
+    th = ch * tip_h_ratio
+
+    tx1, ty1, tx2, ty2 = _clip_rect(tx, ty, tw, th)
+
+    tip_roi = proc[ty1:ty2, tx1:tx2]
+
+    if tip_roi is None or tip_roi.size == 0:
+        return img8, {"lock_auto_ok": False, "connector": connector}, False, "BAD_TIP_BAND"
+
+    tip_bright_thresh = int(params.get("tip_bright_thresh", connector_thresh))
+    _, tip_bw = cv2.threshold(tip_roi, tip_bright_thresh, 255, cv2.THRESH_BINARY)
+
+    tip_open = int(params.get("tip_open", 0))
+    if tip_open >= 2:
+        ker = np.ones((tip_open, tip_open), np.uint8)
+        tip_bw = cv2.morphologyEx(tip_bw, cv2.MORPH_OPEN, ker)
+
+    tip_close = int(params.get("tip_close", 0))
+    if tip_close >= 2:
+        ker = np.ones((tip_close, tip_close), np.uint8)
+        tip_bw = cv2.morphologyEx(tip_bw, cv2.MORPH_CLOSE, ker)
+
+    lefts = []
+
+    for yy in range(tip_bw.shape[0]):
+        xs = np.where(tip_bw[yy, :] > 0)[0]
+        if xs.size > 0:
+            lefts.append(float(xs[0]))
+
+    if not lefts:
+        dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
+        cv2.rectangle(dbg, (int(cx), int(cy)), (int(cx + cw - 1), int(cy + ch - 1)), (255, 255, 0), 1)
+        cv2.rectangle(dbg, (tx1, ty1), (tx2 - 1, ty2 - 1), (255, 0, 255), 1)
+
+        meta = {
+            "lock_auto_ok": False,
+            "connector_found": True,
+            "connector_bbox": [int(cx), int(cy), int(cw), int(ch)],
+            "tip_band": [int(tx1), int(ty1), int(tx2 - tx1), int(ty2 - ty1)],
+            "tip_left_found": False,
+            "tip_bright_thresh": int(tip_bright_thresh),
+        }
+
+        return dbg, meta, False, "TIP_LEFT_EDGE_MISSING"
+
+    tip_left_x_local = float(np.median(lefts))
+    tip_left_x = float(tx1) + tip_left_x_local
+    tip_coverage = float(len(lefts)) / float(max(1, tip_bw.shape[0]))
+
+    tip_left_gap = float(tip_left_x - cx)
+    tip_left_norm = float(tip_left_gap / cw)
+
+    # -------------------------------------------------
+    # 3) 판정
+    # -------------------------------------------------
+    min_coverage = float(params.get("tip_left_min_coverage", 0.40))
+
+    tip_left_gap_min = params.get("tip_left_gap_min", None)
+    tip_left_gap_max = params.get("tip_left_gap_max", None)
+
+    tip_left_norm_min = params.get("tip_left_norm_min", None)
+    tip_left_norm_max = params.get("tip_left_norm_max", None)
+
+    ok = True
+    reason = "OK"
+
+    if tip_coverage < min_coverage:
+        ok = False
+        reason = "TIP_LEFT_EDGE_COVERAGE_LOW"
+
+    if ok and tip_left_gap_min is not None and tip_left_gap < float(tip_left_gap_min):
+        ok = False
+        reason = "TIP_LEFT_GAP_LOW"
+
+    if ok and tip_left_gap_max is not None and tip_left_gap > float(tip_left_gap_max):
+        ok = False
+        reason = "TIP_LEFT_GAP_HIGH"
+
+    if ok and tip_left_norm_min is not None and tip_left_norm < float(tip_left_norm_min):
+        ok = False
+        reason = "TIP_LEFT_NORM_LOW"
+
+    if ok and tip_left_norm_max is not None and tip_left_norm > float(tip_left_norm_max):
+        ok = False
+        reason = "TIP_LEFT_NORM_HIGH"
+
+    # -------------------------------------------------
+    # 4) Debug image
+    # -------------------------------------------------
+    dbg = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
+
+    # connector bbox: cyan
+    cv2.rectangle(
+        dbg,
+        (int(cx), int(cy)),
+        (int(cx + cw - 1), int(cy + ch - 1)),
+        (255, 255, 0),
+        1
+    )
+
+    # tip band: magenta
+    cv2.rectangle(
+        dbg,
+        (tx1, ty1),
+        (tx2 - 1, ty2 - 1),
+        (255, 0, 255),
+        1
+    )
+
+    # detected left edge: magenta vertical line
+    lx = int(round(tip_left_x))
+    cv2.line(dbg, (lx, ty1), (lx, ty2 - 1), (255, 0, 255), 1)
+
+    # connector left reference: cyan vertical line
+    cv2.line(dbg, (int(round(cx)), int(cy)), (int(round(cx)), int(cy + ch - 1)), (255, 255, 0), 1)
+
+    meta = {
+        "lock_auto_ok": bool(ok),
+        "lock_auto_reason": reason,
+
+        "connector_found": True,
+        "connector_bbox": [int(cx), int(cy), int(cw), int(ch)],
+        "connector_area": int(connector["area"]),
+        "connector_candidate_count": int(len(candidates)),
+        "connector_bright_thresh": int(connector_thresh),
+
+        "tip_band": [int(tx1), int(ty1), int(tx2 - tx1), int(ty2 - ty1)],
+        "tip_bright_thresh": int(tip_bright_thresh),
+        "tip_left_found": True,
+        "tip_left_x": float(tip_left_x),
+        "tip_left_x_local": float(tip_left_x_local),
+        "tip_left_coverage": float(tip_coverage),
+
+        "tip_left_gap": float(tip_left_gap),
+        "tip_left_norm": float(tip_left_norm),
+
+        "tip_left_min_coverage": float(min_coverage),
+        "tip_left_gap_min": tip_left_gap_min,
+        "tip_left_gap_max": tip_left_gap_max,
+        "tip_left_norm_min": tip_left_norm_min,
+        "tip_left_norm_max": tip_left_norm_max,
+    }
+
+    return dbg, meta, bool(ok), reason
+
 def register_measure_tools() -> None:
     register_tool("measure.edge_energy", _edge_energy)
     register_tool("measure.edge", _edge_energy)
@@ -1417,3 +1709,7 @@ def register_measure_tools() -> None:
     register_tool("measure.line_angle", _line_angle)
     register_tool("measure.mean_raw_range", _mean_raw_range)
     register_tool("measure.lock_bracket_zones", _lock_bracket_zones)
+    register_tool("measure.lock_bracket_auto", _lock_bracket_auto)
+    register_tool("measure.mean_raw_range", _mean_raw_range)
+    register_tool("measure.lock_bracket_zones", _lock_bracket_zones)
+    register_tool("measure.lock_bracket_auto", _lock_bracket_auto)
