@@ -1711,5 +1711,3 @@ def register_measure_tools() -> None:
     register_tool("measure.lock_bracket_zones", _lock_bracket_zones)
     register_tool("measure.lock_bracket_auto", _lock_bracket_auto)
     register_tool("measure.mean_raw_range", _mean_raw_range)
-    register_tool("measure.lock_bracket_zones", _lock_bracket_zones)
-    register_tool("measure.lock_bracket_auto", _lock_bracket_auto)
