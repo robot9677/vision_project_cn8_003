@@ -439,6 +439,11 @@ class ROIEditor:
         font_scale = cfg.FONT_SCALE
         text_offset = 8
 
+        roi_text_scale, roi_text_thickness, roi_line_gap = overlay._roi_text_style(
+            vis_bgr,
+            base_scale=0.34,
+        )
+
         # --- Replace the for-loop drawing block with this ---
         # bright palette (ensure high intensity values)
         palette = [
@@ -518,7 +523,15 @@ class ROIEditor:
            # overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')
 
             # main text
-            overlay.draw_text(vis_bgr, label,(tx, ty),color=cfg.COLOR_TEXT,scale=0.3 ,thickness=1 ,align='lt')
+            overlay.draw_text(
+                vis_bgr,
+                label,
+                (tx, ty),
+                color=cfg.COLOR_TEXT,
+                scale=roi_text_scale,
+                thickness=roi_text_thickness,
+                align="lt",
+            )
         # --- end replacement ---
 
         # 3) during creation, draw preview (keep bright color)

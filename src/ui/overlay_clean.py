@@ -3,6 +3,30 @@ import cv2
 import numpy as np
 from ui import ui_config as cfg
 
+def _roi_text_style(img, base_scale=0.30):
+    """
+    ROI 전용 텍스트 크기 자동 조절.
+    기준 해상도: 1280x720
+    1920x1200에서는 약 1.5배 커짐.
+    """
+    h, w = img.shape[:2]
+
+    sx = float(w) / 1280.0
+    sy = float(h) / 720.0
+    s = min(sx, sy)
+
+    scale = base_scale * s
+    scale = max(0.28, min(0.60, scale))
+
+    thickness = 1
+    if s >= 1.45:
+        thickness = 2
+
+    line_gap = int(round(10 * s))
+    line_gap = max(10, min(18, line_gap))
+
+    return float(scale), int(thickness), int(line_gap)
+
 # --- basic drawing helpers ---
 def draw_text(img, text, pos, color=None, scale=None, thickness=None, align="lt"):
     if color is None:
@@ -773,11 +797,13 @@ def _draw_roi_label_block(
         tx = int(x + 2)
         ty = int(y - 16 if y > 16 else y + h + 14)
 
+        line_gap = max(10, int(round(roi_text_scale * 36)))
+
         for i, t in enumerate(lines2):
             draw_text(
                 img,
                 t,
-                (tx, ty + (i * 10)),
+                (tx, ty + (i * line_gap)),
                 color=roi_text_color,
                 scale=roi_text_scale,
                 thickness=roi_text_thickness,
@@ -922,13 +948,17 @@ def draw_rois(
         rois = []
 
     base_font = cfg.FONT
-    base_font_scale = cfg.FONT_SCALE
-    base_thickness = cfg.FONT_THICK
-    line_spacing = 4
+
+    roi_text_scale, roi_text_thickness, roi_line_gap = _roi_text_style(
+        img,
+        base_scale=0.30,
+    )
+
+    base_font_scale = roi_text_scale
+    base_thickness = roi_text_thickness
+    line_spacing = max(4, int(round(roi_line_gap * 0.35)))
 
     roi_text_color = (0, 255, 0)
-    roi_text_scale = 0.25
-    roi_text_thickness = 1
 
     for r in rois:
         # normalize roi dict/object to {id, x,y,w,h, name/label}
