@@ -403,6 +403,11 @@ class ROIEditor:
 
         Himg, Wimg = vis_bgr.shape[:2]
 
+        roi_text_scale, roi_text_thickness, roi_line_gap = overlay._roi_text_style(
+            vis_bgr,
+            base_scale=0.30,
+        )
+
         overlay.draw_origin_axes(vis_bgr, origin=(40, 60), axis_len=80)
         sel = self.roi_mgr.get_selected()
 
@@ -516,8 +521,34 @@ class ROIEditor:
             g = self._get_roi_top_geometry(r, handle_dist=30, label_dist=0)
             label_x, label_y = g["label"]
 
-            tx = int(x+2)
-            ty = int(y - 16)
+            (tw, th), _ = cv2.getTextSize(
+                str(label),
+                cfg.FONT,
+                roi_text_scale,
+                roi_text_thickness,
+            )
+
+            margin = max(8, int(round(roi_text_scale * 30)))
+
+            tx = int(x + 2)
+            tx = max(2, min(tx, Wimg - tw - 2))
+
+            ty = int(y - margin - th)
+
+            if ty < 2:
+                ty = int(y + h + margin)
+                ty = min(ty, Himg - th - 2)
+
+            # main text - bold 방지
+            overlay.draw_text(
+                vis_bgr,
+                label,
+                (tx, ty),
+                color=cfg.COLOR_TEXT,
+                scale=roi_text_scale,
+                thickness=1,
+                align="lt",
+            )
 
             # shadow
            # overlay.draw_text(vis_bgr, label,(tx + 1, ty + 1),color=(0, 0, 0),scale=cfg.FONT_SCALE - 0.1,thickness=3,align='lt')

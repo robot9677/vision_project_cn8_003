@@ -6,8 +6,8 @@ from ui import ui_config as cfg
 def _roi_text_style(img, base_scale=0.30):
     """
     ROI 전용 텍스트 크기 자동 조절.
-    기준 해상도: 1280x720
-    1920x1200에서는 약 1.5배 커짐.
+    - 해상도에 따라 scale만 비례 증가
+    - thickness는 항상 1 유지: bold 방지
     """
     h, w = img.shape[:2]
 
@@ -16,14 +16,12 @@ def _roi_text_style(img, base_scale=0.30):
     s = min(sx, sy)
 
     scale = base_scale * s
-    scale = max(0.28, min(0.60, scale))
+    scale = max(0.28, min(0.46, scale))
 
     thickness = 1
-    if s >= 1.45:
-        thickness = 2
 
-    line_gap = int(round(10 * s))
-    line_gap = max(10, min(18, line_gap))
+    line_gap = int(round(13 * s))
+    line_gap = max(12, min(20, line_gap))
 
     return float(scale), int(thickness), int(line_gap)
 
@@ -794,10 +792,34 @@ def _draw_roi_label_block(
 
     if compact:
         lines2 = [s for s in lines if s]
-        tx = int(x + 2)
-        ty = int(y - 16 if y > 16 else y + h + 14)
+        if not lines2:
+            return
 
-        line_gap = max(10, int(round(roi_text_scale * 36)))
+        sizes = [
+            cv2.getTextSize(str(s), base_font, roi_text_scale, roi_text_thickness)[0]
+            for s in lines2
+        ]
+
+        max_text_w = max(sz[0] for sz in sizes) if sizes else 0
+        max_text_h = max(sz[1] for sz in sizes) if sizes else 10
+
+        line_gap = max(max_text_h + 3, int(round(roi_text_scale * 38)))
+        total_h = max_text_h + max(0, len(lines2) - 1) * line_gap
+
+        margin = max(8, int(round(roi_text_scale * 30)))
+
+        tx = int(x + 2)
+        tx = max(2, min(tx, w_img - max_text_w - 2))
+
+        # 기본: ROI 상단 바깥쪽으로 배치
+        ty_above = int(y - margin - total_h)
+
+        # 위쪽 공간이 부족하면 ROI 하단 바깥쪽으로 배치
+        if ty_above >= 2:
+            ty = ty_above
+        else:
+            ty = int(y + h + margin)
+            ty = min(ty, h_img - total_h - 2)
 
         for i, t in enumerate(lines2):
             draw_text(
@@ -806,11 +828,11 @@ def _draw_roi_label_block(
                 (tx, ty + (i * line_gap)),
                 color=roi_text_color,
                 scale=roi_text_scale,
-                thickness=roi_text_thickness,
+                thickness=1,
                 align="lt",
             )
         return
-
+    
     sizes = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0] for s in lines]
     heights = [cv2.getTextSize(s, base_font, base_font_scale, base_thickness)[0][1] for s in lines]
     max_w = max(sz[0] for sz in sizes) if sizes else 0
