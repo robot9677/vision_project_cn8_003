@@ -37,14 +37,25 @@
       "shutdown_to_zero": false,
 
       "spot_inspect": {
-      "enabled": true,
-      "light_id": "light1",
-      "idle_brightness": 20,
-      "inspect_brightness": 100,
-      "settle_ms": 1500,
-      "flush_frames": 30,
-      "restore_after_inspect": true
-    },
+        "enabled": true,
+        "light_id": "light1",
+
+        "idle_brightness": 20,
+        "inspect_brightness": 90,
+
+        "ramp_enabled": true,
+        "ramp_steps": [20, 40, 60, 80, 90],
+        "ramp_step_ms": 200,
+
+        "pre_ready_settle_ms": 400,
+        "pre_ready_flush_frames": 8,
+
+        "inspect_settle_ms": 50,
+        "inspect_flush_frames": 2,
+
+        "armed_timeout_ms": 3000,
+        "restore_after_inspect": true
+      },
     
       "lights": [
         {
