@@ -179,7 +179,7 @@ class Jk10VLightController(BaseLightController):
                 ser.write(frame)
                 ser.flush()
 
-                time.sleep(0.05)
+                time.sleep(0.15)
                 resp = ser.read(8)
 
         except Exception as e:
