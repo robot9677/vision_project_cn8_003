@@ -40,7 +40,7 @@
       "enabled": true,
       "light_id": "light1",
       "idle_brightness": 20,
-      "inspect_brightness": 90,
+      "inspect_brightness": 100,
       "settle_ms": 1000,
       "flush_frames": 15,
       "restore_after_inspect": true
