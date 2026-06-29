@@ -61,7 +61,7 @@
         {
           "id": "light1",
           "camera_id": "cam1",
-          "brightness": 10
+          "brightness": 10  
         }
       ]
     },
