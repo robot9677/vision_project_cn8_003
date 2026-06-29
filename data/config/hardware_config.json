@@ -45,15 +45,15 @@
 
         "ramp_enabled": true,
         "ramp_steps": [20, 60, 90],
-        "ramp_step_ms": 120,
+        "ramp_step_ms": 80,
 
-        "pre_ready_settle_ms": 250,
-        "pre_ready_flush_frames": 5,
+        "pre_ready_settle_ms": 200,
+        "pre_ready_flush_frames": 4,
 
-        "inspect_settle_ms": 30,
+        "inspect_settle_ms": 20,
         "inspect_flush_frames": 1,
 
-        "armed_timeout_ms": 2500,
+        "armed_timeout_ms": 2000,
         "restore_after_inspect": true
       },
     
