@@ -41,7 +41,7 @@
       "light_id": "light1",
       "idle_brightness": 20,
       "inspect_brightness": 100,
-      "settle_ms": 1000,
+      "settle_ms": 1500,
       "flush_frames": 30,
       "restore_after_inspect": true
     },
