@@ -142,8 +142,8 @@ class ModbusRtuSlaveController:
 
         if cmd == 1:
             self._set_reg(self.reg_command, 0)
-            print("[PLC] command received: READY_REQUEST")
-            return "request"
+            print("[PLC] command received: PREPARE_REQUEST")
+            return "prepare"
 
         if cmd == 2:
             self._set_reg(self.reg_command, 0)

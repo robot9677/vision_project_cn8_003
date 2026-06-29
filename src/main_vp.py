@@ -128,6 +128,11 @@ class AppState:
     # snapshot cooldown
     last_snapshot_time: float = 0.0
 
+    # spot light pre-arm
+    spot_armed: bool = False
+    spot_armed_ts: float = 0.0
+    spot_armed_brightness: int = 0
+
     tracking_stable: bool = False
     stable_frame_count: int = 0
     run_mode_text: str = "HELD"
@@ -452,58 +457,149 @@ class VisionApp:
         light_sets = self.hardware_cfg.get("light_sets", {}) or {}
         active_light_set = str(self.hardware_cfg.get("active_light_set", "") or "").strip()
         light_cfg = light_sets.get(active_light_set, {}) or {}
-
         spot_cfg = light_cfg.get("spot_inspect", {}) or {}
 
         return {
             "enabled": bool(spot_cfg.get("enabled", False)),
             "light_id": str(spot_cfg.get("light_id", "light1")),
-            "idle_brightness": int(spot_cfg.get("idle_brightness", 40)),
+
+            "idle_brightness": int(spot_cfg.get("idle_brightness", 20)),
             "inspect_brightness": int(spot_cfg.get("inspect_brightness", 90)),
-            "settle_ms": int(spot_cfg.get("settle_ms", 250)),
-            "flush_frames": int(spot_cfg.get("flush_frames", 3)),
+
+            "ramp_enabled": bool(spot_cfg.get("ramp_enabled", True)),
+            "ramp_steps": list(spot_cfg.get("ramp_steps", [20, 40, 60, 80, 90])),
+            "ramp_step_ms": int(spot_cfg.get("ramp_step_ms", 200)),
+
+            "pre_ready_settle_ms": int(spot_cfg.get("pre_ready_settle_ms", 400)),
+            "pre_ready_flush_frames": int(spot_cfg.get("pre_ready_flush_frames", 8)),
+
+            "inspect_settle_ms": int(spot_cfg.get("inspect_settle_ms", 50)),
+            "inspect_flush_frames": int(spot_cfg.get("inspect_flush_frames", 2)),
+
+            "armed_timeout_ms": int(spot_cfg.get("armed_timeout_ms", 3000)),
             "restore_after_inspect": bool(spot_cfg.get("restore_after_inspect", True)),
         }
 
+    def _flush_camera_frames(self, n):
+        last_gray = None
+        last_vis = None
+
+        for _ in range(max(0, int(n))):
+            frame = self._read_frame()
+            if frame is None:
+                continue
+
+            g, v = self._prepare_frame(frame)
+            if g is not None and v is not None:
+                last_gray = g
+                last_vis = v
+
+        return last_gray, last_vis
+
+    def _spot_prearm(self, trigger="PLC"):
+        st = self.state
+        cfg = self._get_spot_light_cfg()
+
+        if not bool(cfg.get("enabled", False)):
+            return False
+
+        light_id = cfg["light_id"]
+        inspect_brightness = int(cfg["inspect_brightness"])
+
+        print(
+            f"[LIGHT PREARM] trigger={trigger} "
+            f"idle={cfg['idle_brightness']}% inspect={inspect_brightness}% "
+            f"timeout={cfg['armed_timeout_ms']}ms"
+        )
+
+        if bool(cfg["ramp_enabled"]):
+            steps = cfg["ramp_steps"]
+            if not steps:
+                steps = [inspect_brightness]
+
+            for b in steps:
+                b = int(max(0, min(100, int(b))))
+                self.light.set_brightness(light_id, b)
+                self.runtime_cfg["_light_state"] = self.light.get_state()
+                time.sleep(float(cfg["ramp_step_ms"]) / 1000.0)
+        else:
+            self.light.set_brightness(light_id, inspect_brightness)
+            self.runtime_cfg["_light_state"] = self.light.get_state()
+
+        if int(cfg["pre_ready_settle_ms"]) > 0:
+            time.sleep(float(cfg["pre_ready_settle_ms"]) / 1000.0)
+
+        self._flush_camera_frames(int(cfg["pre_ready_flush_frames"]))
+
+        st.spot_armed = True
+        st.spot_armed_ts = time.time()
+        st.spot_armed_brightness = inspect_brightness
+        st.status = f"{trigger} SPOT READY: {inspect_brightness}%"
+
+        print(f"[LIGHT PREARM] ready brightness={inspect_brightness}%")
+        return True
+
+    def _spot_release(self, reason="release"):
+        st = self.state
+        cfg = self._get_spot_light_cfg()
+
+        if not bool(cfg.get("enabled", False)):
+            st.spot_armed = False
+            return
+
+        light_id = cfg["light_id"]
+        idle_brightness = int(cfg["idle_brightness"])
+
+        self.light.set_brightness(light_id, idle_brightness)
+        self.runtime_cfg["_light_state"] = self.light.get_state()
+
+        st.spot_armed = False
+        st.spot_armed_ts = 0.0
+        st.spot_armed_brightness = 0
+
+        print(f"[LIGHT PREARM] restored idle={idle_brightness}% reason={reason}")
+
+    def _spot_timeout_tick(self):
+        st = self.state
+        cfg = self._get_spot_light_cfg()
+
+        if not bool(cfg.get("enabled", False)):
+            return
+
+        if not bool(getattr(st, "spot_armed", False)):
+            return
+
+        timeout_ms = int(cfg.get("armed_timeout_ms", 3000))
+        if timeout_ms <= 0:
+            return
+
+        elapsed_ms = int((time.time() - float(st.spot_armed_ts)) * 1000.0)
+
+        if elapsed_ms > timeout_ms:
+            self._spot_release(reason="timeout")
+            st.status = "SPOT READY TIMEOUT"
+
     def _run_spot_inspect_once(self, frame_gray8, vis_bgr, avg5=False, trigger="PLC"):
         st = self.state
-        spot_cfg = self._get_spot_light_cfg()
+        cfg = self._get_spot_light_cfg()
 
-        use_spot = bool(spot_cfg.get("enabled", False))
-        light_id = spot_cfg.get("light_id", "light1")
-        idle_brightness = int(spot_cfg.get("idle_brightness", 40))
-        inspect_brightness = int(spot_cfg.get("inspect_brightness", 90))
-        settle_ms = int(spot_cfg.get("settle_ms", 250))
-        flush_frames = int(spot_cfg.get("flush_frames", 3))
-        restore_after_inspect = bool(spot_cfg.get("restore_after_inspect", True))
+        use_spot = bool(cfg.get("enabled", False))
 
         inspect_frame_gray8 = frame_gray8
         inspect_vis_bgr = vis_bgr
 
         try:
             if use_spot:
-                st.status = f"{trigger} SPOT LIGHT ON: {inspect_brightness}%"
-                print(
-                    f"[LIGHT SPOT] trigger={trigger} "
-                    f"idle={idle_brightness}% inspect={inspect_brightness}% "
-                    f"settle={settle_ms}ms flush={flush_frames}"
-                )
+                if not bool(getattr(st, "spot_armed", False)):
+                    self._spot_prearm(trigger=f"{trigger}_DIRECT")
 
-                self.light.set_brightness(light_id, inspect_brightness)
-                self.runtime_cfg["_light_state"] = self.light.get_state()
+                if int(cfg["inspect_settle_ms"]) > 0:
+                    time.sleep(float(cfg["inspect_settle_ms"]) / 1000.0)
 
-                if settle_ms > 0:
-                    time.sleep(float(settle_ms) / 1000.0)
-
-                for _ in range(max(0, flush_frames)):
-                    frame = self._read_frame()
-                    if frame is None:
-                        continue
-
-                    g, v = self._prepare_frame(frame)
-                    if g is not None and v is not None:
-                        inspect_frame_gray8 = g
-                        inspect_vis_bgr = v
+                g, v = self._flush_camera_frames(int(cfg["inspect_flush_frames"]))
+                if g is not None and v is not None:
+                    inspect_frame_gray8 = g
+                    inspect_vis_bgr = v
 
             run_inspect_once(
                 cam=self.cam,
@@ -520,10 +616,8 @@ class VisionApp:
             return bool(st.last_overall_ok)
 
         finally:
-            if use_spot and restore_after_inspect:
-                self.light.set_brightness(light_id, idle_brightness)
-                self.runtime_cfg["_light_state"] = self.light.get_state()
-                print(f"[LIGHT SPOT] restored idle={idle_brightness}%")
+            if use_spot and bool(cfg.get("restore_after_inspect", True)):
+                self._spot_release(reason=f"{trigger}_done")
 
     def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
         st = self.state
@@ -532,14 +626,30 @@ class VisionApp:
         if cmd is None:
             return
 
-        if cmd == "request":
+        if cmd == "prepare":
             if st.edit_mode:
-                st.status = "PLC READY REQUEST: ERROR / EDIT MODE"
+                st.status = "PLC PREPARE REJECTED: EDIT MODE"
                 self.plc.set_error()
                 return
 
-            self.plc.set_idle()
-            st.status = "PLC READY: IDLE"
+            try:
+                self.plc.set_busy()
+                st.status = "PLC PREPARE BUSY"
+
+                ok = self._spot_prearm(trigger="PLC")
+
+                if ok:
+                    self.plc.set_idle()
+                    st.status = "PLC READY: SPOT ARMED"
+                else:
+                    self.plc.set_idle()
+                    st.status = "PLC READY: NO SPOT"
+
+            except Exception as e:
+                print("[PLC] prepare failed:", e)
+                st.status = f"PLC PREPARE ERROR: {e}"
+                self.plc.set_error()
+
             return
 
         if cmd != "inspect":
@@ -887,6 +997,7 @@ class VisionApp:
                 self._render_run_frame(vis, frame_gray8)
 
             self._run_plc_inspect_tick(frame_gray8, vis)
+            self._spot_timeout_tick()
 
             if not st.edit_mode:
                 self._run_auto_inspect_tick(frame_gray8, vis)

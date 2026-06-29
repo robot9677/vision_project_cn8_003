@@ -71,24 +71,33 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
     st = app.state
 
     if cmd == app.UICmd.INSPECT:
-        if hasattr(app, "_run_spot_inspect_once"):
+        spot_cfg = app._get_spot_light_cfg() if hasattr(app, "_get_spot_light_cfg") else {}
+        spot_enabled = bool(spot_cfg.get("enabled", False))
+
+        if spot_enabled and hasattr(app, "_spot_prearm") and hasattr(app, "_run_spot_inspect_once"):
+            if not bool(getattr(app.state, "spot_armed", False)):
+                app._spot_prearm(trigger="MANUAL")
+                app.state.status = "MANUAL READY: PRESS INSPECT AGAIN"
+                return
+
             app._run_spot_inspect_once(
                 frame_gray8,
                 vis_bgr,
                 avg5=True,
                 trigger="MANUAL",
             )
-        else:
-            run_inspect_once(
-                cam=app.cam,
-                inspector=app.inspector,
-                runtime_cfg=app.runtime_cfg,
-                state=app.state,
-                frame_gray8=frame_gray8,
-                vis_bgr=vis_bgr,
-                avg5=True,
-                use_cache=False,
-            )
+            return
+
+        run_inspect_once(
+            cam=app.cam,
+            inspector=app.inspector,
+            runtime_cfg=app.runtime_cfg,
+            state=app.state,
+            frame_gray8=frame_gray8,
+            vis_bgr=vis_bgr,
+            avg5=True,
+            use_cache=False,
+        )
         return
 
     if cmd == app.UICmd.AUTOTUNE:
