@@ -1,6 +1,6 @@
 ﻿{
   "active_camera_set": "b0429_single",
-  "active_light_set": "mock_single",
+  "active_light_set": "jk_10v_single",
 
   "camera_sets": {
     "b0429_single": {
@@ -24,6 +24,26 @@
   },
 
   "light_sets": {
+    "jk_10v_single": {
+      "backend": "jk_10v_modbus",
+      "port": "/dev/ttyUSB0",
+      "slave_id": 1,
+      "baudrate": 9600,
+      "timeout": 0.5,
+      "register": 10,
+      "min_percent": 0,
+      "max_percent": 100,
+      "default_brightness": 70,
+      "shutdown_to_zero": false,
+      "lights": [
+        {
+          "id": "light1",
+          "camera_id": "cam1",
+          "brightness": 70
+        }
+      ]
+    },
+
     "mock_single": {
       "backend": "mock",
       "lights": [
