@@ -33,8 +33,19 @@
       "register": 10,
       "min_percent": 0,
       "max_percent": 100,
-      "default_brightness": 70,
+      "default_brightness": 40,
       "shutdown_to_zero": false,
+
+      "spot_inspect": {
+      "enabled": true,
+      "light_id": "light1",
+      "idle_brightness": 40,
+      "inspect_brightness": 90,
+      "settle_ms": 250,
+      "flush_frames": 3,
+      "restore_after_inspect": true
+    },
+    
       "lights": [
         {
           "id": "light1",

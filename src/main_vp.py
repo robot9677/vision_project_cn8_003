@@ -448,10 +448,100 @@ class VisionApp:
                 cache_every_n=int(cfg.get("auto_inspect_every_n", 3)),
             )
 
+    def _get_spot_light_cfg(self):
+        light_sets = self.hardware_cfg.get("light_sets", {}) or {}
+        active_light_set = str(self.hardware_cfg.get("active_light_set", "") or "").strip()
+        light_cfg = light_sets.get(active_light_set, {}) or {}
+
+        spot_cfg = light_cfg.get("spot_inspect", {}) or {}
+
+        return {
+            "enabled": bool(spot_cfg.get("enabled", False)),
+            "light_id": str(spot_cfg.get("light_id", "light1")),
+            "idle_brightness": int(spot_cfg.get("idle_brightness", 40)),
+            "inspect_brightness": int(spot_cfg.get("inspect_brightness", 90)),
+            "settle_ms": int(spot_cfg.get("settle_ms", 250)),
+            "flush_frames": int(spot_cfg.get("flush_frames", 3)),
+            "restore_after_inspect": bool(spot_cfg.get("restore_after_inspect", True)),
+        }
+
+    def _run_spot_inspect_once(self, frame_gray8, vis_bgr, avg5=False, trigger="PLC"):
+        st = self.state
+        spot_cfg = self._get_spot_light_cfg()
+
+        use_spot = bool(spot_cfg.get("enabled", False))
+        light_id = spot_cfg.get("light_id", "light1")
+        idle_brightness = int(spot_cfg.get("idle_brightness", 40))
+        inspect_brightness = int(spot_cfg.get("inspect_brightness", 90))
+        settle_ms = int(spot_cfg.get("settle_ms", 250))
+        flush_frames = int(spot_cfg.get("flush_frames", 3))
+        restore_after_inspect = bool(spot_cfg.get("restore_after_inspect", True))
+
+        inspect_frame_gray8 = frame_gray8
+        inspect_vis_bgr = vis_bgr
+
+        try:
+            if use_spot:
+                st.status = f"{trigger} SPOT LIGHT ON: {inspect_brightness}%"
+                print(
+                    f"[LIGHT SPOT] trigger={trigger} "
+                    f"idle={idle_brightness}% inspect={inspect_brightness}% "
+                    f"settle={settle_ms}ms flush={flush_frames}"
+                )
+
+                self.light.set_brightness(light_id, inspect_brightness)
+                self.runtime_cfg["_light_state"] = self.light.get_state()
+
+                if settle_ms > 0:
+                    time.sleep(float(settle_ms) / 1000.0)
+
+                for _ in range(max(0, flush_frames)):
+                    frame = self._read_frame()
+                    if frame is None:
+                        continue
+
+                    g, v = self._prepare_frame(frame)
+                    if g is not None and v is not None:
+                        inspect_frame_gray8 = g
+                        inspect_vis_bgr = v
+
+            run_inspect_once(
+                cam=self.cam,
+                inspector=self.inspector,
+                runtime_cfg=self.runtime_cfg,
+                state=st,
+                frame_gray8=inspect_frame_gray8,
+                vis_bgr=inspect_vis_bgr,
+                avg5=bool(avg5),
+                use_cache=False,
+                cache_every_n=1,
+            )
+
+            return bool(st.last_overall_ok)
+
+        finally:
+            if use_spot and restore_after_inspect:
+                self.light.set_brightness(light_id, idle_brightness)
+                self.runtime_cfg["_light_state"] = self.light.get_state()
+                print(f"[LIGHT SPOT] restored idle={idle_brightness}%")
+
     def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
         st = self.state
 
         cmd = self.plc.poll_command()
+        if cmd is None:
+            return
+
+        if cmd == "request":
+            if st.edit_mode:
+                st.status = "PLC READY REQUEST: ERROR / EDIT MODE"
+                self.plc.set_error()
+                return
+
+            self.plc.set_idle()
+            st.status = "PLC READY: IDLE"
+            return
+
         if cmd != "inspect":
             return
 
@@ -462,20 +552,15 @@ class VisionApp:
 
         try:
             self.plc.set_busy()
+            st.status = "PLC INSPECT BUSY"
 
-            run_inspect_once(
-                cam=self.cam,
-                inspector=self.inspector,
-                runtime_cfg=self.runtime_cfg,
-                state=st,
-                frame_gray8=frame_gray8,
-                vis_bgr=vis_bgr,
+            ok = self._run_spot_inspect_once(
+                frame_gray8,
+                vis_bgr,
                 avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
-                use_cache=False,
-                cache_every_n=1,
+                trigger="PLC",
             )
 
-            ok = bool(st.last_overall_ok)
             self.plc.set_done(ok)
             st.status = f"PLC INSPECT DONE: {'OK' if ok else 'NG'}"
 

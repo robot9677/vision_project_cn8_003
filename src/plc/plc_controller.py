@@ -142,7 +142,12 @@ class ModbusRtuSlaveController:
 
         if cmd == 1:
             self._set_reg(self.reg_command, 0)
-            print("[PLC] command received: INSPECT")
+            print("[PLC] command received: READY_REQUEST")
+            return "request"
+
+        if cmd == 2:
+            self._set_reg(self.reg_command, 0)
+            print("[PLC] command received: INSPECT_START")
             return "inspect"
 
         return None
@@ -162,7 +167,7 @@ class ModbusRtuSlaveController:
 
     def set_error(self):
         self._set_reg(self.reg_status, 3)
-        self._set_reg(self.reg_result, 2)
+        self._set_reg(self.reg_result, 0)
         print("[PLC] result set: ERROR")
 
     def _get_reg(self, idx: int) -> int:

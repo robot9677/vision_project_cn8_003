@@ -71,16 +71,24 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
     st = app.state
 
     if cmd == app.UICmd.INSPECT:
-        run_inspect_once(
-            cam=app.cam,
-            inspector=app.inspector,
-            runtime_cfg=app.runtime_cfg,
-            state=app.state,
-            frame_gray8=frame_gray8,
-            vis_bgr=vis_bgr,
-            avg5=True,
-            use_cache=False,
-        )
+        if hasattr(app, "_run_spot_inspect_once"):
+            app._run_spot_inspect_once(
+                frame_gray8,
+                vis_bgr,
+                avg5=True,
+                trigger="MANUAL",
+            )
+        else:
+            run_inspect_once(
+                cam=app.cam,
+                inspector=app.inspector,
+                runtime_cfg=app.runtime_cfg,
+                state=app.state,
+                frame_gray8=frame_gray8,
+                vis_bgr=vis_bgr,
+                avg5=True,
+                use_cache=False,
+            )
         return
 
     if cmd == app.UICmd.AUTOTUNE:
