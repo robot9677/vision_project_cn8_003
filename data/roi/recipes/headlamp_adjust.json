@@ -122,9 +122,9 @@
             "tip_left_min_coverage": 0.40,
 
             "tip_band_x0_ratio": -0.09,
-            "tip_band_y0_ratio": 0.88,
+            "tip_band_y0_ratio": 0.95,
             "tip_band_w_ratio": 0.55,
-            "tip_band_h_ratio": 0.12,
+            "tip_band_h_ratio": 0.07,
 
             "tip_left_gap_max": 42.0,
             "tip_left_norm_max": 0.18
