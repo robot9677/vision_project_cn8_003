@@ -202,8 +202,19 @@ class Jk10VLightController(BaseLightController):
             f"port={self.port} slave={self.slave_id} baudrate={self.baudrate}"
         )
 
+        spot_cfg = self.light_cfg.get("spot_inspect", {}) or {}
+        spot_enabled = bool(spot_cfg.get("enabled", False))
+        startup_brightness = None
+
+        if spot_enabled and spot_cfg.get("idle_brightness") is not None:
+            startup_brightness = int(spot_cfg.get("idle_brightness"))
+
         for light_id, info in self.state.items():
-            brightness = int(info.get("brightness", 0))
+            if startup_brightness is not None:
+                brightness = self._clamp_percent(startup_brightness)
+            else:
+                brightness = int(info.get("brightness", 0))
+
             voltage = self._percent_to_voltage(brightness)
 
             ok, reason = self._write_voltage(voltage)

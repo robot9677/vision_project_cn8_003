@@ -33,16 +33,16 @@
       "register": 10,
       "min_percent": 0,
       "max_percent": 100,
-      "default_brightness": 40,
+      "default_brightness": 20,
       "shutdown_to_zero": false,
 
       "spot_inspect": {
       "enabled": true,
       "light_id": "light1",
       "idle_brightness": 20,
-      "inspect_brightness": 100,
-      "settle_ms": 250,
-      "flush_frames": 3,
+      "inspect_brightness": 90,
+      "settle_ms": 1000,
+      "flush_frames": 15,
       "restore_after_inspect": true
     },
     
@@ -50,7 +50,7 @@
         {
           "id": "light1",
           "camera_id": "cam1",
-          "brightness": 100
+          "brightness": 20
         }
       ]
     },
