@@ -186,7 +186,10 @@ class Jk10VLightController(BaseLightController):
             return False, f"SERIAL_ERROR:{e}"
 
         if not resp:
-            return False, "NO_RESPONSE"
+            # JK-10V-P01-CH는 출력 전압은 적용되지만
+            # 실행 환경에 따라 응답 프레임을 못 읽는 경우가 있음.
+            # 조명 제어에서는 명령 송신 성공을 OK로 간주.
+            return True, "OK_NO_RESPONSE"
 
         if resp != frame:
             return False, f"BAD_RESPONSE:{resp.hex(' ')}"
