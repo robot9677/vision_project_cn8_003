@@ -424,6 +424,15 @@ class VisionApp:
         st = self.state
         cfg = self.runtime_cfg
 
+        # spot 조명 검사 모드에서는 auto inspect 금지
+        # 수동/PLC pre-arm 테스트 중 의도치 않은 추가 검사 방지
+        try:
+            spot_cfg = self._get_spot_light_cfg()
+            if bool(spot_cfg.get("enabled", False)):
+                return
+        except Exception:
+            pass
+
         if not (st.auto_inspect and self.product_profile["modules"].get("auto_inspect", True)):
             return
 

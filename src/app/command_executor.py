@@ -74,11 +74,19 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
         spot_cfg = app._get_spot_light_cfg() if hasattr(app, "_get_spot_light_cfg") else {}
         spot_enabled = bool(spot_cfg.get("enabled", False))
 
+        print(
+            f"[CMD INSPECT] spot_enabled={spot_enabled} "
+            f"armed={bool(getattr(app.state, 'spot_armed', False))}"
+        )
+
         if spot_enabled and hasattr(app, "_spot_prearm") and hasattr(app, "_run_spot_inspect_once"):
             if not bool(getattr(app.state, "spot_armed", False)):
+                print("[CMD INSPECT] FIRST_CLICK_PREARM_ONLY")
                 app._spot_prearm(trigger="MANUAL")
                 app.state.status = "MANUAL READY: PRESS INSPECT AGAIN"
                 return
+
+            print("[CMD INSPECT] SECOND_CLICK_RUN_INSPECT")
 
             app._run_spot_inspect_once(
                 frame_gray8,
