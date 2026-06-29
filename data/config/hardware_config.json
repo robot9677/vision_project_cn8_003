@@ -39,10 +39,10 @@
       "spot_inspect": {
       "enabled": true,
       "light_id": "light1",
-      "idle_brightness": 70,
+      "idle_brightness": 20,
       "inspect_brightness": 100,
       "settle_ms": 1000,
-      "flush_frames": 15,
+      "flush_frames": 30,
       "restore_after_inspect": true
     },
     
