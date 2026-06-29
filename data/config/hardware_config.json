@@ -44,16 +44,16 @@
         "inspect_brightness": 90,
 
         "ramp_enabled": true,
-        "ramp_steps": [20, 40, 60, 80, 90],
-        "ramp_step_ms": 200,
+        "ramp_steps": [20, 60, 90],
+        "ramp_step_ms": 120,
 
-        "pre_ready_settle_ms": 400,
-        "pre_ready_flush_frames": 8,
+        "pre_ready_settle_ms": 250,
+        "pre_ready_flush_frames": 5,
 
-        "inspect_settle_ms": 50,
-        "inspect_flush_frames": 2,
+        "inspect_settle_ms": 30,
+        "inspect_flush_frames": 1,
 
-        "armed_timeout_ms": 3000,
+        "armed_timeout_ms": 2500,
         "restore_after_inspect": true
       },
     
