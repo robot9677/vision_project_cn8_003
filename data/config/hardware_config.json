@@ -33,14 +33,14 @@
       "register": 10,
       "min_percent": 0,
       "max_percent": 100,
-      "default_brightness": 10,
+      "default_brightness": 60,
       "shutdown_to_zero": false,
 
       "spot_inspect": {
         "enabled": true,
         "light_id": "light1",
 
-        "idle_brightness": 10,
+        "idle_brightness": 60,
         "inspect_brightness": 90,
 
         "ramp_enabled": true,
@@ -61,7 +61,7 @@
         {
           "id": "light1",
           "camera_id": "cam1",
-          "brightness": 10  
+          "brightness": 60  
         }
       ]
     },
