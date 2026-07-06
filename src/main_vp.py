@@ -946,9 +946,14 @@ class VisionApp:
             return None, None
 
         if frame.ndim == 3:
-            frame = frame[:, :, 0]
-
-        frame_gray8 = frame
+            # B0429 grayscale path usually arrives as 3-channel gray/BGR.
+            # B0251/IMX477 nvargus path arrives as real BGR color, so convert to proper gray.
+            if frame.shape[2] >= 3:
+                frame_gray8 = cv2.cvtColor(frame[:, :, :3], cv2.COLOR_BGR2GRAY)
+            else:
+                frame_gray8 = frame[:, :, 0]
+        else:
+            frame_gray8 = frame
 
         if (not st.edit_mode) and frame_gray8 is not None:
             norm_enabled = bool(self.runtime_cfg.get("normalize_enabled", False))

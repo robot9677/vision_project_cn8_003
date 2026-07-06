@@ -55,6 +55,16 @@ def build_gst_pipeline(cam_cfg: Dict[str, Any]) -> str:
             "appsink drop=true max-buffers=1 sync=false"
         )
 
+    if pipeline_type == "nvargus_bgr":
+        sensor_id = int(cam_cfg.get("sensor_id", 0))
+        return (
+            f"nvarguscamerasrc sensor-id={sensor_id} ! "
+            f"video/x-raw(memory:NVMM),width={width},height={height},framerate={fps}/1,format=NV12 ! "
+            "nvvidconv ! video/x-raw,format=BGRx ! "
+            "videoconvert ! video/x-raw,format=BGR ! "
+            "appsink drop=true max-buffers=1 sync=false"
+        )
+
     raise ValueError(f"unsupported pipeline_type: {pipeline_type}")
 
 

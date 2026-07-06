@@ -1,7 +1,6 @@
 ﻿{
-  "active_camera_set": "b0429_single",
+  "active_camera_set": "b0251_imx477_single",
   "active_light_set": "jk_10v_single",
-
   "camera_sets": {
     "b0429_single": {
       "mode": "single",
@@ -20,9 +19,25 @@
           "camera_profile": "default"
         }
       ]
+    },
+    "b0251_imx477_single": {
+      "mode": "single",
+      "backend": "gstreamer",
+      "cameras": [
+        {
+          "id": "cam1",
+          "name": "B0251_IMX477",
+          "sensor_id": 0,
+          "device": "/dev/video0",
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "pipeline_type": "nvargus_bgr",
+          "camera_profile": "default"
+        }
+      ]
     }
   },
-
   "light_sets": {
     "jk_10v_single": {
       "backend": "jk_10v_modbus",
@@ -35,37 +50,32 @@
       "max_percent": 100,
       "default_brightness": 60,
       "shutdown_to_zero": false,
-
       "spot_inspect": {
         "enabled": true,
         "light_id": "light1",
-
         "idle_brightness": 60,
         "inspect_brightness": 90,
-
         "ramp_enabled": true,
-        "ramp_steps": [60, 90],
+        "ramp_steps": [
+          60,
+          90
+        ],
         "ramp_step_ms": 70,
-
         "pre_ready_settle_ms": 150,
         "pre_ready_flush_frames": 3,
-
         "inspect_settle_ms": 10,
         "inspect_flush_frames": 1,
-
         "armed_timeout_ms": 2000,
         "restore_after_inspect": true
       },
-    
       "lights": [
         {
           "id": "light1",
           "camera_id": "cam1",
-          "brightness": 60  
+          "brightness": 60
         }
       ]
     },
-
     "mock_single": {
       "backend": "mock",
       "lights": [
