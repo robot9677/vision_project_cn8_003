@@ -49,7 +49,7 @@
       "min_percent": 0,
       "max_percent": 100,
       "default_brightness": 60,
-      "shutdown_to_zero": false,
+      "shutdown_to_zero": true,
       "spot_inspect": {
         "enabled": true,
         "light_id": "light1",
