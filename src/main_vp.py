@@ -4,6 +4,7 @@ import time
 import json
 from dataclasses import dataclass
 from enum import Enum
+import sys
 
 import cv2
 import numpy as np
@@ -1037,6 +1038,12 @@ class VisionApp:
                 break
 
         try:
+            cv2.destroyWindow(self.win)
+            cv2.waitKey(1)
+        except Exception:
+            pass
+
+        try:
             self.plc.stop()
         except Exception as e:
             print("[PLC] stop failed:", e)
@@ -1046,8 +1053,34 @@ class VisionApp:
         except Exception as e:
             print("[LIGHT] stop failed:", e)
 
-        self.cam.release()
-        cv2.destroyAllWindows()
+        # B0251 / nvargus는 release()에서 Argus cleanup 대기 때문에
+        # 종료가 4~5초 지연될 수 있음.
+        fast_exit = False
+        try:
+            pipeline_type = str(self.camera_info.get("pipeline_type", "") or "")
+            fast_exit = pipeline_type == "nvargus_bgr"
+        except Exception:
+            fast_exit = False
+
+        if fast_exit:
+            print("[CAM] fast exit: skip blocking nvargus release")
+            try:
+                cv2.destroyAllWindows()
+            except Exception:
+                pass
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(0)
+
+        try:
+            self.cam.release()
+        except Exception as e:
+            print("[CAM] release failed:", e)
+
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
 
 
 def main():
