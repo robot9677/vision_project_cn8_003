@@ -29,8 +29,8 @@
           "name": "B0251_IMX477",
           "sensor_id": 0,
           "device": "/dev/video0",
-          "width": 3840,
-          "height": 2160,
+          "width": 1920,
+          "height": 1080,
           "fps": 30,
           "pipeline_type": "nvargus_bgr",
           "camera_profile": "default"
