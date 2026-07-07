@@ -103,7 +103,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 130.0
+            "thresh_min": 115.0
           }
         }
       ],
@@ -130,10 +130,10 @@
             "tip_bright_thresh": 120,
             "tip_left_min_coverage": 0.40,
 
-            "tip_band_x0_ratio": -0.09,
-            "tip_band_y0_ratio": 0.95,
-            "tip_band_w_ratio": 0.55,
-            "tip_band_h_ratio": 0.07,
+            "tip_band_x0_ratio": -1.5,
+            "tip_band_y0_ratio": 15,
+            "tip_band_w_ratio": -0.010,
+            "tip_band_h_ratio": 0.08,
 
             "tip_left_gap_max": 15.0,
             "tip_left_norm_max": 0.20
