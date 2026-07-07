@@ -63,8 +63,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 25,
-            "thresh_max": 80.0
+            "thresh_min": 100
           }
         }
       ],
@@ -81,14 +80,13 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 30.0,
-            "thresh_max": 80.0
+            "thresh_min": 115.0
           }
         },
         {
           "tool": "measure.mean_raw_range",
           "params": {
-            "max_mean_raw": 80.0
+            "max_mean_raw": 150.0
           }
     }
       ],
@@ -105,8 +103,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 22.0,
-            "thresh_max": 70.0
+            "thresh_min": 130.0
           }
         }
       ],
