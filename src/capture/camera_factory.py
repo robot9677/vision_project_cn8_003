@@ -57,10 +57,28 @@ def build_gst_pipeline(cam_cfg: Dict[str, Any]) -> str:
 
     if pipeline_type == "nvargus_bgr":
         sensor_id = int(cam_cfg.get("sensor_id", 0))
+
+        # Output size used by the application
+        out_width = width
+        out_height = height
+        out_fps = fps
+
+        # Native Argus capture mode.
+        # IMX477 does not expose 1920x1080@30 as native mode.
+        # Use 3840x2160@30, then scale down to 1920x1080 for OpenCV.
+        cap_width = int(cam_cfg.get("capture_width", out_width))
+        cap_height = int(cam_cfg.get("capture_height", out_height))
+        cap_fps = int(cam_cfg.get("capture_fps", out_fps))
+
+        flip_method = int(cam_cfg.get("flip_method", 2))
+
         return (
             f"nvarguscamerasrc sensor-id={sensor_id} ! "
-            f"video/x-raw(memory:NVMM),width={width},height={height},framerate={fps}/1,format=NV12 ! "
-            "nvvidconv flip-method=2 ! video/x-raw,format=BGRx ! "
+            f"video/x-raw(memory:NVMM),width={cap_width},height={cap_height},framerate={cap_fps}/1,format=NV12 ! "
+            f"nvvidconv flip-method={flip_method} ! "
+            f"video/x-raw,width={out_width},height={out_height},format=BGRx ! "
+            "videorate ! "
+            f"video/x-raw,format=BGRx,framerate={out_fps}/1 ! "
             "videoconvert ! video/x-raw,format=BGR ! "
             "appsink drop=true max-buffers=1 sync=false"
         )
