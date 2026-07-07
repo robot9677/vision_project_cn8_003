@@ -60,7 +60,7 @@ def build_gst_pipeline(cam_cfg: Dict[str, Any]) -> str:
         return (
             f"nvarguscamerasrc sensor-id={sensor_id} ! "
             f"video/x-raw(memory:NVMM),width={width},height={height},framerate={fps}/1,format=NV12 ! "
-            "nvvidconv flip-method=4 ! video/x-raw,format=BGRx ! "
+            "nvvidconv flip-method=2 ! video/x-raw,format=BGRx ! "
             "videoconvert ! video/x-raw,format=BGR ! "
             "appsink drop=true max-buffers=1 sync=false"
         )
