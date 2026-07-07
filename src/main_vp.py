@@ -339,7 +339,10 @@ class VisionApp:
                 if x1 <= x <= x2 and y1 <= y <= y2:
                     if b.get("enabled", True):
                         bid = b.get("id")
-                        st.pending_cmd = button_id_to_cmd(bid, UICmd)
+                        if bid == "quit":
+                            st.quit_requested = True
+                        else:
+                            st.pending_cmd = button_id_to_cmd(bid, UICmd)
                     return
 
             if st.edit_mode:
@@ -740,7 +743,7 @@ class VisionApp:
             
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
-        if key != 255:
+        if key not in (-1, 255):
             print(f"[DBG KEY] raw={key} chr={repr(chr(key)) if 32 <= key <= 126 else 'NONPRINT'}")
 
         if key in (ord('d'), ord('D')):   # delete OK/NG Dataset reset
@@ -1023,7 +1026,11 @@ class VisionApp:
             cv2.imshow(self.win, vis)
 
             # key
-            key = cv2.waitKey(1) & 0xFF
+            try:
+                key = cv2.waitKeyEx(1)
+            except Exception:
+                key = cv2.waitKey(1)
+
             self._handle_key_input(key, frame_gray8, vis)
 
             if st.quit_requested:
