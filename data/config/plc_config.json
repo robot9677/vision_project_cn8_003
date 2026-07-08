@@ -18,6 +18,23 @@
   "registers": {
     "command": 200,
     "status": 201,
-    "result": 202
+    "result": 202,
+    "heartbeat": 203,
+    "error_code": 204,
+    "last_inspect_time": 205,
+    "ack": 206,
+    "ready_detail": 207,
+    "reserved1": 208,
+    "reserved2": 209
+  },
+
+  "heartbeat": {
+    "interval_sec": 0.5,
+    "max_value": 9999
+  },
+
+  "shutdown": {
+    "command": "sudo /sbin/shutdown -h now",
+    "ready_hold_sec": 2.0
   }
 }

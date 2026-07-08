@@ -44,7 +44,13 @@ class DisabledPlcController:
     def stop(self):
         pass
 
+    def tick(self):
+        pass
+
     def poll_command(self) -> Optional[str]:
+        return None
+
+    def poll_ack(self) -> Optional[str]:
         return None
 
     def set_idle(self):
@@ -53,14 +59,45 @@ class DisabledPlcController:
     def set_busy(self):
         pass
 
-    def set_done(self, ok: bool):
+    def set_done(self, ok: bool, elapsed_ms: int = 0):
         pass
 
-    def set_error(self):
+    def set_error(self, code: int = 99):
+        pass
+
+    def set_shutdown_busy(self):
+        pass
+
+    def set_shutdown_ready(self):
+        pass
+
+    def set_ready_detail(self, value: int):
         pass
 
 
 class ModbusRtuSlaveController:
+    CMD_NONE = 0
+    CMD_PREPARE = 1
+    CMD_INSPECT = 2
+    CMD_SHUTDOWN = 8
+    CMD_EMERGENCY = 9
+
+    ACK_NONE = 0
+    ACK_RESULT = 1
+    ACK_ERROR_RESET = 2
+
+    STATUS_READY = 0
+    STATUS_BUSY = 1
+    STATUS_DONE = 2
+    STATUS_ERROR = 3
+    STATUS_SHUTDOWN_BUSY = 8
+    STATUS_SHUTDOWN_READY = 9
+
+    RESULT_NONE = 0
+    RESULT_OK = 1
+    RESULT_NG = 2
+    RESULT_FAIL = 3
+
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
         self.enabled = bool(cfg.get("enabled", False))
@@ -68,6 +105,7 @@ class ModbusRtuSlaveController:
         serial_cfg = cfg.get("serial", {}) or {}
         modbus_cfg = cfg.get("modbus", {}) or {}
         regs_cfg = cfg.get("registers", {}) or {}
+        heartbeat_cfg = cfg.get("heartbeat", {}) or {}
 
         self.port = str(serial_cfg.get("port", "/dev/ttyUSB0"))
         self.baudrate = int(serial_cfg.get("baudrate", 9600))
@@ -78,12 +116,39 @@ class ModbusRtuSlaveController:
 
         self.slave_id = int(modbus_cfg.get("slave_id", 1))
 
-        self.reg_command = int(regs_cfg.get("command", 0))
-        self.reg_status = int(regs_cfg.get("status", 1))
-        self.reg_result = int(regs_cfg.get("result", 2))
+        self.reg_command = int(regs_cfg.get("command", 200))
+        self.reg_status = int(regs_cfg.get("status", 201))
+        self.reg_result = int(regs_cfg.get("result", 202))
+        self.reg_heartbeat = int(regs_cfg.get("heartbeat", 203))
+        self.reg_error_code = int(regs_cfg.get("error_code", 204))
+        self.reg_last_inspect_time = int(regs_cfg.get("last_inspect_time", 205))
+        self.reg_ack = int(regs_cfg.get("ack", 206))
+        self.reg_ready_detail = int(regs_cfg.get("ready_detail", 207))
+        self.reg_reserved1 = int(regs_cfg.get("reserved1", 208))
+        self.reg_reserved2 = int(regs_cfg.get("reserved2", 209))
 
-        self.register_count = max(self.reg_command, self.reg_status, self.reg_result) + 16
+        max_reg = max(
+            self.reg_command,
+            self.reg_status,
+            self.reg_result,
+            self.reg_heartbeat,
+            self.reg_error_code,
+            self.reg_last_inspect_time,
+            self.reg_ack,
+            self.reg_ready_detail,
+            self.reg_reserved1,
+            self.reg_reserved2,
+        )
+
+        self.register_count = max_reg + 16
         self.regs = [0] * self.register_count
+
+        self.heartbeat_interval_sec = float(heartbeat_cfg.get("interval_sec", 0.5))
+        self.heartbeat_max = int(heartbeat_cfg.get("max_value", 9999))
+        self._last_heartbeat_ts = 0.0
+
+        self._last_cmd_seen = 0
+        self._last_ack_seen = 0
 
         self._lock = threading.Lock()
         self._ser = None
@@ -137,38 +202,118 @@ class ModbusRtuSlaveController:
 
         print("[PLC] stopped")
 
+    def tick(self):
+        now = time.time()
+        if (now - self._last_heartbeat_ts) < self.heartbeat_interval_sec:
+            return
+
+        self._last_heartbeat_ts = now
+
+        current = self._get_reg(self.reg_heartbeat)
+        next_val = current + 1
+
+        if next_val > self.heartbeat_max:
+            next_val = 0
+
+        self._set_reg(self.reg_heartbeat, next_val)
+
     def poll_command(self) -> Optional[str]:
         cmd = self._get_reg(self.reg_command)
 
-        if cmd == 1:
-            self._set_reg(self.reg_command, 0)
+        if cmd == self.CMD_NONE:
+            self._last_cmd_seen = self.CMD_NONE
+            return None
+
+        if cmd == self._last_cmd_seen:
+            return None
+
+        self._last_cmd_seen = cmd
+
+        if cmd == self.CMD_PREPARE:
             print("[PLC] command received: PREPARE_REQUEST")
             return "prepare"
 
-        if cmd == 2:
-            self._set_reg(self.reg_command, 0)
+        if cmd == self.CMD_INSPECT:
             print("[PLC] command received: INSPECT_START")
             return "inspect"
 
-        return None
+        if cmd == self.CMD_SHUTDOWN:
+            print("[PLC] command received: SHUTDOWN_REQUEST")
+            return "shutdown"
+
+        if cmd == self.CMD_EMERGENCY:
+            print("[PLC] command received: EMERGENCY_STOP")
+            return "emergency"
+
+        print(f"[PLC] unknown command: {cmd}")
+        return "command_error"
+
+    def poll_ack(self) -> Optional[str]:
+        ack = self._get_reg(self.reg_ack)
+
+        if ack == self.ACK_NONE:
+            self._last_ack_seen = self.ACK_NONE
+            return None
+
+        if ack == self._last_ack_seen:
+            return None
+
+        self._last_ack_seen = ack
+
+        if ack == self.ACK_RESULT:
+            print("[PLC] ack received: RESULT_ACK")
+            return "result_ack"
+
+        if ack == self.ACK_ERROR_RESET:
+            print("[PLC] ack received: ERROR_RESET")
+            return "error_reset"
+
+        print(f"[PLC] unknown ack: {ack}")
+        return "ack_error"
 
     def set_idle(self):
-        self._set_reg(self.reg_status, 0)
-        self._set_reg(self.reg_result, 0)
+        self._set_reg(self.reg_status, self.STATUS_READY)
+        self._set_reg(self.reg_result, self.RESULT_NONE)
+        self._set_reg(self.reg_error_code, 0)
+        self._set_reg(self.reg_last_inspect_time, 0)
+        self._set_reg(self.reg_ready_detail, 0)
 
     def set_busy(self):
-        self._set_reg(self.reg_status, 1)
-        self._set_reg(self.reg_result, 0)
+        self._set_reg(self.reg_status, self.STATUS_BUSY)
+        self._set_reg(self.reg_result, self.RESULT_NONE)
+        self._set_reg(self.reg_error_code, 0)
 
-    def set_done(self, ok: bool):
-        self._set_reg(self.reg_status, 2)
-        self._set_reg(self.reg_result, 1 if ok else 2)
-        print(f"[PLC] result set: {'OK' if ok else 'NG'}")
+    def set_done(self, ok: bool, elapsed_ms: int = 0):
+        self._set_reg(self.reg_status, self.STATUS_DONE)
+        self._set_reg(self.reg_result, self.RESULT_OK if ok else self.RESULT_NG)
+        self._set_reg(self.reg_error_code, 0)
+        self._set_reg(self.reg_last_inspect_time, max(0, int(elapsed_ms)))
 
-    def set_error(self):
-        self._set_reg(self.reg_status, 3)
-        self._set_reg(self.reg_result, 0)
-        print("[PLC] result set: ERROR")
+        print(f"[PLC] result set: {'OK' if ok else 'NG'} elapsed_ms={int(elapsed_ms)}")
+
+    def set_error(self, code: int = 99):
+        self._set_reg(self.reg_status, self.STATUS_ERROR)
+        self._set_reg(self.reg_result, self.RESULT_FAIL)
+        self._set_reg(self.reg_error_code, int(code))
+
+        print(f"[PLC] result set: ERROR code={int(code)}")
+
+    def set_shutdown_busy(self):
+        self._set_reg(self.reg_status, self.STATUS_SHUTDOWN_BUSY)
+        self._set_reg(self.reg_result, self.RESULT_NONE)
+        self._set_reg(self.reg_error_code, 0)
+
+        print("[PLC] shutdown busy")
+
+    def set_shutdown_ready(self):
+        self._set_reg(self.reg_status, self.STATUS_SHUTDOWN_READY)
+        self._set_reg(self.reg_result, self.RESULT_NONE)
+        self._set_reg(self.reg_error_code, 0)
+
+        print("[PLC] shutdown ready")
+
+    def set_ready_detail(self, value: int):
+        self._set_reg(self.reg_ready_detail, int(value))
 
     def _get_reg(self, idx: int) -> int:
         with self._lock:
@@ -188,6 +333,7 @@ class ModbusRtuSlaveController:
         data = self._ser.read(n)
         if len(data) != n:
             return None
+
         return data
 
     def _loop(self):
@@ -245,6 +391,7 @@ class ModbusRtuSlaveController:
     def _write_response(self, addr: int, payload: bytes):
         if addr == 0:
             return
+
         if self._ser is None:
             return
 
@@ -261,6 +408,7 @@ class ModbusRtuSlaveController:
     def _write_exception(self, addr: int, func: int, code: int):
         if addr == 0:
             return
+
         self._write_response(addr, bytes([addr, func | 0x80, code]))
 
     def _handle_read_holding(self, addr: int, frame: bytes):
@@ -329,6 +477,7 @@ class ModbusRtuSlaveController:
             (qty >> 8) & 0xFF,
             qty & 0xFF,
         ])
+
         self._write_response(addr, payload)
 
 

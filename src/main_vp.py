@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 import sys
+import subprocess
 
 import cv2
 import numpy as np
@@ -142,6 +143,10 @@ class AppState:
     baseline_learning: bool = False
     baseline_target_count: int = 10
     baseline_count: int = 0
+
+    # PLC shutdown
+    plc_shutdown_requested: bool = False
+    plc_shutdown_started: bool = False
 
 
 class VisionApp:
@@ -632,17 +637,100 @@ class VisionApp:
             if use_spot and bool(cfg.get("restore_after_inspect", True)):
                 self._spot_release(reason=f"{trigger}_done")
 
+    def _handle_plc_shutdown(self):
+        st = self.state
+        if bool(getattr(st, "plc_shutdown_started", False)):
+            return
+
+        st.plc_shutdown_started = True
+        st.status = "PLC SHUTDOWN BUSY"
+        self.plc.set_shutdown_busy()
+
+        try:
+            self._spot_release(reason="plc_shutdown")
+        except Exception:
+            pass
+
+        try:
+            self.light.stop()
+        except Exception as e:
+            print("[PLC] light stop before shutdown failed:", e)
+
+        shutdown_cfg = self.plc_cfg.get("shutdown", {}) or {}
+        ready_hold_sec = float(shutdown_cfg.get("ready_hold_sec", 2.0))
+        command = str(shutdown_cfg.get("command", "sudo /sbin/shutdown -h now"))
+
+        self.plc.set_shutdown_ready()
+        st.status = "PLC SHUTDOWN READY"
+
+        if ready_hold_sec > 0:
+            time.sleep(ready_hold_sec)
+
+        try:
+            subprocess.Popen(command, shell=True)
+            st.status = "PLC SHUTDOWN COMMAND SENT"
+        except Exception as e:
+            print("[PLC] shutdown command failed:", e)
+            st.status = f"PLC SHUTDOWN ERROR: {e}"
+            self.plc.set_error(90)
+            st.plc_shutdown_started = False
+            return
+
+        st.quit_requested = True
+
+    def _handle_plc_emergency(self):
+        st = self.state
+
+        try:
+            self._spot_release(reason="plc_emergency")
+        except Exception:
+            pass
+
+        try:
+            self.light.stop()
+        except Exception as e:
+            print("[PLC] emergency light stop failed:", e)
+
+        self.plc.set_error(50)
+        st.status = "PLC EMERGENCY STOP"
+
     def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
         st = self.state
+
+        self.plc.tick()
+
+        ack = self.plc.poll_ack()
+        if ack == "result_ack":
+            self.plc.set_idle()
+            st.status = "PLC ACK: READY"
+        elif ack == "error_reset":
+            self.plc.set_idle()
+            st.status = "PLC ERROR RESET: READY"
+        elif ack == "ack_error":
+            self.plc.set_error(50)
+            st.status = "PLC ACK ERROR"
 
         cmd = self.plc.poll_command()
         if cmd is None:
             return
 
+        if cmd == "shutdown":
+            self._handle_plc_shutdown()
+            return
+
+        if cmd == "emergency":
+            self._handle_plc_emergency()
+            return
+
+        if cmd == "command_error":
+            self.plc.set_error(50)
+            st.status = "PLC COMMAND ERROR"
+            return
+
         if cmd == "prepare":
             if st.edit_mode:
                 st.status = "PLC PREPARE REJECTED: EDIT MODE"
-                self.plc.set_error()
+                self.plc.set_error(50)
                 return
 
             try:
@@ -651,17 +739,13 @@ class VisionApp:
 
                 ok = self._spot_prearm(trigger="PLC")
 
-                if ok:
-                    self.plc.set_idle()
-                    st.status = "PLC READY: SPOT ARMED"
-                else:
-                    self.plc.set_idle()
-                    st.status = "PLC READY: NO SPOT"
+                self.plc.set_idle()
+                st.status = "PLC READY: SPOT ARMED" if ok else "PLC READY: NO SPOT"
 
             except Exception as e:
                 print("[PLC] prepare failed:", e)
                 st.status = f"PLC PREPARE ERROR: {e}"
-                self.plc.set_error()
+                self.plc.set_error(40)
 
             return
 
@@ -670,27 +754,29 @@ class VisionApp:
 
         if st.edit_mode:
             st.status = "PLC INSPECT REJECTED: EDIT MODE"
-            self.plc.set_error()
+            self.plc.set_error(50)
             return
 
         try:
             self.plc.set_busy()
             st.status = "PLC INSPECT BUSY"
 
+            t0 = time.time()
             ok = self._run_spot_inspect_once(
                 frame_gray8,
                 vis_bgr,
                 avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
                 trigger="PLC",
             )
+            elapsed_ms = int((time.time() - t0) * 1000.0)
 
-            self.plc.set_done(ok)
+            self.plc.set_done(ok, elapsed_ms=elapsed_ms)
             st.status = f"PLC INSPECT DONE: {'OK' if ok else 'NG'}"
 
         except Exception as e:
             print("[PLC] inspect failed:", e)
             st.status = f"PLC INSPECT ERROR: {e}"
-            self.plc.set_error()
+            self.plc.set_error(40)
 
     def _render_run_frame(self, vis, frame_gray8):
         st = self.state
@@ -983,9 +1069,22 @@ class VisionApp:
     # -------------------------
     def run(self):
         st = self.state
-        self.cam.open()
-        self.light.start()
         self.plc.start()
+        self.plc.set_busy()
+
+        try:
+            self.cam.open()
+        except Exception:
+            self.plc.set_error(10)
+            raise
+
+        try:
+            self.light.start()
+        except Exception as e:
+            print("[LIGHT] start failed:", e)
+            self.plc.set_error(20)
+
+        self.plc.set_idle()
 
         last_ok_frame_time = time.time()
 
