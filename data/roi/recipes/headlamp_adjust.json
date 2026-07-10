@@ -40,7 +40,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_max": 30.0
+            "thresh_max": 35.0
           }
         },
         {
@@ -63,7 +63,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 85
+            "thresh_min": 90
           }
         }
       ],
