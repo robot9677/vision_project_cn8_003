@@ -63,13 +63,7 @@
           "tool": "measure.edge_energy",
           "params": {
             "ksize": 3,
-            "thresh_min": 100
-          }
-        },
-        {
-          "tool": "measure.mean_raw_range",
-          "params": {
-            "max_mean_raw": 130.0
+            "thresh_min": 85
           }
         }
       ],
@@ -94,7 +88,7 @@
           "params": {
             "max_mean_raw": 150.0
           }
-        }
+    }
       ],
       "tool_decision": "all_ok"
     },
