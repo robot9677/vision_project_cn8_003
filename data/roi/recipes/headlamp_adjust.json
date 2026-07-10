@@ -71,6 +71,7 @@
           "params": {
             "max_mean_raw": 130.0
           }
+        }
       ],
       "tool_decision": "all_ok"
     },
@@ -93,7 +94,7 @@
           "params": {
             "max_mean_raw": 150.0
           }
-    }
+        }
       ],
       "tool_decision": "all_ok"
     },
