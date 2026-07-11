@@ -32,5 +32,13 @@
     "camera_retry_interval_sec": 0.1,
     "camera_grace_sec": 2.0,
     "frame_timeout_sec": 1.0
+  },
+  "live_trace": {
+    "enabled": true,
+    "path": "data/logs/plc_live.jsonl",
+    "max_bytes": 5242880,
+    "keep_files": 2,
+    "include_state_changes": true,
+    "include_heartbeat": true
   }
 }

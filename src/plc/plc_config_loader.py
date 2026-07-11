@@ -34,6 +34,15 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "max_value": 9999,
     },
 
+    "live_trace": {
+        "enabled": False,
+        "path": "data/logs/plc_live.jsonl",
+        "max_bytes": 5242880,
+        "keep_files": 2,
+        "include_state_changes": True,
+        "include_heartbeat": True,
+    },
+
     "recovery": {
         "camera_open_timeout_sec": 2.0,
         "camera_retry_interval_sec": 0.1,

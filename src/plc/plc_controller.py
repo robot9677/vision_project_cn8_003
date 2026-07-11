@@ -1,3 +1,5 @@
+import json
+import os
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -196,11 +198,276 @@ class ModbusRtuSlaveController:
         self._comm_fault_active = False
         self._last_reconnect_ts = 0.0
 
+        trace_cfg = cfg.get("live_trace", {}) or {}
+        self.trace_enabled = bool(trace_cfg.get("enabled", False))
+        self.trace_include_state = bool(
+            trace_cfg.get("include_state_changes", True)
+        )
+        self.trace_include_heartbeat = bool(
+            trace_cfg.get("include_heartbeat", True)
+        )
+        self.trace_max_bytes = max(
+            1024 * 1024,
+            int(trace_cfg.get("max_bytes", 5 * 1024 * 1024)),
+        )
+        self.trace_keep_files = max(
+            1,
+            int(trace_cfg.get("keep_files", 2)),
+        )
+
+        project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+        trace_path = str(
+            trace_cfg.get(
+                "path",
+                os.path.join("data", "logs", "plc_live.jsonl"),
+            )
+        )
+        if not os.path.isabs(trace_path):
+            trace_path = os.path.join(project_root, trace_path)
+
+        self.trace_path = os.path.abspath(trace_path)
+        self._trace_lock = threading.Lock()
+        self._trace_fp = None
+        self._trace_seq = 0
+        self._trace_failed = False
+
+    def _command_name(self, value: int) -> str:
+        names = {
+            self.CMD_NONE: "NONE",
+            self.CMD_PREPARE: "PREPARE",
+            self.CMD_INSPECT: "INSPECT",
+            self.CMD_RESET: "RESET",
+            self.CMD_SHUTDOWN: "SHUTDOWN",
+            self.CMD_EMERGENCY: "EMERGENCY",
+        }
+        return names.get(int(value), f"UNKNOWN({int(value)})")
+
+    def _frame_summary(self, frame: bytes, direction: str) -> str:
+        if not frame:
+            return "EMPTY"
+
+        if len(frame) < 2:
+            return f"SHORT len={len(frame)}"
+
+        addr = frame[0]
+        func = frame[1]
+
+        if func & 0x80:
+            code = frame[2] if len(frame) > 2 else -1
+            return (
+                f"slave={addr} EXCEPTION "
+                f"fc=0x{func & 0x7F:02X} code={code}"
+            )
+
+        if direction == "RX":
+            if func in (3, 4) and len(frame) >= 6:
+                start = (frame[2] << 8) | frame[3]
+                qty = (frame[4] << 8) | frame[5]
+                return f"slave={addr} FC{func:02d} READ D{start} qty={qty}"
+
+            if func == 6 and len(frame) >= 6:
+                reg = (frame[2] << 8) | frame[3]
+                value = (frame[4] << 8) | frame[5]
+                suffix = ""
+                if reg == self.reg_command:
+                    suffix = f" {self._command_name(value)}"
+                return (
+                    f"slave={addr} FC06 WRITE D{reg}={value}{suffix}"
+                )
+
+            if func == 16 and len(frame) >= 7:
+                start = (frame[2] << 8) | frame[3]
+                qty = (frame[4] << 8) | frame[5]
+                return (
+                    f"slave={addr} FC16 WRITE_MULTI "
+                    f"D{start} qty={qty}"
+                )
+
+        if direction == "TX":
+            if func in (3, 4) and len(frame) >= 3:
+                byte_count = frame[2]
+                vals = []
+                end = min(3 + byte_count, max(3, len(frame) - 2))
+                for pos in range(3, end, 2):
+                    if pos + 1 < end:
+                        vals.append((frame[pos] << 8) | frame[pos + 1])
+                return (
+                    f"slave={addr} FC{func:02d} READ_RESPONSE "
+                    f"values={vals}"
+                )
+
+            if func == 6 and len(frame) >= 6:
+                reg = (frame[2] << 8) | frame[3]
+                value = (frame[4] << 8) | frame[5]
+                return f"slave={addr} FC06 WRITE_ACK D{reg}={value}"
+
+            if func == 16 and len(frame) >= 6:
+                start = (frame[2] << 8) | frame[3]
+                qty = (frame[4] << 8) | frame[5]
+                return (
+                    f"slave={addr} FC16 WRITE_MULTI_ACK "
+                    f"D{start} qty={qty}"
+                )
+
+        return f"slave={addr} fc=0x{func:02X} len={len(frame)}"
+
+    def _open_trace_locked(self, rotate_existing: bool = False):
+        if not self.trace_enabled:
+            return
+
+        os.makedirs(os.path.dirname(self.trace_path), exist_ok=True)
+
+        if rotate_existing and os.path.exists(self.trace_path):
+            for index in range(self.trace_keep_files, 0, -1):
+                src = (
+                    self.trace_path
+                    if index == 1
+                    else f"{self.trace_path}.{index - 1}"
+                )
+                dst = f"{self.trace_path}.{index}"
+
+                if os.path.exists(src):
+                    try:
+                        if os.path.exists(dst):
+                            os.remove(dst)
+                        os.replace(src, dst)
+                    except Exception:
+                        pass
+
+        self._trace_fp = open(
+            self.trace_path,
+            "a",
+            encoding="utf-8",
+            buffering=1,
+        )
+
+    def _rotate_trace_locked(self):
+        if self._trace_fp is not None:
+            try:
+                self._trace_fp.close()
+            except Exception:
+                pass
+            self._trace_fp = None
+
+        self._open_trace_locked(rotate_existing=True)
+
+    def _start_trace(self):
+        if not self.trace_enabled:
+            return
+
+        try:
+            with self._trace_lock:
+                self._open_trace_locked(rotate_existing=True)
+        except Exception as e:
+            self._trace_failed = True
+            print(f"[PLC TRACE] start failed: {e}")
+            return
+
+        self._trace_event(
+            direction="SYSTEM",
+            event="TRACE_START",
+            summary=f"trace started path={self.trace_path}",
+        )
+
+    def _stop_trace(self):
+        if not self.trace_enabled:
+            return
+
+
+        self._trace_event(
+            direction="SYSTEM",
+            event="TRACE_STOP",
+            summary="trace stopped",
+        )
+
+        with self._trace_lock:
+            if self._trace_fp is not None:
+                try:
+                    self._trace_fp.close()
+                except Exception:
+                    pass
+                self._trace_fp = None
+
+    def _trace_event(
+        self,
+        direction: str,
+        event: str,
+        summary: str,
+        frame: Optional[bytes] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ):
+        if not self.trace_enabled or self._trace_failed:
+            return
+
+        with self._lock:
+            registers = {
+                "D200": int(self.regs[self.reg_command]),
+                "D201": int(self.regs[self.reg_status]),
+                "D202": int(self.regs[self.reg_result]),
+                "D203": int(self.regs[self.reg_heartbeat]),
+            }
+
+        raw = bytes(frame or b"")
+        self._trace_seq += 1
+
+        record = {
+            "seq": self._trace_seq,
+            "timestamp": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S.%f"
+            )[:-3],
+            "epoch": time.time(),
+            "direction": str(direction),
+            "event": str(event),
+            "summary": str(summary),
+            "hex": raw.hex(" "),
+            "length": len(raw),
+            "crc_ok": _check_crc(raw) if len(raw) >= 4 else None,
+            "registers": registers,
+            "serial_open": self.is_connected(),
+            "comm_fault_active": bool(self._comm_fault_active),
+        }
+
+        if extra:
+            record.update(extra)
+
+        try:
+            line = json.dumps(
+                record,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ) + "\n"
+
+            with self._trace_lock:
+                if self._trace_fp is None:
+                    self._open_trace_locked(rotate_existing=False)
+
+                if self._trace_fp is None:
+                    return
+
+                try:
+                    current_size = self._trace_fp.tell()
+                except Exception:
+                    current_size = 0
+
+                if current_size >= self.trace_max_bytes:
+                    self._rotate_trace_locked()
+
+                self._trace_fp.write(line)
+                self._trace_fp.flush()
+
+        except Exception as e:
+            self._trace_failed = True
+            print(f"[PLC TRACE] write failed: {e}")
+
     def start(self):
         if self._thread is not None and self._thread.is_alive():
             print("[PLC] already started")
             return
 
+        self._trace_failed = False
+        self._start_trace()
         self.reset_to_ready(reset_heartbeat=True)
 
         self._stop.clear()
@@ -277,6 +544,12 @@ class ModbusRtuSlaveController:
         error_code: int,
         message: str,
     ):
+        self._trace_event(
+            direction="SYSTEM",
+            event="SERIAL_ERROR",
+            summary=str(message),
+            extra={"error_code": int(error_code)},
+        )
         self._close_serial()
 
         # 정상 종료 중 발생한 close/read 예외는 통신 장애로 기록하지 않는다.
@@ -340,6 +613,15 @@ class ModbusRtuSlaveController:
                     f"- D201 remains ERROR until D200=3"
                 )
 
+            self._trace_event(
+                direction="SYSTEM",
+                event="SERIAL_RECONNECTED" if was_fault else "SERIAL_OPEN",
+                summary=(
+                    f"port={self.port} baud={self.baudrate} "
+                    f"slave_id={self.slave_id}"
+                ),
+            )
+
             return True
 
         except Exception as e:
@@ -370,6 +652,7 @@ class ModbusRtuSlaveController:
             self._heartbeat_thread.join(timeout=join_timeout)
             self._heartbeat_thread = None
 
+        self._stop_trace()
         print("[PLC] stopped")
 
     def tick(self):
@@ -543,9 +826,33 @@ class ModbusRtuSlaveController:
             return 0
 
     def _set_reg(self, idx: int, val: int):
+        old_value = None
+        new_value = int(val) & 0xFFFF
+
         with self._lock:
             if 0 <= idx < len(self.regs):
-                self.regs[idx] = int(val) & 0xFFFF
+                old_value = int(self.regs[idx])
+                self.regs[idx] = new_value
+
+        if old_value is None or old_value == new_value:
+            return
+
+        if not self.trace_include_state:
+            return
+
+        if idx == self.reg_heartbeat and not self.trace_include_heartbeat:
+            return
+
+        self._trace_event(
+            direction="STATE",
+            event="REGISTER_CHANGE",
+            summary=f"D{idx} {old_value}->{new_value}",
+            extra={
+                "register": int(idx),
+                "old_value": int(old_value),
+                "new_value": int(new_value),
+            },
+        )
 
     def _read_exact(self, n: int) -> Optional[bytes]:
         if n <= 0:
@@ -625,6 +932,15 @@ class ModbusRtuSlaveController:
                     frame = b1 + b2 + head + tail
 
                 else:
+                    self._trace_event(
+                        direction="RX",
+                        event="UNSUPPORTED_FUNCTION",
+                        summary=(
+                            f"slave={addr} unsupported fc=0x{func:02X}"
+                        ),
+                        frame=b1 + b2,
+                    )
+
                     # 지원하지 않는 function code의 나머지 바이트가
                     # 다음 프레임으로 섞이지 않도록 입력 버퍼를 비운다.
                     try:
@@ -634,10 +950,31 @@ class ModbusRtuSlaveController:
                         pass
                     continue
 
+                self._trace_event(
+                    direction="RX",
+                    event="FRAME",
+                    summary=self._frame_summary(frame, "RX"),
+                    frame=frame,
+                )
+
                 if not _check_crc(frame):
+                    self._trace_event(
+                        direction="SYSTEM",
+                        event="CRC_ERROR",
+                        summary="received frame CRC mismatch",
+                        frame=frame,
+                    )
                     continue
 
                 if addr not in (self.slave_id, 0):
+                    self._trace_event(
+                        direction="SYSTEM",
+                        event="SLAVE_ID_MISMATCH",
+                        summary=(
+                            f"received slave={addr}, expected={self.slave_id}"
+                        ),
+                        frame=frame,
+                    )
                     continue
 
                 if func in (3, 4):
@@ -670,7 +1007,19 @@ class ModbusRtuSlaveController:
                     f"short serial write: {written}/{len(frame)} bytes"
                 )
             ser.flush()
+            self._trace_event(
+                direction="TX",
+                event="FRAME",
+                summary=self._frame_summary(frame, "TX"),
+                frame=frame,
+            )
         except Exception as e:
+            self._trace_event(
+                direction="TX",
+                event="WRITE_FAILED",
+                summary=f"serial write failed: {e}",
+                frame=frame,
+            )
             self._mark_comm_error(
                 error_code=71,
                 message=f"serial write failed: {e}",
