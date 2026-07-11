@@ -15,6 +15,7 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "parity": "N",
         "stopbits": 1,
         "timeout": 0.1,
+        "reconnect_interval_sec": 1.0,
     },
 
     "modbus": {
@@ -26,17 +27,18 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "status": 201,
         "result": 202,
         "heartbeat": 203,
-        "error_code": 204,
-        "last_inspect_time": 205,
-        "ack": 206,
-        "ready_detail": 207,
-        "reserved1": 208,
-        "reserved2": 209,
     },
 
     "heartbeat": {
         "interval_sec": 0.5,
         "max_value": 9999,
+    },
+
+    "recovery": {
+        "camera_open_timeout_sec": 2.0,
+        "camera_retry_interval_sec": 0.1,
+        "camera_grace_sec": 2.0,
+        "frame_timeout_sec": 1.0,
     },
 
     "shutdown": {

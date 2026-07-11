@@ -2,10 +2,10 @@
 import os
 import time
 import json
-from dataclasses import dataclass
 from enum import Enum
 import sys
 import subprocess
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -21,6 +21,7 @@ from inspection.logger import save_snapshot, save_template_copy
 
 from plc.plc_config_loader import load_plc_config
 from plc.plc_controller import create_plc_controller
+from plc.plc_error_logger import save_plc_error_log
 
 from light.light_controller import create_light_controller_from_hardware_config
 
@@ -105,6 +106,11 @@ def _extract_info_from_results(results):
     return info
 
 
+
+class LightCommunicationError(RuntimeError):
+    pass
+class InspectionResultError(RuntimeError):
+    pass
 @dataclass
 class AppState:
     edit_mode: bool = True
@@ -147,6 +153,12 @@ class AppState:
     # PLC shutdown
     plc_shutdown_requested: bool = False
     plc_shutdown_started: bool = False
+
+    # Vision error latch
+    camera_error_latched: bool = False
+    light_error_latched: bool = False
+
+    camera_error_grace_until: float = 0.0
 
 
 class VisionApp:
@@ -514,6 +526,42 @@ class VisionApp:
 
         return last_gray, last_vis
 
+    def _set_light_brightness_checked(
+        self,
+        light_id: str,
+        brightness: int,
+        action: str,
+    ):
+        ok = self.light.set_brightness(
+            light_id,
+            brightness,
+        )
+
+        light_state = self.light.get_state() or {}
+        self.runtime_cfg["_light_state"] = light_state
+
+        info = light_state.get(light_id, {})
+        state_ok = (
+            info.get("ok")
+            if isinstance(info, dict)
+            else None
+        )
+        reason = (
+            info.get("reason", "")
+            if isinstance(info, dict)
+            else ""
+        )
+
+        if ok is not True or state_ok is False:
+            raise LightCommunicationError(
+                f"{action} failed: "
+                f"light_id={light_id}, "
+                f"brightness={brightness}, "
+                f"reason={reason or 'UNKNOWN'}"
+            )
+
+        return True
+
     def _spot_prearm(self, trigger="PLC"):
         st = self.state
         cfg = self._get_spot_light_cfg()
@@ -537,12 +585,18 @@ class VisionApp:
 
             for b in steps:
                 b = int(max(0, min(100, int(b))))
-                self.light.set_brightness(light_id, b)
-                self.runtime_cfg["_light_state"] = self.light.get_state()
+                self._set_light_brightness_checked(
+                    light_id=light_id,
+                    brightness=b,
+                    action="SPOT_RAMP",
+                )
                 time.sleep(float(cfg["ramp_step_ms"]) / 1000.0)
         else:
-            self.light.set_brightness(light_id, inspect_brightness)
-            self.runtime_cfg["_light_state"] = self.light.get_state()
+            self._set_light_brightness_checked(
+                light_id=light_id,
+                brightness=inspect_brightness,
+                action="SPOT_INSPECT_BRIGHTNESS",
+            )
 
         if int(cfg["pre_ready_settle_ms"]) > 0:
             time.sleep(float(cfg["pre_ready_settle_ms"]) / 1000.0)
@@ -568,8 +622,11 @@ class VisionApp:
         light_id = cfg["light_id"]
         idle_brightness = int(cfg["idle_brightness"])
 
-        self.light.set_brightness(light_id, idle_brightness)
-        self.runtime_cfg["_light_state"] = self.light.get_state()
+        self._set_light_brightness_checked(
+            light_id=light_id,
+            brightness=idle_brightness,
+            action="SPOT_IDLE_RESTORE",
+        )
 
         st.spot_armed = False
         st.spot_armed_ts = 0.0
@@ -594,8 +651,31 @@ class VisionApp:
         elapsed_ms = int((time.time() - float(st.spot_armed_ts)) * 1000.0)
 
         if elapsed_ms > timeout_ms:
-            self._spot_release(reason="timeout")
-            st.status = "SPOT READY TIMEOUT"
+            try:
+                self._spot_release(reason="timeout")
+                st.status = "SPOT READY TIMEOUT"
+
+            except Exception as e:
+                st.spot_armed = False
+                st.spot_armed_ts = 0.0
+                st.spot_armed_brightness = 0
+
+                if not st.light_error_latched:
+                    st.light_error_latched = True
+
+                    self._save_plc_error_event(
+                        event_type="VISION_RUNTIME_ERROR",
+                        error_code=21,
+                        message="Light communication failed during spot timeout restore",
+                        exception=e,
+                    )
+
+                self.plc.set_error(
+                    code=21,
+                    detail=str(e),
+                )
+
+                st.status = "LIGHT COMM ERROR: RESET REQUIRED"
 
     def _run_spot_inspect_once(self, frame_gray8, vis_bgr, avg5=False, trigger="PLC"):
         st = self.state
@@ -631,25 +711,277 @@ class VisionApp:
                 cache_every_n=1,
             )
 
-            return bool(st.last_overall_ok)
+            return st.last_overall_ok
 
         finally:
             if use_spot and bool(cfg.get("restore_after_inspect", True)):
                 self._spot_release(reason=f"{trigger}_done")
 
+    def _get_light_failures(self) -> Dict[str, str]:
+        failures = {}
+
+        try:
+            light_state = self.light.get_state() or {}
+        except Exception as e:
+            return {
+                "_controller": f"STATE_READ_FAILED:{e}"
+            }
+
+        for light_id, info in light_state.items():
+            if not isinstance(info, dict):
+                continue
+
+            if info.get("ok") is False:
+                failures[str(light_id)] = str(
+                    info.get("reason", "UNKNOWN")
+                )
+
+        return failures
+    
+    def _get_vision_state_snapshot(self) -> Dict[str, Any]:
+        camera_open = False
+
+        try:
+            cap = getattr(self.cam, "cap", None)
+            camera_open = bool(cap is not None and cap.isOpened())
+        except Exception:
+            camera_open = False
+
+        try:
+            light_state = self.light.get_state()
+        except Exception as e:
+            light_state = {
+                "read_failed": True,
+                "error": str(e),
+            }
+
+        return {
+            "app_status": str(self.state.status),
+            "edit_mode": bool(self.state.edit_mode),
+            "quit_requested": bool(self.state.quit_requested),
+
+            "camera_open": camera_open,
+            "camera_device": str(
+                self.camera_info.get("device", "")
+            ),
+
+            "light_state": light_state,
+
+            "last_overall_ok": self.state.last_overall_ok,
+            "last_result_count": len(
+                self.state.last_results or {}
+            ),
+
+            "tracking_stable": bool(
+                self.state.tracking_stable
+            ),
+            "stable_frame_count": int(
+                self.state.stable_frame_count
+            ),
+
+            "spot_armed": bool(self.state.spot_armed),
+            "spot_armed_brightness": int(
+                self.state.spot_armed_brightness
+            ),
+        }
+
+    def _save_plc_error_event(
+        self,
+        event_type: str,
+        error_code: int,
+        message: str,
+        exception: Optional[BaseException] = None,
+    ):
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {
+                "snapshot_failed": True,
+                "error": str(e),
+            }
+
+        save_plc_error_log(
+            logs_root=LOGS_ROOT,
+            event_type=event_type,
+            error_code=error_code,
+            message=message,
+            plc_snapshot=plc_snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+            exception=exception,
+        )
+
+    def _poll_plc_comm_events(self):
+        while True:
+            try:
+                event = self.plc.poll_comm_event()
+            except AttributeError:
+                return
+            except Exception as e:
+                print("[PLC] communication event read failed:", e)
+                return
+
+            if event is None:
+                return
+
+            error_code = int(
+                event.get("error_code", 71)
+            )
+            message = str(
+                event.get(
+                    "message",
+                    "PLC communication error",
+                )
+            )
+
+            self._save_plc_error_event(
+                event_type="PLC_COMMUNICATION_ERROR",
+                error_code=error_code,
+                message=message,
+            )
+
+            # 통신 복구 후 PLC에서 읽을 수 있도록 D201=3 유지
+            self.plc.set_error(
+                code=error_code,
+                detail=message,
+            )
+
+            self.state.status = (
+                f"PLC COMM ERROR {error_code}: RESET REQUIRED"
+            )
+
+    def _clear_spot_runtime_state(self):
+        st = self.state
+        st.spot_armed = False
+        st.spot_armed_ts = 0.0
+        st.spot_armed_brightness = 0
+
+    def _clear_vision_runtime_state(self):
+        st = self.state
+        errors = []
+
+        st.last_results = None
+        st.last_overall_ok = None
+        if hasattr(st, "last_overall_info"):
+            st.last_overall_info = None
+
+        st.pose_bad_cnt = 0
+        st.tracking_stable = False
+        st.stable_frame_count = 0
+        st.last_auto_inspect_ts = 0.0
+
+        self._clear_spot_runtime_state()
+
+        try:
+            mean_filters = getattr(self.inspector, "mean_filters", {}) or {}
+            for mean_filter in mean_filters.values():
+                mean_filter.reset()
+            mean_filters.clear()
+        except Exception as e:
+            errors.append(f"mean filters: {e}")
+
+        try:
+            stabilizer_state = getattr(self.stabilizer, "state", None)
+            if hasattr(stabilizer_state, "clear"):
+                stabilizer_state.clear()
+        except Exception as e:
+            errors.append(f"stabilizer: {e}")
+
+        try:
+            aligner = getattr(self.inspector, "aligner", None)
+            if aligner is not None:
+                aligner.reset_templates()
+            self._load_alignment_template()
+        except Exception as e:
+            errors.append(f"tracker: {e}")
+
+        if errors:
+            raise RuntimeError("; ".join(errors))
+
+    def _get_plc_recovery_cfg(self):
+        cfg = self.plc_cfg.get("recovery", {}) or {}
+        return {
+            "camera_open_timeout_sec": max(
+                0.5,
+                float(cfg.get("camera_open_timeout_sec", 2.0)),
+            ),
+            "camera_retry_interval_sec": max(
+                0.02,
+                float(cfg.get("camera_retry_interval_sec", 0.1)),
+            ),
+            "camera_grace_sec": max(
+                0.0,
+                float(cfg.get("camera_grace_sec", 2.0)),
+            ),
+            "frame_timeout_sec": max(
+                0.1,
+                float(cfg.get("frame_timeout_sec", 1.0)),
+            ),
+        }
+
+    def _restart_camera_checked(self):
+        recovery_cfg = self._get_plc_recovery_cfg()
+
+        self.cam.release()
+        time.sleep(0.2)
+        self.cam.open()
+
+        recovered_frame = None
+        recovery_deadline = (
+            time.time()
+            + recovery_cfg["camera_open_timeout_sec"]
+        )
+
+        while time.time() < recovery_deadline:
+            recovered_frame = self.cam.read()
+            if recovered_frame is not None:
+                break
+            time.sleep(recovery_cfg["camera_retry_interval_sec"])
+
+        if recovered_frame is None:
+            raise RuntimeError("camera reopened but no frame was received")
+
+        self.state.camera_error_grace_until = (
+            time.time()
+            + recovery_cfg["camera_grace_sec"]
+        )
+        return recovered_frame
+
+    def _restart_light_checked(self):
+        self.light.start()
+
+        light_state = self.light.get_state() or {}
+        self.runtime_cfg["_light_state"] = light_state
+
+        failed_lights = {}
+        for light_id, info in light_state.items():
+            if not isinstance(info, dict):
+                continue
+            if info.get("ok") is False:
+                failed_lights[str(light_id)] = str(
+                    info.get("reason", "UNKNOWN")
+                )
+
+        if failed_lights:
+            raise LightCommunicationError(
+                f"light communication failed: {failed_lights}"
+            )
+
+        return light_state
+
     def _handle_plc_shutdown(self):
         st = self.state
+
         if bool(getattr(st, "plc_shutdown_started", False)):
             return
 
         st.plc_shutdown_started = True
-        st.status = "PLC SHUTDOWN BUSY"
-        self.plc.set_shutdown_busy()
+        st.status = "PLC SHUTDOWN"
+        self.plc.set_shutdown()  # D201=8 유지
 
         try:
             self._spot_release(reason="plc_shutdown")
-        except Exception:
-            pass
+        except Exception as e:
+            print("[PLC] shutdown spot release failed:", e)
 
         try:
             self.light.stop()
@@ -657,61 +989,234 @@ class VisionApp:
             print("[PLC] light stop before shutdown failed:", e)
 
         shutdown_cfg = self.plc_cfg.get("shutdown", {}) or {}
-        ready_hold_sec = float(shutdown_cfg.get("ready_hold_sec", 2.0))
-        command = str(shutdown_cfg.get("command", "sudo /sbin/shutdown -h now"))
+        hold_sec = float(shutdown_cfg.get("ready_hold_sec", 2.0))
+        command = str(
+            shutdown_cfg.get(
+                "command",
+                "sudo /sbin/shutdown -h now",
+            )
+        )
 
-        self.plc.set_shutdown_ready()
-        st.status = "PLC SHUTDOWN READY"
-
-        if ready_hold_sec > 0:
-            time.sleep(ready_hold_sec)
+        if hold_sec > 0:
+            time.sleep(hold_sec)
 
         try:
-            subprocess.Popen(command, shell=True)
+            shutdown_process = subprocess.Popen(command, shell=True)
+            time.sleep(0.2)
+
+            return_code = shutdown_process.poll()
+            if return_code not in (None, 0):
+                raise RuntimeError(
+                    f"shutdown command exited with code {return_code}"
+                )
+
             st.status = "PLC SHUTDOWN COMMAND SENT"
+            st.quit_requested = True
+
         except Exception as e:
             print("[PLC] shutdown command failed:", e)
-            st.status = f"PLC SHUTDOWN ERROR: {e}"
-            self.plc.set_error(90)
-            st.plc_shutdown_started = False
-            return
 
-        st.quit_requested = True
+            self._save_plc_error_event(
+                event_type="VISION_ERROR",
+                error_code=90,
+                message="Jetson shutdown command failed",
+                exception=e,
+            )
+
+            self.plc.set_error(
+                code=90,
+                detail=str(e),
+            )
+
+            st.status = f"PLC SHUTDOWN ERROR: {e}"
+            st.plc_shutdown_started = False
 
     def _handle_plc_emergency(self):
         st = self.state
 
+        # 초기화 전에 현재 상태 저장
+        # heartbeat, 내부 오류 코드, 마지막 검사 시각/소요시간 포함
+        self._save_plc_error_event(
+            event_type="EMERGENCY_STOP",
+            error_code=51,
+            message="D200=9 emergency stop received",
+        )
+
+        reset_ok = self._handle_plc_reset(
+            reset_heartbeat=True,
+        )
+
+        if not reset_ok:
+            # 복구 실패 원인은 _handle_plc_reset()에서 이미 로그 저장
+            # D201=3 유지
+            st.status = "PLC EMERGENCY: VISION ERROR"
+            return
+
+        # 정상 복구
+        # D201=0, D202=0, D203=0
+        st.status = "PLC EMERGENCY RESET: READY"
+
+    def _handle_plc_reset(
+        self,
+        reset_heartbeat: bool = False,
+    ):
+        st = self.state
+
         try:
-            self._spot_release(reason="plc_emergency")
+            before_state = self.plc.get_state_snapshot()
+            current_status = int(before_state.get("status", 0))
+            current_error_code = int(before_state.get("error_code", 0))
         except Exception:
-            pass
+            current_status = 0
+            current_error_code = 0
+
+        camera_error_codes = {10, 11}
+        light_error_codes = {20, 21}
+        plc_comm_error_codes = {70, 71}
+
+        need_camera_restart = (
+            st.camera_error_latched
+            or current_error_code in camera_error_codes
+        )
+        need_light_restart = (
+            st.light_error_latched
+            or current_error_code in light_error_codes
+        )
+
+        # 이전 Reset 자체가 실패한 경우에는 하드웨어 전체 복구를 다시 시도한다.
+        if current_status == 3 and current_error_code == 60:
+            need_camera_restart = True
+            need_light_restart = True
+
+        # PLC 통신 오류는 비전 하드웨어 재시작 대상이 아니다.
+        if current_error_code in plc_comm_error_codes:
+            need_camera_restart = bool(st.camera_error_latched)
+            need_light_restart = bool(st.light_error_latched)
+
+        # D200=3 입력 즉시 D202를 0으로 초기화한다.
+        # D200=9에서는 D203도 0으로 초기화한다.
+        self.plc.prepare_reset(
+            reset_heartbeat=reset_heartbeat
+        )
+
+        # 조명 오류가 이미 발생한 상태에서는 통신 명령을 먼저 보내지 않는다.
+        # 조명 재시작 자체가 idle 밝기 복구를 수행한다.
+        if need_light_restart:
+            self._clear_spot_runtime_state()
+        else:
+            try:
+                self._spot_release(reason="plc_reset")
+            except Exception as e:
+                need_light_restart = True
+                st.light_error_latched = True
+                self._clear_spot_runtime_state()
+
+                self._save_plc_error_event(
+                    event_type="VISION_RESET_RECOVERY",
+                    error_code=21,
+                    message=(
+                        "Light idle restore failed during PLC reset; "
+                        "light controller restart will be attempted"
+                    ),
+                    exception=e,
+                )
 
         try:
-            self.light.stop()
+            self._clear_vision_runtime_state()
         except Exception as e:
-            print("[PLC] emergency light stop failed:", e)
+            self._save_plc_error_event(
+                event_type="VISION_RESET_ERROR",
+                error_code=60,
+                message="Vision runtime state reset failed",
+                exception=e,
+            )
+            self.plc.set_error(code=60, detail=str(e))
+            st.status = "PLC RESET ERROR: RUNTIME"
+            return False
 
-        self.plc.set_error(50)
-        st.status = "PLC EMERGENCY STOP"
+        if need_camera_restart:
+            try:
+                self._restart_camera_checked()
+                st.camera_error_latched = False
+            except Exception as e:
+                st.camera_error_latched = True
+
+                self._save_plc_error_event(
+                    event_type="VISION_RESET_ERROR",
+                    error_code=10,
+                    message="Camera restart failed during PLC reset",
+                    exception=e,
+                )
+                self.plc.set_error(code=10, detail=str(e))
+                st.status = "PLC RESET ERROR: CAMERA"
+                return False
+
+        if need_light_restart:
+            try:
+                self._restart_light_checked()
+                st.light_error_latched = False
+            except Exception as e:
+                st.light_error_latched = True
+
+                self._save_plc_error_event(
+                    event_type="VISION_RESET_ERROR",
+                    error_code=21,
+                    message="Light restart failed during PLC reset",
+                    exception=e,
+                )
+                self.plc.set_error(code=21, detail=str(e))
+                st.status = "PLC RESET ERROR: LIGHT"
+                return False
+
+        st.camera_error_latched = False
+        st.light_error_latched = False
+
+        self.plc.reset_to_ready(
+            reset_heartbeat=reset_heartbeat
+        )
+
+        st.status = "PLC RESET: READY"
+        return True
+
+    def _log_plc_command_sequence_error(
+        self,
+        command_name: str,
+        current_status: int,
+        reason: str,
+    ):
+        status_names = {
+            0: "READY",
+            1: "BUSY",
+            2: "DONE",
+            3: "VISION_ERROR",
+            8: "SHUTDOWN",
+        }
+
+        message = (
+            f"PLC command sequence rejected: "
+            f"command={command_name}, "
+            f"status={current_status}"
+            f"({status_names.get(current_status, 'UNKNOWN')}), "
+            f"reason={reason}"
+        )
+
+        self._save_plc_error_event(
+            event_type="PLC_COMMAND_SEQUENCE_ERROR",
+            error_code=50,
+            message=message,
+        )
+
+        print(f"[PLC] {message}")
 
     def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
         st = self.state
 
-        self.plc.tick()
-
-        ack = self.plc.poll_ack()
-        if ack == "result_ack":
-            self.plc.set_idle()
-            st.status = "PLC ACK: READY"
-        elif ack == "error_reset":
-            self.plc.set_idle()
-            st.status = "PLC ERROR RESET: READY"
-        elif ack == "ack_error":
-            self.plc.set_error(50)
-            st.status = "PLC ACK ERROR"
-
         cmd = self.plc.poll_command()
         if cmd is None:
+            return
+
+        if cmd == "reset":
+            self._handle_plc_reset()
             return
 
         if cmd == "shutdown":
@@ -722,30 +1227,165 @@ class VisionApp:
             self._handle_plc_emergency()
             return
 
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+            current_status = int(
+                plc_snapshot.get("status", 0)
+            )
+        except Exception:
+            current_status = 0
+
+        # 종료가 시작된 상태에서는 다른 명령을 처리하지 않는다.
+        if current_status == 8:
+            self._log_plc_command_sequence_error(
+                command_name=str(cmd),
+                current_status=current_status,
+                reason="vision shutdown is already in progress",
+            )
+            return
+
+        # 검사 결과가 남아 있는 동안에는 D200=3만 정상 초기화 명령이다.
+        if current_status == 2 and cmd in ("prepare", "inspect"):
+            self._log_plc_command_sequence_error(
+                command_name=str(cmd),
+                current_status=current_status,
+                reason="previous inspection result has not been reset by D200=3",
+            )
+
+            # D201=2, D202=OK/NG 그대로 유지
+            st.status = "PLC COMMAND REJECTED: RESULT RESET REQUIRED"
+            return
+
+        # 비전 오류 상태에서는 Reset, 종료, 비상정지만 허용한다.
+        if current_status == 3 and cmd in ("prepare", "inspect"):
+            self._log_plc_command_sequence_error(
+                command_name=str(cmd),
+                current_status=current_status,
+                reason="vision error must be recovered by D200=3",
+            )
+
+            # D201=3 유지
+            st.status = "PLC COMMAND REJECTED: VISION RESET REQUIRED"
+            return
+
+        # Busy 중 중복 명령 차단
+        if current_status == 1 and cmd in ("prepare", "inspect"):
+            self._log_plc_command_sequence_error(
+                command_name=str(cmd),
+                current_status=current_status,
+                reason="vision is already processing another command",
+            )
+
+            # D201=1 유지
+            st.status = "PLC COMMAND REJECTED: VISION BUSY"
+            return
+        
+        if st.camera_error_latched or st.light_error_latched:
+            st.status = "PLC COMMAND REJECTED: VISION ERROR"
+            return
+        
         if cmd == "command_error":
-            self.plc.set_error(50)
-            st.status = "PLC COMMAND ERROR"
+            try:
+                snapshot = self.plc.get_state_snapshot()
+                command_value = int(
+                    snapshot.get("command", 0)
+                )
+                current_status = int(
+                    snapshot.get("status", 0)
+                )
+            except Exception:
+                command_value = -1
+                current_status = 0
+
+            self._log_plc_command_sequence_error(
+                command_name=f"UNKNOWN_D200_{command_value}",
+                current_status=current_status,
+                reason="unsupported D200 command value",
+            )
+
+            # PLC 측 잘못된 값이므로 D201=3으로 변경하지 않는다.
+            st.status = (
+                f"PLC UNKNOWN COMMAND: D200={command_value}"
+            )
             return
 
         if cmd == "prepare":
             if st.edit_mode:
+                self._log_plc_command_sequence_error(
+                    command_name="prepare",
+                    current_status=current_status,
+                    reason="vision is in EDIT mode",
+                )
                 st.status = "PLC PREPARE REJECTED: EDIT MODE"
-                self.plc.set_error(50)
+                return
+
+            if frame_gray8 is None or vis_bgr is None:
+                error = RuntimeError("camera frame is unavailable")
+
+                st.camera_error_latched = True
+
+                self._save_plc_error_event(
+                    event_type="VISION_RUNTIME_ERROR",
+                    error_code=11,
+                    message="D200=1 received but camera frame is unavailable",
+                    exception=error,
+                )
+
+                self.plc.set_error(
+                    code=11,
+                    detail=str(error),
+                )
+
+                st.status = "PLC PREPARE ERROR: NO CAMERA FRAME"
                 return
 
             try:
                 self.plc.set_busy()
                 st.status = "PLC PREPARE BUSY"
 
-                ok = self._spot_prearm(trigger="PLC")
+                armed = self._spot_prearm(trigger="PLC")
 
+                # 준비 완료 후 Ready
+                # D202 값은 변경하지 않음
                 self.plc.set_idle()
-                st.status = "PLC READY: SPOT ARMED" if ok else "PLC READY: NO SPOT"
+
+                st.status = (
+                    "PLC READY: SPOT ARMED"
+                    if armed
+                    else "PLC READY"
+                )
+
+            except LightCommunicationError as e:
+                st.light_error_latched = True
+
+                self._save_plc_error_event(
+                    event_type="VISION_RUNTIME_ERROR",
+                    error_code=21,
+                    message="Light communication failed during PLC prepare",
+                    exception=e,
+                )
+
+                self.plc.set_error(
+                    code=21,
+                    detail=str(e),
+                )
+
+                st.status = "PLC PREPARE LIGHT ERROR: RESET REQUIRED"
 
             except Exception as e:
-                print("[PLC] prepare failed:", e)
-                st.status = f"PLC PREPARE ERROR: {e}"
-                self.plc.set_error(40)
+                self._save_plc_error_event(
+                    event_type="VISION_RUNTIME_ERROR",
+                    error_code=40,
+                    message="PLC inspection preparation failed",
+                    exception=e,
+                )
+
+                self.plc.set_error(
+                    code=40,
+                    detail=str(e),
+                )
+
+                st.status = "PLC PREPARE ERROR: RESET REQUIRED"
 
             return
 
@@ -753,30 +1393,150 @@ class VisionApp:
             return
 
         if st.edit_mode:
+            self._log_plc_command_sequence_error(
+                command_name="inspect",
+                current_status=current_status,
+                reason="vision is in EDIT mode",
+            )
+
             st.status = "PLC INSPECT REJECTED: EDIT MODE"
-            self.plc.set_error(50)
+            return
+
+        if frame_gray8 is None or vis_bgr is None:
+            error = RuntimeError("camera frame is unavailable")
+
+            st.camera_error_latched = True
+
+            self._save_plc_error_event(
+                event_type="VISION_RUNTIME_ERROR",
+                error_code=11,
+                message="D200=2 received but camera frame is unavailable",
+                exception=error,
+            )
+
+            self.plc.set_error(
+                code=11,
+                detail=str(error),
+            )
+
+            st.status = "PLC INSPECT ERROR: NO CAMERA FRAME"
             return
 
         try:
             self.plc.set_busy()
             st.status = "PLC INSPECT BUSY"
 
-            t0 = time.time()
-            ok = self._run_spot_inspect_once(
+            # 이전 내부 검사 결과 제거
+            # PLC D202 값은 변경하지 않음
+            st.last_overall_ok = None
+            st.last_results = None
+
+            started_at = time.perf_counter()
+
+            overall_ok = self._run_spot_inspect_once(
                 frame_gray8,
                 vis_bgr,
-                avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
+                avg5=bool(
+                    self.runtime_cfg.get(
+                        "plc_inspect_avg5",
+                        False,
+                    )
+                ),
                 trigger="PLC",
             )
-            elapsed_ms = int((time.time() - t0) * 1000.0)
 
-            self.plc.set_done(ok, elapsed_ms=elapsed_ms)
-            st.status = f"PLC INSPECT DONE: {'OK' if ok else 'NG'}"
+            elapsed_ms = int(
+                (time.perf_counter() - started_at) * 1000.0
+            )
+
+            results = st.last_results
+
+            if overall_ok is None:
+                raise InspectionResultError(
+                    "inspection overall result was not generated"
+                )
+
+            if not isinstance(results, dict) or not results:
+                raise InspectionResultError(
+                    "inspection ROI results were not generated"
+                )
+
+            invalid_roi_ids = []
+
+            for roi_id, result in results.items():
+                if isinstance(result, dict):
+                    roi_ok = result.get("ok")
+                else:
+                    roi_ok = getattr(result, "ok", None)
+
+                if roi_ok is None:
+                    invalid_roi_ids.append(str(roi_id))
+
+            if invalid_roi_ids:
+                raise InspectionResultError(
+                    "ROI result has no OK/NG value: "
+                    + ",".join(invalid_roi_ids)
+                )
+
+            self.plc.set_done(
+                ok=bool(overall_ok),
+                elapsed_ms=elapsed_ms,
+            )
+
+            st.status = (
+                "PLC INSPECT DONE: OK"
+                if overall_ok
+                else "PLC INSPECT DONE: NG"
+            )
+
+        except LightCommunicationError as e:
+            st.light_error_latched = True
+
+            self._save_plc_error_event(
+                event_type="VISION_RUNTIME_ERROR",
+                error_code=21,
+                message="Light communication failed during inspection",
+                exception=e,
+            )
+
+            self.plc.set_error(
+                code=21,
+                detail=str(e),
+            )
+
+            st.status = "PLC INSPECT LIGHT ERROR: RESET REQUIRED"
+
+        except InspectionResultError as e:
+            self._save_plc_error_event(
+                event_type="VISION_INSPECTION_ERROR",
+                error_code=40,
+                message="Inspection result generation failed",
+                exception=e,
+            )
+
+            self.plc.set_error(
+                code=40,
+                detail=str(e),
+            )
+
+            st.status = "PLC INSPECT RESULT ERROR: RESET REQUIRED"
 
         except Exception as e:
-            print("[PLC] inspect failed:", e)
-            st.status = f"PLC INSPECT ERROR: {e}"
-            self.plc.set_error(40)
+            print("[PLC] inspect exception:", e)
+
+            self._save_plc_error_event(
+                event_type="VISION_INSPECTION_ERROR",
+                error_code=41,
+                message="Unexpected exception during inspection",
+                exception=e,
+            )
+
+            self.plc.set_error(
+                code=41,
+                detail=str(e),
+            )
+
+            st.status = "PLC INSPECT EXCEPTION: RESET REQUIRED"
 
     def _render_run_frame(self, vis, frame_gray8):
         st = self.state
@@ -1059,43 +1819,184 @@ class VisionApp:
         return frame_gray8, vis
     
     def _read_frame(self):
-        frame = self.cam.read()
-        if frame is None:
-            return None
-        return frame
+        try:
+            return self.cam.read()
 
+        except Exception as e:
+            st = self.state
+
+            if not st.camera_error_latched:
+                st.camera_error_latched = True
+
+                self._save_plc_error_event(
+                    event_type="VISION_RUNTIME_ERROR",
+                    error_code=11,
+                    message="Camera frame read raised an exception",
+                    exception=e,
+                )
+
+                self.plc.set_error(
+                    code=11,
+                    detail=str(e),
+                )
+
+            st.status = "CAMERA READ ERROR: RESET REQUIRED"
+            return None
     # -------------------------
     # Main loop
     # -------------------------
     def run(self):
         st = self.state
         self.plc.start()
-        self.plc.set_busy()
 
+        plc_required = bool(
+            self.plc_cfg.get("enabled", False)
+        )
+
+        plc_start_error = (
+            plc_required
+            and not self.plc.is_connected()
+        )
+
+        startup_error = plc_start_error
+
+        if plc_required and not plc_start_error:
+            self.plc.set_busy()
+
+        # 카메라 초기화
         try:
             self.cam.open()
-        except Exception:
-            self.plc.set_error(10)
-            raise
+            st.camera_error_latched = False
+            recovery_cfg = self._get_plc_recovery_cfg()
+            st.camera_error_grace_until = (
+                time.time()
+                + recovery_cfg["camera_grace_sec"]
+            )
 
+        except Exception as e:
+            startup_error = True
+            st.camera_error_latched = True
+            st.status = f"CAMERA INIT ERROR: {e}"
+
+            self._save_plc_error_event(
+                event_type="VISION_STARTUP_ERROR",
+                error_code=10,
+                message="Camera initialization failed",
+                exception=e,
+            )
+
+            self.plc.set_error(
+                code=10,
+                detail=str(e),
+            )
+
+        if plc_start_error:
+            self._poll_plc_comm_events()
+
+        # 조명 초기화
         try:
             self.light.start()
+            self.runtime_cfg["_light_state"] = self.light.get_state()
+
+            light_failures = self._get_light_failures()
+
+            if light_failures:
+                raise RuntimeError(
+                    f"light startup failed: {light_failures}"
+                )
+
+            st.light_error_latched = False
+
         except Exception as e:
-            print("[LIGHT] start failed:", e)
-            self.plc.set_error(20)
+            startup_error = True
+            st.light_error_latched = True
+            st.status = f"LIGHT START ERROR: {e}"
 
-        self.plc.set_idle()
+            self._save_plc_error_event(
+                event_type="VISION_STARTUP_ERROR",
+                error_code=20,
+                message="Light initialization failed",
+                exception=e,
+            )
 
+            self.plc.set_error(
+                code=20,
+                detail=str(e),
+            )
+
+        # 시작 과정 중 발생한 PLC 통신 이벤트를 반영한 뒤 Ready를 결정한다.
+        self._poll_plc_comm_events()
+
+        if plc_required and not self.plc.is_connected():
+            startup_error = True
+
+        try:
+            plc_status = int(
+                self.plc.get_state_snapshot().get("status", 0)
+            )
+            if plc_required and plc_status == 3:
+                startup_error = True
+        except Exception:
+            if plc_required:
+                startup_error = True
+
+        if not startup_error:
+            self.plc.reset_to_ready(reset_heartbeat=False)
+            st.status = "PLC READY" if plc_required else "READY"
+
+        recovery_cfg = self._get_plc_recovery_cfg()
+        frame_timeout_sec = recovery_cfg["frame_timeout_sec"]
         last_ok_frame_time = time.time()
 
         while True:
+            self._poll_plc_comm_events()
+
             frame = self._read_frame()
+
             if frame is None:
-                if time.time() - last_ok_frame_time > 1.0:
-                    st.status = "No frames >1s (check camera)"
+                now = time.time()
+                no_frame_sec = now - last_ok_frame_time
+
+                # 영상이 없어도 PLC 명령과 조명 타임아웃은 계속 처리
+                self._run_plc_inspect_tick(None, None)
+                self._spot_timeout_tick()
+
+                if (
+                    no_frame_sec > frame_timeout_sec
+                    and now >= st.camera_error_grace_until
+                    and not st.camera_error_latched
+                ):
+                    error = RuntimeError(
+                        f"camera frame unavailable for {no_frame_sec:.2f} sec"
+                    )
+
+                    st.camera_error_latched = True
+
+                    self._save_plc_error_event(
+                        event_type="VISION_RUNTIME_ERROR",
+                        error_code=11,
+                        message="Camera frame reception stopped",
+                        exception=error,
+                    )
+
+                    self.plc.set_error(
+                        code=11,
+                        detail=str(error),
+                    )
+
+                    st.status = "CAMERA FRAME ERROR: RESET REQUIRED"
+
+                elif (
+                    no_frame_sec > frame_timeout_sec
+                    and not st.camera_error_latched
+                ):
+                    st.status = "WAITING FOR CAMERA FRAME"
+
                 cv2.waitKey(1)
+
                 if st.quit_requested:
                     break
+
                 continue
 
             last_ok_frame_time = time.time()
@@ -1116,7 +2017,11 @@ class VisionApp:
             self._run_plc_inspect_tick(frame_gray8, vis)
             self._spot_timeout_tick()
 
-            if not st.edit_mode:
+            if (
+                not st.edit_mode
+                and not st.camera_error_latched
+                and not st.light_error_latched
+            ):
                 self._run_auto_inspect_tick(frame_gray8, vis)
         
             # Status + banner + control Bar(button) + HUD  Draw
@@ -1183,8 +2088,53 @@ class VisionApp:
 
 
 def main():
-    app = VisionApp()
-    app.run()
+    app = None
+
+    try:
+        app = VisionApp()
+        app.run()
+
+    except Exception as e:
+        print(f"[FATAL] vision application terminated: {e}")
+
+        if app is not None:
+            try:
+                app._save_plc_error_event(
+                    event_type="VISION_FATAL_ERROR",
+                    error_code=41,
+                    message="Unhandled vision application exception",
+                    exception=e,
+                )
+            except Exception:
+                pass
+
+            try:
+                app.plc.set_error(code=41, detail=str(e))
+            except Exception:
+                pass
+
+            try:
+                app.plc.stop()
+            except Exception:
+                pass
+
+            try:
+                app.light.stop()
+            except Exception:
+                pass
+
+            try:
+                app.cam.release()
+            except Exception:
+                pass
+
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
+
+        raise
+
 
 if __name__ == "__main__":
     main()

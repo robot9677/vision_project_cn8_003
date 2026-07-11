@@ -1,6 +1,7 @@
 import threading
 import time
 from typing import Any, Dict, Optional
+from datetime import datetime
 
 try:
     import serial
@@ -50,10 +51,10 @@ class DisabledPlcController:
     def poll_command(self) -> Optional[str]:
         return None
 
-    def poll_ack(self) -> Optional[str]:
-        return None
-
     def set_idle(self):
+        pass
+
+    def reset_to_ready(self, reset_heartbeat: bool = False):
         pass
 
     def set_busy(self):
@@ -62,16 +63,33 @@ class DisabledPlcController:
     def set_done(self, ok: bool, elapsed_ms: int = 0):
         pass
 
-    def set_error(self, code: int = 99):
+    def set_error(self, code: int = 99, detail: str = ""):
         pass
 
-    def set_shutdown_busy(self):
+    def set_shutdown(self):
         pass
 
-    def set_shutdown_ready(self):
-        pass
+    def get_state_snapshot(self) -> Dict[str, Any]:
+        return {
+            "command": 0,
+            "status": 0,
+            "result": 0,
+            "heartbeat": 0,
+            "error_code": 0,
+            "error_detail": "",
+            "last_inspect_at": "",
+            "last_inspect_elapsed_ms": 0,
+            "serial_open": False,
+            "comm_fault_active": False,
+        }
 
-    def set_ready_detail(self, value: int):
+    def is_connected(self) -> bool:
+        return False
+    
+    def poll_comm_event(self) -> Optional[Dict[str, Any]]:
+        return None
+
+    def prepare_reset(self, reset_heartbeat: bool = False):
         pass
 
 
@@ -79,24 +97,19 @@ class ModbusRtuSlaveController:
     CMD_NONE = 0
     CMD_PREPARE = 1
     CMD_INSPECT = 2
+    CMD_RESET = 3
     CMD_SHUTDOWN = 8
     CMD_EMERGENCY = 9
-
-    ACK_NONE = 0
-    ACK_RESULT = 1
-    ACK_ERROR_RESET = 2
 
     STATUS_READY = 0
     STATUS_BUSY = 1
     STATUS_DONE = 2
     STATUS_ERROR = 3
-    STATUS_SHUTDOWN_BUSY = 8
-    STATUS_SHUTDOWN_READY = 9
+    STATUS_SHUTDOWN = 8
 
     RESULT_NONE = 0
     RESULT_OK = 1
     RESULT_NG = 2
-    RESULT_FAIL = 3
 
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
@@ -112,7 +125,12 @@ class ModbusRtuSlaveController:
         self.bytesize = int(serial_cfg.get("bytesize", 8))
         self.parity = str(serial_cfg.get("parity", "N"))
         self.stopbits = int(serial_cfg.get("stopbits", 1))
-        self.timeout = float(serial_cfg.get("timeout", 0.05))
+        self.timeout = max(0.01, float(serial_cfg.get("timeout", 0.05)))
+
+        self.reconnect_interval_sec = max(
+            0.1,
+            float(serial_cfg.get("reconnect_interval_sec", 1.0)),
+        )
 
         self.slave_id = int(modbus_cfg.get("slave_id", 1))
 
@@ -120,49 +138,180 @@ class ModbusRtuSlaveController:
         self.reg_status = int(regs_cfg.get("status", 201))
         self.reg_result = int(regs_cfg.get("result", 202))
         self.reg_heartbeat = int(regs_cfg.get("heartbeat", 203))
-        self.reg_error_code = int(regs_cfg.get("error_code", 204))
-        self.reg_last_inspect_time = int(regs_cfg.get("last_inspect_time", 205))
-        self.reg_ack = int(regs_cfg.get("ack", 206))
-        self.reg_ready_detail = int(regs_cfg.get("ready_detail", 207))
-        self.reg_reserved1 = int(regs_cfg.get("reserved1", 208))
-        self.reg_reserved2 = int(regs_cfg.get("reserved2", 209))
+
+        if not 1 <= self.slave_id <= 247:
+            raise ValueError(
+                f"modbus slave_id must be 1..247: {self.slave_id}"
+            )
+
+        register_addresses = [
+            self.reg_command,
+            self.reg_status,
+            self.reg_result,
+            self.reg_heartbeat,
+        ]
+
+        if any(reg < 0 or reg > 0xFFFF for reg in register_addresses):
+            raise ValueError(
+                f"modbus register address out of range: {register_addresses}"
+            )
+
+        if len(set(register_addresses)) != len(register_addresses):
+            raise ValueError(
+                f"modbus register addresses must be unique: {register_addresses}"
+            )
 
         max_reg = max(
             self.reg_command,
             self.reg_status,
             self.reg_result,
             self.reg_heartbeat,
-            self.reg_error_code,
-            self.reg_last_inspect_time,
-            self.reg_ack,
-            self.reg_ready_detail,
-            self.reg_reserved1,
-            self.reg_reserved2,
         )
 
-        self.register_count = max_reg + 16
+        self.register_count = max_reg + 1
         self.regs = [0] * self.register_count
 
-        self.heartbeat_interval_sec = float(heartbeat_cfg.get("interval_sec", 0.5))
-        self.heartbeat_max = int(heartbeat_cfg.get("max_value", 9999))
+        self.last_error_code = 0
+        self.last_error_detail = ""
+        self.last_inspect_at = ""
+        self.last_inspect_elapsed_ms = 0
+
+        self.heartbeat_interval_sec = max(
+            0.1,
+            float(heartbeat_cfg.get("interval_sec", 0.5)),
+        )
+        self.heartbeat_max = max(1, int(heartbeat_cfg.get("max_value", 9999)))
         self._last_heartbeat_ts = 0.0
 
         self._last_cmd_seen = 0
-        self._last_ack_seen = 0
 
         self._lock = threading.Lock()
         self._ser = None
         self._thread = None
+        self._heartbeat_thread = None
         self._stop = threading.Event()
 
+        self._comm_event_lock = threading.Lock()
+        self._comm_events = []
+        self._comm_fault_active = False
+        self._last_reconnect_ts = 0.0
+
     def start(self):
-        if serial is None:
-            print("[PLC] pyserial is not installed - PLC disabled")
-            self._ser = None
+        if self._thread is not None and self._thread.is_alive():
+            print("[PLC] already started")
             return
 
+        self.reset_to_ready(reset_heartbeat=True)
+
+        self._stop.clear()
+        self._last_reconnect_ts = 0.0
+
+        with self._comm_event_lock:
+            self._comm_events.clear()
+
+        connected = self._open_serial(initial=True)
+
+        self._thread = threading.Thread(
+            target=self._loop,
+            daemon=True,
+        )
+        self._thread.start()
+
+        self._heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            daemon=True,
+        )
+        self._heartbeat_thread.start()
+
+        if connected:
+            print(
+                f"[PLC] modbus rtu slave started "
+                f"port={self.port} "
+                f"baudrate={self.baudrate} "
+                f"slave_id={self.slave_id}"
+            )
+        else:
+            print(
+                f"[PLC] serial unavailable, reconnecting every "
+                f"{self.reconnect_interval_sec:.1f} sec"
+            )
+
+    def _push_comm_event(
+        self,
+        error_code: int,
+        message: str,
+    ):
+        event = {
+            "error_code": int(error_code),
+            "message": str(message),
+            "timestamp": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S.%f"
+            )[:-3],
+        }
+
+        with self._comm_event_lock:
+            self._comm_events.append(event)
+
+            if len(self._comm_events) > 20:
+                self._comm_events.pop(0)
+
+    def poll_comm_event(self) -> Optional[Dict[str, Any]]:
+        with self._comm_event_lock:
+            if not self._comm_events:
+                return None
+
+            return self._comm_events.pop(0)
+
+    def _close_serial(self):
+        ser = self._ser
+        self._ser = None
+
+        if ser is not None:
+            try:
+                ser.close()
+            except Exception:
+                pass
+
+    def _mark_comm_error(
+        self,
+        error_code: int,
+        message: str,
+    ):
+        self._close_serial()
+
+        # 정상 종료 중 발생한 close/read 예외는 통신 장애로 기록하지 않는다.
+        if self._stop.is_set():
+            return
+
+        if not self._comm_fault_active:
+            self._push_comm_event(
+                error_code=error_code,
+                message=message,
+            )
+
+            self._comm_fault_active = True
+
+            # 통신 복구 후 PLC가 읽을 수 있도록 내부 D201=3 유지
+            self.set_error(
+                code=error_code,
+                detail=message,
+            )
+
+        print(f"[PLC] communication error: {message}")
+
+    def _open_serial(self, initial: bool = False) -> bool:
+        if self._stop.is_set():
+            return False
+
+        if serial is None:
+            self._mark_comm_error(
+                error_code=70,
+                message="pyserial is not installed",
+            )
+            return False
+
         try:
-            self._ser = serial.Serial(
+            opened_serial = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
                 bytesize=self.bytesize,
@@ -170,35 +319,56 @@ class ModbusRtuSlaveController:
                 stopbits=self.stopbits,
                 timeout=self.timeout,
             )
+
+            if hasattr(opened_serial, "is_open") and not opened_serial.is_open:
+                raise RuntimeError("serial port object is not open")
+
+            try:
+                opened_serial.reset_input_buffer()
+                opened_serial.reset_output_buffer()
+            except Exception:
+                pass
+
+            self._ser = opened_serial
+
+            was_fault = self._comm_fault_active
+            self._comm_fault_active = False
+
+            if was_fault:
+                print(
+                    f"[PLC] serial reconnected: {self.port} "
+                    f"- D201 remains ERROR until D200=3"
+                )
+
+            return True
+
         except Exception as e:
-            self._ser = None
-            print(f"[PLC] port open failed - PLC disabled: port={self.port}, error={e}")
-            return
+            error_code = 70 if initial else 71
 
-        self.set_idle()
-
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
-
-        print(
-            f"[PLC] modbus rtu slave started "
-            f"port={self.port} baudrate={self.baudrate} slave_id={self.slave_id}"
-        )
-
+            self._mark_comm_error(
+                error_code=error_code,
+                message=(
+                    f"serial port open failed: "
+                    f"port={self.port}, error={e}"
+                ),
+            )
+            return False
+        
     def stop(self):
         self._stop.set()
 
+        # read() 대기를 즉시 해제한 뒤 스레드를 종료한다.
+        self._close_serial()
+
+        join_timeout = max(1.0, self.timeout + 0.5)
+
         if self._thread is not None:
-            self._thread.join(timeout=1.0)
+            self._thread.join(timeout=join_timeout)
             self._thread = None
 
-        if self._ser is not None:
-            try:
-                self._ser.close()
-            except Exception:
-                pass
-            self._ser = None
+        if self._heartbeat_thread is not None:
+            self._heartbeat_thread.join(timeout=join_timeout)
+            self._heartbeat_thread = None
 
         print("[PLC] stopped")
 
@@ -217,6 +387,12 @@ class ModbusRtuSlaveController:
 
         self._set_reg(self.reg_heartbeat, next_val)
 
+    def _heartbeat_loop(self):
+        while not self._stop.wait(
+            self.heartbeat_interval_sec
+        ):
+            self.tick()
+
     def poll_command(self) -> Optional[str]:
         cmd = self._get_reg(self.reg_command)
 
@@ -234,8 +410,12 @@ class ModbusRtuSlaveController:
             return "prepare"
 
         if cmd == self.CMD_INSPECT:
-            print("[PLC] command received: INSPECT_START")
+            print("[PLC] command received: INSPECT_REQUEST")
             return "inspect"
+        
+        if cmd == self.CMD_RESET:
+            print("[PLC] command received: RESET_REQUEST")
+            return "reset"
 
         if cmd == self.CMD_SHUTDOWN:
             print("[PLC] command received: SHUTDOWN_REQUEST")
@@ -248,72 +428,113 @@ class ModbusRtuSlaveController:
         print(f"[PLC] unknown command: {cmd}")
         return "command_error"
 
-    def poll_ack(self) -> Optional[str]:
-        ack = self._get_reg(self.reg_ack)
-
-        if ack == self.ACK_NONE:
-            self._last_ack_seen = self.ACK_NONE
-            return None
-
-        if ack == self._last_ack_seen:
-            return None
-
-        self._last_ack_seen = ack
-
-        if ack == self.ACK_RESULT:
-            print("[PLC] ack received: RESULT_ACK")
-            return "result_ack"
-
-        if ack == self.ACK_ERROR_RESET:
-            print("[PLC] ack received: ERROR_RESET")
-            return "error_reset"
-
-        print(f"[PLC] unknown ack: {ack}")
-        return "ack_error"
-
     def set_idle(self):
+        # D202 결과는 D200=3이 들어오기 전까지 유지
+        self._set_reg(self.reg_status, self.STATUS_READY)
+
+    def prepare_reset(
+        self,
+        reset_heartbeat: bool = False,
+    ):
+        # D200은 PLC가 직접 0으로 복귀
+        # D202는 Reset 명령 즉시 초기화
+        self._set_reg(
+            self.reg_result,
+            self.RESULT_NONE,
+        )
+
+        if reset_heartbeat:
+            self._set_reg(self.reg_heartbeat, 0)
+            self._last_heartbeat_ts = time.time()
+
+        print(
+            f"[PLC] reset preparation "
+            f"result_cleared=True "
+            f"heartbeat_reset={bool(reset_heartbeat)}"
+        )
+
+    def reset_to_ready(self, reset_heartbeat: bool = False):
         self._set_reg(self.reg_status, self.STATUS_READY)
         self._set_reg(self.reg_result, self.RESULT_NONE)
-        self._set_reg(self.reg_error_code, 0)
-        self._set_reg(self.reg_last_inspect_time, 0)
-        self._set_reg(self.reg_ready_detail, 0)
+
+        if reset_heartbeat:
+            self._set_reg(self.reg_heartbeat, 0)
+            self._last_heartbeat_ts = time.time()
+
+        self.last_error_code = 0
+        self.last_error_detail = ""
+
+        self.last_inspect_at = ""
+        self.last_inspect_elapsed_ms = 0
+
+        print(
+            f"[PLC] reset to ready "
+            f"heartbeat_reset={bool(reset_heartbeat)}"
+        )
 
     def set_busy(self):
+        # 이전 D202 결과는 Reset 명령 전까지 유지
         self._set_reg(self.reg_status, self.STATUS_BUSY)
-        self._set_reg(self.reg_result, self.RESULT_NONE)
-        self._set_reg(self.reg_error_code, 0)
 
     def set_done(self, ok: bool, elapsed_ms: int = 0):
         self._set_reg(self.reg_status, self.STATUS_DONE)
-        self._set_reg(self.reg_result, self.RESULT_OK if ok else self.RESULT_NG)
-        self._set_reg(self.reg_error_code, 0)
-        self._set_reg(self.reg_last_inspect_time, max(0, int(elapsed_ms)))
+        self._set_reg(
+            self.reg_result,
+            self.RESULT_OK if ok else self.RESULT_NG,
+        )
 
-        print(f"[PLC] result set: {'OK' if ok else 'NG'} elapsed_ms={int(elapsed_ms)}")
+        self.last_error_code = 0
+        self.last_error_detail = ""
+        self.last_inspect_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.last_inspect_elapsed_ms = max(0, int(elapsed_ms))
 
-    def set_error(self, code: int = 99):
+        print(
+            f"[PLC] result set: {'OK' if ok else 'NG'} "
+            f"inspect_at={self.last_inspect_at} "
+            f"elapsed_ms={self.last_inspect_elapsed_ms}"
+        )
+
+    def set_error(self, code: int = 99, detail: str = ""):
+        # D202의 기존 OK/NG 값은 유지하고 D201만 Error로 변경
         self._set_reg(self.reg_status, self.STATUS_ERROR)
-        self._set_reg(self.reg_result, self.RESULT_FAIL)
-        self._set_reg(self.reg_error_code, int(code))
 
-        print(f"[PLC] result set: ERROR code={int(code)}")
+        self.last_error_code = int(code)
+        self.last_error_detail = str(detail or "")
 
-    def set_shutdown_busy(self):
-        self._set_reg(self.reg_status, self.STATUS_SHUTDOWN_BUSY)
-        self._set_reg(self.reg_result, self.RESULT_NONE)
-        self._set_reg(self.reg_error_code, 0)
+        print(
+            f"[PLC] error status "
+            f"code={self.last_error_code} "
+            f"detail={self.last_error_detail}"
+        )
 
-        print("[PLC] shutdown busy")
+    def set_shutdown(self):
+        # 종료 상태는 D201=8 하나만 사용
+        self._set_reg(self.reg_status, self.STATUS_SHUTDOWN)
+        print("[PLC] shutdown status set: D201=8")
 
-    def set_shutdown_ready(self):
-        self._set_reg(self.reg_status, self.STATUS_SHUTDOWN_READY)
-        self._set_reg(self.reg_result, self.RESULT_NONE)
-        self._set_reg(self.reg_error_code, 0)
+    def get_state_snapshot(self) -> Dict[str, Any]:
+        return {
+            "command": self._get_reg(self.reg_command),
+            "status": self._get_reg(self.reg_status),
+            "result": self._get_reg(self.reg_result),
+            "heartbeat": self._get_reg(self.reg_heartbeat),
+            "error_code": int(self.last_error_code),
+            "error_detail": str(self.last_error_detail),
+            "last_inspect_at": str(self.last_inspect_at),
+            "last_inspect_elapsed_ms": int(self.last_inspect_elapsed_ms),
+            "serial_open": self.is_connected(),
+            "comm_fault_active": bool(self._comm_fault_active),
+        }
 
-        print("[PLC] shutdown ready")
+    def is_connected(self) -> bool:
+        ser = self._ser
+        if ser is None:
+            return False
 
-    def set_ready_detail(self, value: int):
-        self._set_reg(self.reg_ready_detail, int(value))
+        try:
+            return bool(getattr(ser, "is_open", True))
+        except Exception:
+            return False
 
     def _get_reg(self, idx: int) -> int:
         with self._lock:
@@ -327,17 +548,54 @@ class ModbusRtuSlaveController:
                 self.regs[idx] = int(val) & 0xFFFF
 
     def _read_exact(self, n: int) -> Optional[bytes]:
-        if self._ser is None:
-            return None
+        if n <= 0:
+            return b""
 
-        data = self._ser.read(n)
+        data = bytearray()
+        deadline = time.monotonic() + self.timeout
+
+        while len(data) < n and not self._stop.is_set():
+            ser = self._ser
+            if ser is None:
+                return None
+
+            try:
+                chunk = ser.read(n - len(data))
+            except Exception as e:
+                self._mark_comm_error(
+                    error_code=71,
+                    message=f"serial read failed: {e}",
+                )
+                return None
+
+            if chunk:
+                data.extend(chunk)
+                continue
+
+            if time.monotonic() >= deadline:
+                break
+
         if len(data) != n:
             return None
 
-        return data
+        return bytes(data)
 
     def _loop(self):
         while not self._stop.is_set():
+
+            if self._ser is None:
+                now = time.time()
+
+                if (
+                    now - self._last_reconnect_ts
+                    >= self.reconnect_interval_sec
+                ):
+                    self._last_reconnect_ts = now
+                    self._open_serial(initial=False)
+
+                time.sleep(0.05)
+                continue
+
             try:
                 b1 = self._read_exact(1)
                 if not b1:
@@ -367,6 +625,13 @@ class ModbusRtuSlaveController:
                     frame = b1 + b2 + head + tail
 
                 else:
+                    # 지원하지 않는 function code의 나머지 바이트가
+                    # 다음 프레임으로 섞이지 않도록 입력 버퍼를 비운다.
+                    try:
+                        if self._ser is not None:
+                            self._ser.reset_input_buffer()
+                    except Exception:
+                        pass
                     continue
 
                 if not _check_crc(frame):
@@ -392,18 +657,24 @@ class ModbusRtuSlaveController:
         if addr == 0:
             return
 
-        if self._ser is None:
+        ser = self._ser
+        if ser is None:
             return
 
+        frame = _append_crc(payload)
+
         try:
-            self._ser.write(_append_crc(payload))
+            written = ser.write(frame)
+            if written is not None and int(written) != len(frame):
+                raise IOError(
+                    f"short serial write: {written}/{len(frame)} bytes"
+                )
+            ser.flush()
         except Exception as e:
-            print("[PLC] write failed:", e)
-            try:
-                self._ser.close()
-            except Exception:
-                pass
-            self._ser = None
+            self._mark_comm_error(
+                error_code=71,
+                message=f"serial write failed: {e}",
+            )
 
     def _write_exception(self, addr: int, func: int, code: int):
         if addr == 0:
@@ -420,7 +691,22 @@ class ModbusRtuSlaveController:
             self._write_exception(addr, func, 3)
             return
 
-        if start < 0 or start + qty > len(self.regs):
+        allowed_registers = {
+            self.reg_command,
+            self.reg_status,
+            self.reg_result,
+            self.reg_heartbeat,
+        }
+
+        requested_registers = range(
+            start,
+            start + qty,
+        )
+
+        if any(
+            reg not in allowed_registers
+            for reg in requested_registers
+        ):
             self._write_exception(addr, func, 2)
             return
 
@@ -444,6 +730,10 @@ class ModbusRtuSlaveController:
             self._write_exception(addr, func, 2)
             return
 
+        if reg != self.reg_command:
+            self._write_exception(addr, func, 2)
+            return
+
         self._set_reg(reg, val)
 
         if addr != 0:
@@ -463,6 +753,10 @@ class ModbusRtuSlaveController:
             self._write_exception(addr, func, 2)
             return
 
+        if start != self.reg_command or qty != 1:
+            self._write_exception(addr, func, 2)
+            return
+        
         pos = 7
         for i in range(qty):
             val = (frame[pos] << 8) | frame[pos + 1]
