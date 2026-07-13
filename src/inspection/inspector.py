@@ -222,6 +222,7 @@ class Inspector:
             project_root=os.path.abspath(os.path.join(os.path.dirname(recipe_path), "..", "..")),
         )
         self.debug_tiles = {}
+        self.debug_grid = None
         self.baseline_path = os.path.join(os.path.dirname(recipe_path), "baseline_profile.json")
         if os.path.exists(self.baseline_path):
             with open(self.baseline_path, "r") as f:
@@ -294,21 +295,31 @@ class Inspector:
         raw_vis = _to_bgr(raw_crop)
         last_vis = _to_bgr(last_img)
 
-        cell_w = 420 #110
-        cell_h = 300 #70
+        # 메인 Service 패널에 들어가는 compact ROI RAW/LAST tile.
+        cell_w = 180
+        cell_h = 120
 
         def _fit_cell(im, title, color):
             canvas = np.zeros((cell_h, cell_w, 3), dtype=np.uint8)
             if im is not None:
                 h, w = im.shape[:2]
-                scale = min((cell_w - 8) / max(1, w), (cell_h - 28) / max(1, h))
+                scale = min((cell_w - 8) / max(1, w), (cell_h - 24) / max(1, h))
                 nw = max(1, int(w * scale))
                 nh = max(1, int(h * scale))
                 resized = cv2.resize(im, (nw, nh), interpolation=cv2.INTER_NEAREST)
                 x0 = (cell_w - nw)  // 2
-                y0 = 24 + (cell_h - 24 - nh)  // 2
+                y0 = 20 + (cell_h - 20 - nh)  // 2
                 canvas[y0:y0+nh, x0:x0+nw] = resized
-            cv2.putText(canvas, title, (4, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.2, color, 1)
+            cv2.putText(
+                canvas,
+                title,
+                (4, 14),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
             cv2.rectangle(canvas, (0, 0), (cell_w - 1, cell_h - 1), (60, 60, 60), 1)
             return canvas
 
@@ -332,20 +343,15 @@ class Inspector:
             rows.append(cv2.hconcat(row))
 
         grid = cv2.vconcat(rows)
-        if not hasattr(self, "_roi_debug_window_init"):
-            self._roi_debug_window_init = False
+        # 별도 OpenCV 창을 띄우지 않는다.
+        # 메인 비전 화면의 Service/PLC 패널에서 이 이미지를 사용한다.
+        self.debug_grid = grid
 
-        if not self._roi_debug_window_init:
-            cv2.namedWindow("ROI DEBUG", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("ROI DEBUG", 900, 200)
-            self._roi_debug_window_init = True
-
-        cv2.imshow("ROI DEBUG", grid)
-
-        try:
-            cv2.setWindowProperty("ROI DEBUG", cv2.WND_PROP_TOPMOST, 0)
-        except Exception:
-            pass
+    def get_debug_grid(self):
+        grid = getattr(self, "debug_grid", None)
+        if grid is None or not isinstance(grid, np.ndarray) or grid.size == 0:
+            return None
+        return grid.copy()
 
     def _crop_rotated(self, frame_gray8, roi, dx=0, dy=0, dangle=0.0):
         H, W = frame_gray8.shape[:2]
@@ -392,6 +398,7 @@ class Inspector:
     def inspect(self, frame_gray8: np.ndarray, auto_mode=False):
         if self.debug_view_enabled:
             self.debug_tiles = {}
+            self.debug_grid = None
 
         results: Dict[str, ROIResult] = {}
 

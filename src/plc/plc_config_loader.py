@@ -62,6 +62,18 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         ],
     },
 
+
+
+    "service_panel": {
+        "enabled": False,
+        "panel_width": 560,
+        "opacity": 0.96,
+        "password_sha256": "e9036ed9fdef51f99f8cd34a7023152d9bc93211e15511133721fae725fb7bfe",
+        "lock_on_close": True,
+        "show_roi_debug": True,
+        "rx_tx_rows": 4,
+    },
+
     "shutdown": {
         "command": "sudo /sbin/shutdown -h now",
         "ready_hold_sec": 2.0,

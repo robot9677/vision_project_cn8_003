@@ -21,7 +21,7 @@ from inspection.logger import save_snapshot, save_template_copy
 
 from plc.plc_config_loader import load_plc_config
 from plc.plc_controller import create_plc_controller
-from plc.plc_error_logger import save_plc_error_log
+from plc.plc_error_logger import save_plc_error_log, save_plc_test_log
 
 from light.light_controller import create_light_controller_from_hardware_config
 
@@ -29,6 +29,7 @@ from ui import overlay_clean as overlay
 from typing import Optional, Dict, Any
 from ui.hud import draw_mode_indicator, draw_dev_hud
 from ui.pose_guide import draw_pose_message
+from ui.service_panel import ServicePanel
 from runtime.product_profile_loader import load_product_profile
 from data_io.sample_capture import handle_sample_keys, prune_snapshots
 from ui.control_bar import render_control_bar, key_to_cmd, button_id_to_cmd
@@ -70,6 +71,7 @@ class UICmd(Enum):
     QUIT = 8
     DELETE = 9
     TOGGLE_AUTO_INSPECT = 10  # NEW
+    TOGGLE_SERVICE_PANEL = 11
 
 # =========================
 # Config
@@ -165,6 +167,14 @@ class AppState:
     test_error_type: str = ""
     test_error_code: int = 0
     test_error_injected_at: str = ""
+    test_error_request_id: str = ""
+    test_error_safe_logical: bool = True
+    test_error_phase: str = "IDLE"
+    test_error_result: str = ""
+    test_error_log_path: str = ""
+    test_error_log_saved: bool = False
+    test_error_recovered_at: str = ""
+    latest_error_log_path: str = ""
 
 
 class VisionApp:
@@ -255,6 +265,7 @@ class VisionApp:
 
         self.state = AppState(last_buttons=[])
         self.state.auto_inspect = bool(self.runtime_cfg.get("enable_auto_inspect", True))
+        self.service_panel = ServicePanel(self.plc_cfg.get("service_panel", {}) or {})
 
         # load saved tracker template if exists
         self._load_alignment_template()
@@ -353,6 +364,12 @@ class VisionApp:
     def _mouse_router(self, event, x, y, flags, param):
         st = self.state
 
+        if self.service_panel.handle_mouse(event, x, y):
+            action = self.service_panel.pop_action()
+            if action:
+                self._handle_service_action(action)
+            return
+
         if event == cv2.EVENT_MOUSEMOVE:
             if st.edit_mode:
                 self.editor._on_mouse(event, x, y, flags, None)
@@ -447,6 +464,74 @@ class VisionApp:
         run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
         mode_text = "STATIC" if run_mode == "static" else "HELD"
         st.status = f"AUTO INSPECT ON / {mode_text}" if st.auto_inspect else f"AUTO INSPECT OFF / {mode_text}"
+
+    def _toggle_service_panel(self):
+        self.service_panel.request_toggle()
+
+    def _handle_service_action(self, action: str):
+        action = str(action or "").strip().lower()
+        if action.startswith("inject:"):
+            error_type = action.split(":", 1)[1].strip()
+            request_id = f"ui-{int(time.time() * 1000)}"
+            ok = self._inject_plc_test_error(
+                error_type=error_type,
+                request_id=request_id,
+                custom_message="Service panel logical forced-error test",
+            )
+            if ok:
+                self.service_panel.set_message(
+                    f"{error_type.upper()} ERROR INJECTED - WAIT D200=3",
+                    3.0,
+                )
+            else:
+                self.service_panel.set_message(
+                    "TEST REJECTED - CLEAR CURRENT ERROR FIRST",
+                    3.0,
+                )
+
+    def _get_service_test_summary(self) -> Dict[str, Any]:
+        st = self.state
+        test_cfg = self._get_plc_error_test_cfg()
+        return {
+            "enabled": bool(test_cfg.get("enabled", False)),
+            "phase": str(st.test_error_phase),
+            "type": str(st.test_error_type),
+            "result": str(st.test_error_result),
+            "log_saved": bool(st.test_error_log_saved),
+            "request_id": str(st.test_error_request_id),
+            "injected_at": str(st.test_error_injected_at),
+            "recovered_at": str(st.test_error_recovered_at),
+        }
+
+    def _save_plc_test_event(
+        self,
+        phase: str,
+        result: str,
+        message: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        st = self.state
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {"snapshot_failed": True, "error": str(e)}
+
+        path = save_plc_test_log(
+            logs_root=LOGS_ROOT,
+            test_id=str(st.test_error_request_id),
+            test_type=str(st.test_error_type),
+            phase=str(phase),
+            result=str(result),
+            error_code=int(st.test_error_code),
+            message=str(message),
+            plc_snapshot=plc_snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+            extra=extra or {},
+        )
+        if path:
+            st.test_error_log_path = str(path)
+            st.test_error_log_saved = True
+        return path
 
     def _run_auto_inspect_tick(self, frame_gray8, vis_bgr):
         st = self.state
@@ -803,6 +888,21 @@ class VisionApp:
             "test_error_injected_at": str(
                 self.state.test_error_injected_at
             ),
+            "test_error_request_id": str(
+                self.state.test_error_request_id
+            ),
+            "test_error_safe_logical": bool(
+                self.state.test_error_safe_logical
+            ),
+            "test_error_phase": str(
+                self.state.test_error_phase
+            ),
+            "test_error_result": str(
+                self.state.test_error_result
+            ),
+            "test_error_log_path": str(
+                self.state.test_error_log_path
+            ),
         }
 
     def _save_plc_error_event(
@@ -831,6 +931,7 @@ class VisionApp:
         )
 
         if saved_path:
+            self.state.latest_error_log_path = str(saved_path)
             try:
                 self.plc.trace_application_event(
                     event="ERROR_LOG_SAVED",
@@ -929,6 +1030,10 @@ class VisionApp:
                 cfg.get("delete_after_read", True)
             ),
             "allowed_types": allowed_types,
+            "safe_logical_mode": bool(cfg.get("safe_logical_mode", True)),
+            "allow_hardware_fault_tests": bool(
+                cfg.get("allow_hardware_fault_tests", False)
+            ),
         }
 
     def _inject_plc_test_error(
@@ -939,6 +1044,11 @@ class VisionApp:
     ) -> bool:
         st = self.state
         error_type = str(error_type or "").strip().lower()
+        test_cfg = self._get_plc_error_test_cfg()
+
+        if not bool(test_cfg.get("enabled", False)):
+            print("[PLC TEST] error injection rejected: test mode is disabled")
+            return False
 
         definitions = {
             "camera": {
@@ -998,15 +1108,27 @@ class VisionApp:
         message = str(custom_message or definition["message"])
         injected_at = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        if error_type == "camera":
-            st.camera_error_latched = True
-        elif error_type == "light":
-            st.light_error_latched = True
+        safe_logical = bool(test_cfg.get("safe_logical_mode", True))
+
+        # Service UI의 기본 강제 오류는 논리 오류만 발생시킨다.
+        # 카메라/조명 파이프라인을 실제로 끊지 않으므로 반복 시험이 안전하다.
+        if not safe_logical:
+            if error_type == "camera":
+                st.camera_error_latched = True
+            elif error_type == "light":
+                st.light_error_latched = True
 
         st.test_error_active = True
         st.test_error_type = error_type
         st.test_error_code = error_code
         st.test_error_injected_at = injected_at
+        st.test_error_request_id = str(request_id)
+        st.test_error_safe_logical = safe_logical
+        st.test_error_phase = "WAITING_RESET"
+        st.test_error_result = ""
+        st.test_error_log_path = ""
+        st.test_error_log_saved = False
+        st.test_error_recovered_at = ""
 
         detail = (
             f"[TEST:{error_type}] {message} "
@@ -1025,6 +1147,16 @@ class VisionApp:
             error_code=error_code,
             message=detail,
             exception=RuntimeError(detail),
+        )
+        st.latest_error_log_path = str(saved_path or "")
+        self._save_plc_test_event(
+            phase="INJECTED",
+            result="",
+            message=detail,
+            extra={
+                "safe_logical_mode": bool(safe_logical),
+                "error_log_path": str(saved_path or ""),
+            },
         )
 
         try:
@@ -1360,6 +1492,14 @@ class VisionApp:
             or current_error_code in light_error_codes
         )
 
+        # 강제 오류 UI의 기본 모드는 논리 시험이다.
+        # Camera/Light 오류 코드를 사용해도 실제 하드웨어를 release/open 하지 않는다.
+        if st.test_error_active and st.test_error_safe_logical:
+            # 논리 테스트 자체는 하드웨어 재시작을 요구하지 않는다.
+            # 단, 테스트 도중 실제 Camera/Light fault가 발생해 latch가 올라온 경우는 복구한다.
+            need_camera_restart = bool(st.camera_error_latched)
+            need_light_restart = bool(st.light_error_latched)
+
         # 이전 Reset 자체가 실패한 경우에는 하드웨어 전체 복구를 다시 시도한다.
         if current_status == 3 and current_error_code == 60:
             need_camera_restart = True
@@ -1409,6 +1549,14 @@ class VisionApp:
             )
             self.plc.set_error(code=60, detail=str(e))
             st.status = "PLC RESET ERROR: RUNTIME"
+            if st.test_error_active:
+                st.test_error_phase = "RECOVERY_FAILED"
+                st.test_error_result = "FAIL"
+                self._save_plc_test_event(
+                    phase="RECOVERY_FAILED",
+                    result="FAIL",
+                    message=f"Vision runtime reset failed: {e}",
+                )
             return False
 
         if need_camera_restart:
@@ -1426,6 +1574,14 @@ class VisionApp:
                 )
                 self.plc.set_error(code=10, detail=str(e))
                 st.status = "PLC RESET ERROR: CAMERA"
+                if st.test_error_active:
+                    st.test_error_phase = "RECOVERY_FAILED"
+                    st.test_error_result = "FAIL"
+                    self._save_plc_test_event(
+                        phase="RECOVERY_FAILED",
+                        result="FAIL",
+                        message=f"Camera recovery failed: {e}",
+                    )
                 return False
 
         if need_light_restart:
@@ -1443,23 +1599,44 @@ class VisionApp:
                 )
                 self.plc.set_error(code=21, detail=str(e))
                 st.status = "PLC RESET ERROR: LIGHT"
+                if st.test_error_active:
+                    st.test_error_phase = "RECOVERY_FAILED"
+                    st.test_error_result = "FAIL"
+                    self._save_plc_test_event(
+                        phase="RECOVERY_FAILED",
+                        result="FAIL",
+                        message=f"Light recovery failed: {e}",
+                    )
                 return False
 
         recovered_test_type = str(st.test_error_type)
         recovered_test_code = int(st.test_error_code)
+        recovered_test_id = str(st.test_error_request_id)
 
         st.camera_error_latched = False
         st.light_error_latched = False
         st.test_error_active = False
-        st.test_error_type = ""
-        st.test_error_code = 0
-        st.test_error_injected_at = ""
 
         self.plc.reset_to_ready(
             reset_heartbeat=reset_heartbeat
         )
 
         if recovered_test_type:
+            st.test_error_phase = "RECOVERED"
+            st.test_error_result = "PASS"
+            st.test_error_recovered_at = time.strftime("%Y-%m-%d %H:%M:%S")
+            self._save_plc_test_event(
+                phase="RECOVERED",
+                result="PASS",
+                message=(
+                    f"D200=3 recovery completed for {recovered_test_type} "
+                    f"code={recovered_test_code} request_id={recovered_test_id}"
+                ),
+                extra={
+                    "reset_heartbeat": bool(reset_heartbeat),
+                    "safe_logical_mode": bool(st.test_error_safe_logical),
+                },
+            )
             try:
                 self.plc.trace_application_event(
                     event="TEST_ERROR_RECOVERED",
@@ -1892,6 +2069,14 @@ class VisionApp:
             
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
+
+        if self.service_panel.handle_key(key):
+            return
+
+        if key in (ord('v'), ord('V')):
+            self._toggle_service_panel()
+            return
+
         if key not in (-1, 255):
             print(f"[DBG KEY] raw={key} chr={repr(chr(key)) if 32 <= key <= 126 else 'NONPRINT'}")
 
@@ -2078,7 +2263,11 @@ class VisionApp:
         if (not st.edit_mode) and (st.last_overall_ok is not None):
             overlay.draw_overall_banner(vis,st.last_overall_ok,info=getattr(st, "last_overall_info", None),)
 
-        st.last_buttons = render_control_bar(vis, st.edit_mode)
+        st.last_buttons = render_control_bar(
+            vis,
+            st.edit_mode,
+            show_service=bool(self.service_panel.enabled),
+        )
 
         if bool(self.runtime_cfg.get("enable_pose_guide", True)):
             vis = draw_pose_message(
@@ -2089,6 +2278,37 @@ class VisionApp:
 
         draw_mode_indicator(vis, st.edit_mode)
         draw_dev_hud(vis, st, self.product_profile)
+
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {
+                "serial_open": False,
+                "comm_fault_active": True,
+                "error_code": 71,
+                "error_detail": str(e),
+            }
+
+        try:
+            recent_events = self.plc.get_recent_events(24)
+        except Exception:
+            recent_events = []
+
+        try:
+            roi_debug = self.inspector.get_debug_grid()
+        except Exception:
+            roi_debug = None
+
+        vis = self.service_panel.draw(
+            vis,
+            plc_snapshot=plc_snapshot,
+            recent_events=recent_events,
+            app_state=st,
+            roi_debug=roi_debug,
+            latest_log_path=st.test_error_log_path,
+            error_log_path=st.latest_error_log_path,
+            test_summary=self._get_service_test_summary(),
+        )
         return vis
     
     def _prepare_frame(self, frame):
@@ -2270,6 +2490,8 @@ class VisionApp:
         recovery_cfg = self._get_plc_recovery_cfg()
         frame_timeout_sec = recovery_cfg["frame_timeout_sec"]
         last_ok_frame_time = time.time()
+        last_camera_vis = None
+        last_gray_frame = None
 
         while True:
             self._poll_plc_comm_events()
@@ -2316,7 +2538,51 @@ class VisionApp:
                 ):
                     st.status = "WAITING FOR CAMERA FRAME"
 
-                cv2.waitKey(1)
+                if last_camera_vis is not None:
+                    no_frame_vis = last_camera_vis.copy()
+                else:
+                    no_frame_vis = np.zeros(
+                        (self.frame_height, self.frame_width, 3),
+                        dtype=np.uint8,
+                    )
+
+                warning_layer = no_frame_vis.copy()
+                cv2.rectangle(
+                    warning_layer,
+                    (0, 0),
+                    (self.frame_width, 72),
+                    (0, 0, 180),
+                    -1,
+                )
+                cv2.addWeighted(
+                    warning_layer,
+                    0.72,
+                    no_frame_vis,
+                    0.28,
+                    0,
+                    no_frame_vis,
+                )
+                cv2.putText(
+                    no_frame_vis,
+                    "CAMERA FRAME UNAVAILABLE - PLC RESET / SERVICE CHECK",
+                    (24, 47),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.85,
+                    (255, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+
+                no_frame_vis = self._draw_ui(no_frame_vis)
+                cv2.imshow(self.win, no_frame_vis)
+
+                try:
+                    key = cv2.waitKeyEx(1)
+                except Exception:
+                    key = cv2.waitKey(1)
+
+                # 카메라가 없어도 SERVICE 패널/종료 키는 계속 동작한다.
+                self._handle_key_input(key, None, no_frame_vis)
 
                 if st.quit_requested:
                     break
@@ -2337,6 +2603,9 @@ class VisionApp:
                 self.editor.update(vis)
             else:
                 self._render_run_frame(vis, frame_gray8)
+
+            last_gray_frame = frame_gray8.copy()
+            last_camera_vis = vis.copy()
 
             self._run_plc_inspect_tick(frame_gray8, vis)
             self._spot_timeout_tick()

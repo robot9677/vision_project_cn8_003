@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inject a controlled PLC/vision error into a running main_vp.py process.
+"""Fallback CLI for injecting a logical PLC/vision error into main_vp.py.
 
 The tool never opens the RS485 port. It writes one atomic JSON request that
 main_vp.py consumes from its normal loop. Use only while error_test.enabled=true.
@@ -24,8 +24,8 @@ DEFAULT_REQUEST_PATH = (
     PROJECT_ROOT / "data" / "runtime" / "plc_error_test_request.json"
 )
 ERROR_TYPES = {
-    "camera": "Code 11: camera error; D200=3 restarts camera",
-    "light": "Code 21: light error; D200=3 restarts light",
+    "camera": "Code 11: logical camera error; D200=3 clears state safely",
+    "light": "Code 21: logical light error; D200=3 clears state safely",
     "inspection": "Code 40: inspection error; D200=3 resets runtime",
     "plc_comm": (
         "Code 71: logical communication-error state; "

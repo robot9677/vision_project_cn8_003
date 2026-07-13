@@ -126,3 +126,58 @@ def save_plc_error_log(
     except Exception as log_error:
         print(f"[PLC ERROR LOG] save failed: {log_error}")
         return None
+
+def save_plc_test_log(
+    logs_root: str,
+    test_id: str,
+    test_type: str,
+    phase: str,
+    result: str,
+    error_code: int,
+    message: str,
+    plc_snapshot: Optional[Dict[str, Any]] = None,
+    vision_snapshot: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Save one PLC forced-error test lifecycle record."""
+    now = datetime.now()
+    log_dir = os.path.join(
+        logs_root,
+        "plc_tests",
+        now.strftime("%Y%m%d"),
+    )
+
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "test_id": str(test_id or ""),
+            "test_type": str(test_type or ""),
+            "phase": str(phase or ""),
+            "result": str(result or ""),
+            "error": {
+                "code": int(error_code),
+                "name": get_error_name(int(error_code)),
+                "message": str(message or ""),
+            },
+            "plc_state": _json_safe(plc_snapshot or {}),
+            "vision_state": _json_safe(vision_snapshot or {}),
+            "extra": _json_safe(extra or {}),
+        }
+
+        safe_type = str(test_type or "unknown").replace("/", "_")
+        filename = (
+            f"{now.strftime('%H%M%S_%f')[:-3]}_"
+            f"{safe_type}_{str(phase or 'event').lower()}.json"
+        )
+        final_path = os.path.join(log_dir, filename)
+        temp_path = final_path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
+        os.replace(temp_path, final_path)
+        print(f"[PLC TEST LOG] saved: {final_path}")
+        return final_path
+    except Exception as log_error:
+        print(f"[PLC TEST LOG] save failed: {log_error}")
+        return None

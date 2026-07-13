@@ -83,6 +83,17 @@ class DisabledPlcController:
             "last_inspect_elapsed_ms": 0,
             "serial_open": False,
             "comm_fault_active": False,
+            "slave_id": 0,
+            "port": "",
+            "rx_count": 0,
+            "tx_count": 0,
+            "last_rx_epoch": None,
+            "last_tx_epoch": None,
+            "last_rx_summary": "",
+            "last_tx_summary": "",
+            "last_rx_hex": "",
+            "last_tx_hex": "",
+            "heartbeat_last_change_epoch": None,
         }
 
     def is_connected(self) -> bool:
@@ -101,6 +112,9 @@ class DisabledPlcController:
         extra: Optional[Dict[str, Any]] = None,
     ):
         pass
+
+    def get_recent_events(self, limit: int = 20):
+        return []
 
 
 class ModbusRtuSlaveController:
@@ -240,6 +254,19 @@ class ModbusRtuSlaveController:
         self._trace_fp = None
         self._trace_seq = 0
         self._trace_failed = False
+
+        # 메인 비전 UI에서 직접 표시하는 인메모리 Live 상태.
+        # trace 파일 저장 여부와 무관하게 유지한다.
+        self._live_event_lock = threading.Lock()
+        self._live_events = []
+        self._rx_count = 0
+        self._tx_count = 0
+        self._last_rx_epoch = None
+        self._last_tx_epoch = None
+        self._last_rx_summary = ""
+        self._last_tx_summary = ""
+        self._last_rx_hex = ""
+        self._last_tx_hex = ""
 
     def _command_name(self, value: int) -> str:
         names = {
@@ -406,9 +433,6 @@ class ModbusRtuSlaveController:
         frame: Optional[bytes] = None,
         extra: Optional[Dict[str, Any]] = None,
     ):
-        if not self.trace_enabled or self._trace_failed:
-            return
-
         with self._lock:
             registers = {
                 "D200": int(self.regs[self.reg_command]),
@@ -443,6 +467,26 @@ class ModbusRtuSlaveController:
 
         if extra:
             record.update(extra)
+
+        direction_text = str(direction)
+        with self._live_event_lock:
+            self._live_events.append(dict(record))
+            if len(self._live_events) > 120:
+                del self._live_events[:-120]
+
+            if direction_text == "RX":
+                self._rx_count += 1
+                self._last_rx_epoch = record["epoch"]
+                self._last_rx_summary = str(summary)
+                self._last_rx_hex = str(record.get("hex", ""))
+            elif direction_text == "TX":
+                self._tx_count += 1
+                self._last_tx_epoch = record["epoch"]
+                self._last_tx_summary = str(summary)
+                self._last_tx_hex = str(record.get("hex", ""))
+
+        if not self.trace_enabled or self._trace_failed:
+            return
 
         try:
             line = json.dumps(
@@ -485,6 +529,11 @@ class ModbusRtuSlaveController:
             summary=str(summary),
             extra=extra,
         )
+
+    def get_recent_events(self, limit: int = 20):
+        limit = max(1, min(120, int(limit)))
+        with self._live_event_lock:
+            return [dict(item) for item in self._live_events[-limit:]]
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
@@ -861,6 +910,19 @@ class ModbusRtuSlaveController:
             "last_inspect_elapsed_ms": int(self.last_inspect_elapsed_ms),
             "serial_open": self.is_connected(),
             "comm_fault_active": bool(self._comm_fault_active),
+            "slave_id": int(self.slave_id),
+            "port": str(self.port),
+            "rx_count": int(self._rx_count),
+            "tx_count": int(self._tx_count),
+            "last_rx_epoch": self._last_rx_epoch,
+            "last_tx_epoch": self._last_tx_epoch,
+            "last_rx_summary": str(self._last_rx_summary),
+            "last_tx_summary": str(self._last_tx_summary),
+            "last_rx_hex": str(self._last_rx_hex),
+            "last_tx_hex": str(self._last_tx_hex),
+            "heartbeat_last_change_epoch": float(self._last_heartbeat_ts)
+            if self._last_heartbeat_ts > 0
+            else None,
         }
 
     def is_connected(self) -> bool:

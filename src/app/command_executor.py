@@ -11,6 +11,10 @@ def execute_command(app, cmd, frame_gray8, vis_bgr):
         app._toggle_mode()
         return
 
+    if cmd == app.UICmd.TOGGLE_SERVICE_PANEL:
+        app._toggle_service_panel()
+        return
+
     if cmd == app.UICmd.TOGGLE_AUTO_INSPECT:
         if st.edit_mode:
             st.status = "AUTO INSPECT only in RUN"
@@ -28,6 +32,9 @@ def _execute_edit_mode(app, cmd, frame_gray8):
     st = app.state
 
     if cmd == app.UICmd.SAVE:
+        if frame_gray8 is None:
+            st.status = "SAVE BLOCKED: NO CAMERA FRAME"
+            return
         app._save_roi_and_template(frame_gray8)
         return
 
@@ -71,6 +78,10 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
     st = app.state
 
     if cmd == app.UICmd.INSPECT:
+        if frame_gray8 is None:
+            st.status = "INSPECT BLOCKED: NO CAMERA FRAME"
+            return
+
         spot_cfg = app._get_spot_light_cfg() if hasattr(app, "_get_spot_light_cfg") else {}
         spot_enabled = bool(spot_cfg.get("enabled", False))
 
@@ -109,6 +120,9 @@ def _execute_run_mode(app, cmd, frame_gray8, vis_bgr):
         return
 
     if cmd == app.UICmd.AUTOTUNE:
+        if frame_gray8 is None:
+            st.status = "AUTOTUNE BLOCKED: NO CAMERA FRAME"
+            return
         try:
             app.inspector.autotune_recipe_from_frame(frame_gray8)
             st.status = "Autotune done"
