@@ -370,6 +370,9 @@ class ServicePanel:
         error_log_path: str = "",
         test_summary: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
+        if app_state is not None and bool(getattr(app_state, "edit_mode", False)):
+            self.close()
+            return img
         if self.auth_pending:
             self._draw_auth_modal(img)
             return img
@@ -484,7 +487,12 @@ class ServicePanel:
         if error_active:
             _put_text(img, f"ERROR ACTIVE  {error_code} {ERROR_NAMES.get(error_code, 'UNDEFINED')}", cx + 10, y + 24, 0.48, (0, 0, 255), 1)
             _put_text(img, _ellipsize(error_detail, 62), cx + 10, y + 48, 0.38, (220, 220, 220), 1)
-            _put_text(img, "PLC D200=3 RESET REQUIRED", cx + 10, y + 66, 0.38, (0, 200, 255), 1)
+            reset_text = (
+                "PLC RESET OR LOCAL RECOVER"
+                if bool(getattr(app_state, "test_error_active", False))
+                else "PLC D200=3 RESET REQUIRED"
+            )
+            _put_text(img, reset_text, cx + 10, y + 66, 0.38, (0, 200, 255), 1)
         else:
             _put_text(img, "NO ACTIVE ERROR", cx + 10, y + 29, 0.48, (0, 210, 0), 1)
         y += box_h + 12
@@ -493,35 +501,37 @@ class ServicePanel:
         command_value = _safe_int(plc_snapshot.get("command"))
         status_value = _safe_int(plc_snapshot.get("status"))
         active_error_code = _safe_int(plc_snapshot.get("error_code"))
-        test_active = bool(getattr(app_state, "test_error_active", False)) or error_active
+        service_test_active = bool(getattr(app_state, "test_error_active", False))
         edit_mode = bool(getattr(app_state, "edit_mode", False))
+        real_error_active = error_active and not service_test_active
 
         ready_common = (
             test_enabled
+            and not edit_mode
             and serial_open
             and not comm_fault
-            and not test_active
-            and command_value == 0
-            and status_value == 0
-            and active_error_code == 0
+            and not service_test_active
+            and not real_error_active
+            and status_value != 8
+            and command_value not in (8, 9)
         )
         logic_ready = ready_common
-        recovery_ready = ready_common and not edit_mode
+        recovery_ready = ready_common
 
         if not test_enabled:
             block_reason = "TEST DISABLED"
-        elif test_active:
-            block_reason = "WAIT PLC D200=3 RESET"
-        elif command_value != 0:
-            block_reason = f"BLOCKED: PLC D200 MUST RETURN TO 0 (CURRENT={command_value})"
-        elif status_value != 0 or active_error_code != 0:
-            block_reason = "BLOCKED: D201 MUST BE READY"
+        elif edit_mode:
+            block_reason = "TEST AVAILABLE IN RUN MODE ONLY"
+        elif service_test_active:
+            block_reason = "WAIT PLC RESET OR USE LOCAL RECOVER"
+        elif real_error_active:
+            block_reason = "BLOCKED: REAL ERROR IS ACTIVE"
+        elif status_value == 8 or command_value in (8, 9):
+            block_reason = "BLOCKED: SHUTDOWN / EMERGENCY"
         elif not serial_open or comm_fault:
             block_reason = "BLOCKED: PLC LINK NOT READY"
-        elif edit_mode:
-            block_reason = "RECOVERY TEST REQUIRES RUN MODE"
         else:
-            block_reason = "READY FOR TEST"
+            block_reason = f"READY FROM CURRENT STATE D200={command_value} D201={status_value}"
 
         labels = [
             ("INSPECT", "inspection"),
@@ -559,7 +569,22 @@ class ServicePanel:
                 "action": f"test:recovery:{error_type}",
                 "enabled": recovery_ready,
             })
-        y += btn_h + 22
+        y += btn_h + 16
+
+        local_rect = (cx, y, right, y + 32)
+        _draw_button(
+            img,
+            local_rect,
+            "LOCAL RECOVER (TEST ONLY)",
+            service_test_active,
+            (95, 80, 130),
+        )
+        self._buttons.append({
+            "rect": local_rect,
+            "action": "test:local_recover",
+            "enabled": service_test_active,
+        })
+        y += 44
 
         mode = str(test_summary.get("mode", "") or "-").upper()
         phase = str(test_summary.get("phase", "IDLE") or "IDLE")
@@ -569,29 +594,43 @@ class ServicePanel:
         actual_code = _safe_int(test_summary.get("actual_code"))
         health_detail = _ellipsize(test_summary.get("health_detail", ""), 58)
         log_ok = bool(test_summary.get("log_saved", False))
+        pre_command = _safe_int(test_summary.get("pre_command"))
+        pre_status = _safe_int(test_summary.get("pre_status"))
+        pre_result = _safe_int(test_summary.get("pre_result"))
+        reset_source = str(test_summary.get("reset_source", "") or "-")
+        recovery_ms = _safe_int(test_summary.get("recovery_elapsed_ms"))
 
         status_color = (
             (0, 210, 0)
             if test_result == "PASS"
             else ((0, 0, 255) if test_result == "FAIL" else (210, 210, 210))
         )
-        cv2.rectangle(img, (cx, y), (right, y + 72), (34, 34, 34), -1)
-        cv2.rectangle(img, (cx, y), (right, y + 72), status_color, 1)
+        cv2.rectangle(img, (cx, y), (right, y + 94), (34, 34, 34), -1)
+        cv2.rectangle(img, (cx, y), (right, y + 94), status_color, 1)
         _put_text(
             img,
             f"MODE {mode}   TEST {test_type}   PHASE {phase}   RESULT {test_result}",
             cx + 8,
-            y + 21,
+            y + 20,
             0.38,
             status_color,
             1,
         )
         _put_text(
             img,
+            f"PRE C/S/R={pre_command}/{pre_status}/{pre_result}   RESET={reset_source}   {recovery_ms}ms",
+            cx + 8,
+            y + 40,
+            0.34,
+            (200, 200, 200),
+            1,
+        )
+        _put_text(
+            img,
             f"EXPECTED E{expected_code:02d}   ACTUAL E{actual_code:02d}   LOG {'SAVED' if log_ok else '-'}",
             cx + 8,
-            y + 42,
-            0.36,
+            y + 61,
+            0.35,
             (210, 210, 210),
             1,
         )
@@ -599,12 +638,12 @@ class ServicePanel:
             img,
             health_detail or block_reason,
             cx + 8,
-            y + 63,
-            0.34,
+            y + 83,
+            0.33,
             (0, 210, 255) if ready_common else (150, 190, 255),
             1,
         )
-        y += 82
+        y += 104
 
         _put_text(img, block_reason, cx, y, 0.36, (160, 200, 255), 1)
         y += 18

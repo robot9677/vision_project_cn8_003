@@ -40,7 +40,20 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "max_bytes": 5242880,
         "keep_files": 2,
         "include_state_changes": True,
-        "include_heartbeat": True,
+        "include_heartbeat": False,
+    },
+
+    "diagnostics": {
+        "enabled": True,
+        "index_path": "diagnostics/diagnostics_index.jsonl",
+        "index_max_bytes": 2097152,
+        "index_keep_files": 2,
+        "keep_days": 14,
+        "error_keep_files": 60,
+        "test_keep_files": 120,
+        "normal_keep_files": 5,
+        "normal_sample_every": 20,
+        "prune_interval_sec": 30.0,
     },
 
     "recovery": {

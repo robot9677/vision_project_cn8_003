@@ -39,7 +39,7 @@
     "max_bytes": 5242880,
     "keep_files": 2,
     "include_state_changes": true,
-    "include_heartbeat": true
+    "include_heartbeat": false
   },
   "error_test": {
     "enabled": true,
@@ -67,5 +67,17 @@
     "lock_on_close": true,
     "show_roi_debug": true,
     "rx_tx_rows": 3
+  },
+  "diagnostics": {
+    "enabled": true,
+    "index_path": "diagnostics/diagnostics_index.jsonl",
+    "index_max_bytes": 2097152,
+    "index_keep_files": 2,
+    "keep_days": 14,
+    "error_keep_files": 60,
+    "test_keep_files": 120,
+    "normal_keep_files": 5,
+    "normal_sample_every": 20,
+    "prune_interval_sec": 30.0
   }
 }

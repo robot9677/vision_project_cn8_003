@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import time
 import json
@@ -21,7 +22,13 @@ from inspection.logger import save_snapshot, save_template_copy
 
 from plc.plc_config_loader import load_plc_config
 from plc.plc_controller import create_plc_controller
-from plc.plc_error_logger import save_plc_error_log, save_plc_test_log
+from plc.plc_error_logger import (
+    configure_diagnostics,
+    get_diagnostics_config,
+    save_normal_reference_log,
+    save_plc_error_log,
+    save_plc_test_log,
+)
 
 from light.light_controller import create_light_controller_from_hardware_config
 
@@ -109,6 +116,28 @@ def _extract_info_from_results(results):
 
 
 
+def _resolve_startup_mode(requested_mode: str = "auto") -> str:
+    """Resolve boot/manual startup without changing the inspection logic.
+
+    - Explicit --startup-mode or VISION_STARTUP_MODE always wins.
+    - Terminal launch defaults to EDIT.
+    - Desktop/system autostart (no TTY) defaults to RUN.
+    """
+    requested = str(requested_mode or "auto").strip().lower()
+    env_mode = str(os.environ.get("VISION_STARTUP_MODE", "") or "").strip().lower()
+
+    if requested in ("edit", "run"):
+        return requested
+    if env_mode in ("edit", "run"):
+        return env_mode
+
+    try:
+        interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except Exception:
+        interactive = False
+    return "edit" if interactive else "run"
+
+
 class LightCommunicationError(RuntimeError):
     pass
 class InspectionResultError(RuntimeError):
@@ -181,14 +210,29 @@ class AppState:
     test_error_recovered_at: str = ""
     latest_error_log_path: str = ""
 
+    # Test-only lifecycle context. Production PLC/camera/light logic is not
+    # modified by these fields.
+    test_error_pre_command: int = 0
+    test_error_pre_status: int = 0
+    test_error_pre_result: int = 0
+    test_error_pre_error_code: int = 0
+    test_error_reset_source: str = ""
+    test_error_started_monotonic: float = 0.0
+    test_error_recovery_elapsed_ms: int = 0
+
 
 class VisionApp:
-    def __init__(self):
+    def __init__(self, startup_mode: str = "edit"):
         ensure_dirs(DATA_DIR, ROI_DIR, LOGS_ROOT)
 
         self.runtime_cfg = load_runtime_config(RUNTIME_CONFIG_PATH)
         self.hardware_cfg = load_hardware_config(HARDWARE_CONFIG_PATH)
         self.plc_cfg = load_plc_config(PLC_CONFIG_PATH)
+        self.startup_mode = _resolve_startup_mode(startup_mode)
+        configure_diagnostics(
+            self.plc_cfg.get("diagnostics", {}) or {},
+            LOGS_ROOT,
+        )
 
         profile_name = str(self.runtime_cfg.get("profile_name", "") or "").strip()
         profile_path = PRODUCT_PROFILE_PATH
@@ -270,7 +314,19 @@ class VisionApp:
 
         self.state = AppState(last_buttons=[])
         self.state.auto_inspect = bool(self.runtime_cfg.get("enable_auto_inspect", True))
+        self.state.edit_mode = self.startup_mode != "run"
+        run_mode = str(self.runtime_cfg.get("run_mode", "held") or "held").lower()
+        if self.state.edit_mode:
+            self.state.status = "EDIT MODE"
+        else:
+            self.state.status = (
+                "RUN MODE / STATIC"
+                if run_mode == "static"
+                else "RUN MODE / HELD"
+            )
+            self.state.run_mode_text = "STATIC" if run_mode == "static" else "HELD"
         self.service_panel = ServicePanel(self.plc_cfg.get("service_panel", {}) or {})
+        print(f"[STARTUP] mode={self.startup_mode.upper()}")
 
         # load saved tracker template if exists
         self._load_alignment_template()
@@ -286,6 +342,7 @@ class VisionApp:
         self._inspect_frame_idx = 0
         self._plc_test_last_request_id = ""
         self._last_good_camera_frame_epoch = 0.0
+        self._normal_reference_counter = 0
 
     def _get_primary_anchor_roi_id(self):
         align_cfg = self.product_profile.get("align", {}) or {}
@@ -370,7 +427,7 @@ class VisionApp:
     def _mouse_router(self, event, x, y, flags, param):
         st = self.state
 
-        if self.service_panel.handle_mouse(event, x, y):
+        if (not st.edit_mode) and self.service_panel.handle_mouse(event, x, y):
             action = self.service_panel.pop_action()
             if action:
                 self._handle_service_action(action)
@@ -426,8 +483,9 @@ class VisionApp:
 
         if st.edit_mode:
             st.status = "EDIT MODE"
-            self.last_overall_ok = None
-            self.last_results = None
+            st.last_overall_ok = None
+            st.last_results = None
+            self.service_panel.close()
         else:
             run_mode = str(self.runtime_cfg.get("run_mode", "held")).lower()
             st.status = "RUN MODE / STATIC" if run_mode == "static" else "RUN MODE / HELD"
@@ -472,10 +530,29 @@ class VisionApp:
         st.status = f"AUTO INSPECT ON / {mode_text}" if st.auto_inspect else f"AUTO INSPECT OFF / {mode_text}"
 
     def _toggle_service_panel(self):
+        if self.state.edit_mode:
+            self.service_panel.close()
+            self.state.status = "SERVICE PANEL AVAILABLE IN RUN MODE"
+            return
         self.service_panel.request_toggle()
 
     def _handle_service_action(self, action: str):
         action = str(action or "").strip().lower()
+
+        if action == "test:local_recover":
+            if not self.state.test_error_active:
+                self.service_panel.set_message("NO ACTIVE TEST ERROR", 2.0)
+                return
+            ok = self._handle_plc_test_reset(
+                reset_heartbeat=False,
+                source="SERVICE_LOCAL",
+            )
+            self.service_panel.set_message(
+                "LOCAL RECOVERY PASS" if ok else "LOCAL RECOVERY FAILED",
+                3.0,
+            )
+            return
+
         if not action.startswith("test:"):
             return
 
@@ -499,9 +576,14 @@ class VisionApp:
         )
 
         if ok:
+            reset_hint = (
+                "D200 ALREADY 3 - USE LOCAL RECOVER OR RE-ISSUE RESET"
+                if self.state.test_error_pre_command == 3
+                else "WAIT PLC D200=3 OR LOCAL RECOVER"
+            )
             self.service_panel.set_message(
-                f"{test_mode.upper()} / {error_type.upper()} - WAIT PLC D200=3",
-                3.0,
+                f"{test_mode.upper()} / {error_type.upper()} - {reset_hint}",
+                4.0,
             )
         else:
             reason = str(self.state.test_error_block_reason or "TEST REJECTED")
@@ -524,6 +606,12 @@ class VisionApp:
             "request_id": str(st.test_error_request_id),
             "injected_at": str(st.test_error_injected_at),
             "recovered_at": str(st.test_error_recovered_at),
+            "pre_command": int(st.test_error_pre_command),
+            "pre_status": int(st.test_error_pre_status),
+            "pre_result": int(st.test_error_pre_result),
+            "pre_error_code": int(st.test_error_pre_error_code),
+            "reset_source": str(st.test_error_reset_source),
+            "recovery_elapsed_ms": int(st.test_error_recovery_elapsed_ms),
         }
 
     def _save_plc_test_event(
@@ -554,6 +642,62 @@ class VisionApp:
         if path:
             st.test_error_log_path = str(path)
             st.test_error_log_saved = True
+        return path
+
+    def _inspection_result_summary(self) -> Dict[str, Any]:
+        summary = {}
+        for roi_id, result in (self.state.last_results or {}).items():
+            if isinstance(result, dict):
+                ok = result.get("ok")
+                reason = result.get("reason")
+                metrics = result.get("metrics") or {}
+            else:
+                ok = getattr(result, "ok", None)
+                reason = getattr(result, "reason", None)
+                metrics = getattr(result, "metrics", None) or {}
+            summary[str(roi_id)] = {
+                "ok": ok,
+                "reason": reason,
+                "metrics": metrics,
+            }
+        return summary
+
+    def _save_normal_reference_if_due(
+        self,
+        overall_ok: bool,
+        elapsed_ms: int,
+    ) -> Optional[str]:
+        if not bool(overall_ok):
+            return None
+
+        diag_cfg = get_diagnostics_config()
+        if not bool(diag_cfg.get("enabled", True)):
+            return None
+
+        self._normal_reference_counter += 1
+        every = max(1, int(diag_cfg.get("normal_sample_every", 20)))
+        if self._normal_reference_counter != 1 and (
+            self._normal_reference_counter % every
+        ) != 0:
+            return None
+
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {"snapshot_failed": True, "error": str(e)}
+
+        path = save_normal_reference_log(
+            logs_root=LOGS_ROOT,
+            plc_snapshot=plc_snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+            inspection_summary={
+                "overall_ok": True,
+                "elapsed_ms": int(elapsed_ms),
+                "roi_results": self._inspection_result_summary(),
+            },
+        )
+        if path:
+            print(f"[NORMAL REFERENCE] saved: {path}")
         return path
 
     def _run_auto_inspect_tick(self, frame_gray8, vis_bgr):
@@ -938,6 +1082,18 @@ class VisionApp:
             "test_error_log_path": str(
                 self.state.test_error_log_path
             ),
+            "test_error_pre_state": {
+                "command": int(self.state.test_error_pre_command),
+                "status": int(self.state.test_error_pre_status),
+                "result": int(self.state.test_error_pre_result),
+                "error_code": int(self.state.test_error_pre_error_code),
+            },
+            "test_error_reset_source": str(
+                self.state.test_error_reset_source
+            ),
+            "test_error_recovery_elapsed_ms": int(
+                self.state.test_error_recovery_elapsed_ms
+            ),
         }
 
     def _save_plc_error_event(
@@ -1120,18 +1276,21 @@ class VisionApp:
         comm_fault = bool(snapshot.get("comm_fault_active", False))
 
         blocked = ""
-        if st.test_error_active:
+        if st.edit_mode:
+            blocked = "TEST BLOCKED: SERVICE TEST REQUIRES RUN MODE"
+        elif st.test_error_active:
             blocked = "TEST BLOCKED: ANOTHER TEST IS ACTIVE"
-        elif command != 0:
-            blocked = f"TEST BLOCKED: PLC D200 MUST RETURN TO 0 (CURRENT={command})"
-        elif status != 0 or active_error_code != 0:
-            blocked = f"TEST BLOCKED: D201 MUST BE READY (STATUS={status}, ERROR={active_error_code})"
+        elif status == 8 or command in (8, 9):
+            blocked = "TEST BLOCKED: SHUTDOWN/EMERGENCY IS ACTIVE"
+        elif status == 3 or active_error_code != 0:
+            blocked = (
+                f"TEST BLOCKED: REAL ERROR IS ACTIVE "
+                f"(STATUS={status}, ERROR={active_error_code})"
+            )
         elif not serial_open or comm_fault:
             blocked = "TEST BLOCKED: PLC LINK IS NOT HEALTHY"
         elif st.camera_error_latched or st.light_error_latched:
             blocked = "TEST BLOCKED: REAL VISION FAULT IS ACTIVE"
-        elif test_mode == "recovery" and st.edit_mode:
-            blocked = "TEST BLOCKED: SAFE RECOVERY TEST REQUIRES RUN MODE"
 
         if blocked:
             st.test_error_block_reason = blocked
@@ -1153,11 +1312,27 @@ class VisionApp:
         st.test_error_safe_logical = True
         st.test_error_phase = "WAITING_RESET"
         st.test_error_result = ""
-        st.test_error_health_detail = "FAULT DETECTED - WAIT PLC RESET"
         st.test_error_block_reason = ""
         st.test_error_log_path = ""
         st.test_error_log_saved = False
         st.test_error_recovered_at = ""
+        st.test_error_pre_command = command
+        st.test_error_pre_status = status
+        st.test_error_pre_result = int(snapshot.get("result", 0))
+        st.test_error_pre_error_code = active_error_code
+        st.test_error_reset_source = ""
+        st.test_error_started_monotonic = time.monotonic()
+        st.test_error_recovery_elapsed_ms = 0
+
+        if command == 3:
+            st.test_error_health_detail = (
+                "FAULT DETECTED - D200 ALREADY 3; "
+                "USE LOCAL RECOVER OR RE-ISSUE RESET AFTER COMMAND CHANGE"
+            )
+        else:
+            st.test_error_health_detail = (
+                "FAULT DETECTED - WAIT PLC D200=3 OR LOCAL RECOVER"
+            )
 
         # SAFE RECOVERY TEST sets only internal latches. It never disconnects
         # camera, light or PLC hardware from the service UI.
@@ -1190,6 +1365,12 @@ class VisionApp:
                 "safe_recovery": test_mode == "recovery",
                 "hardware_disconnected": False,
                 "error_log_path": str(saved_path or ""),
+                "pre_state": {
+                    "command": command,
+                    "status": status,
+                    "result": int(snapshot.get("result", 0)),
+                    "error_code": active_error_code,
+                },
             },
         )
 
@@ -1561,7 +1742,11 @@ class VisionApp:
         st.test_error_result = "PASS"
         st.test_error_health_detail = str(health_detail)
         st.test_error_recovered_at = time.strftime("%Y-%m-%d %H:%M:%S")
-        st.test_error_block_reason = "WAIT PLC D200 RETURN TO 0"
+        st.test_error_recovery_elapsed_ms = max(
+            0,
+            int((time.monotonic() - st.test_error_started_monotonic) * 1000.0),
+        ) if st.test_error_started_monotonic > 0 else 0
+        st.test_error_block_reason = "READY FOR NEXT TEST"
 
         self._save_plc_test_event(
             phase="RECOVERED",
@@ -1575,6 +1760,14 @@ class VisionApp:
                 "reset_heartbeat": bool(reset_heartbeat),
                 "health_detail": str(health_detail),
                 "hardware_disconnected": False,
+                "reset_source": str(st.test_error_reset_source),
+                "recovery_elapsed_ms": int(st.test_error_recovery_elapsed_ms),
+                "pre_state": {
+                    "command": int(st.test_error_pre_command),
+                    "status": int(st.test_error_pre_status),
+                    "result": int(st.test_error_pre_result),
+                    "error_code": int(st.test_error_pre_error_code),
+                },
             },
         )
         try:
@@ -1624,20 +1817,33 @@ class VisionApp:
         st.status = f"PLC TEST RECOVERY FAILED: {st.test_error_type.upper()}"
         return False
 
-    def _handle_plc_test_reset(self, reset_heartbeat: bool = False) -> bool:
+    def _handle_plc_test_reset(
+        self,
+        reset_heartbeat: bool = False,
+        source: str = "PLC_D200",
+    ) -> bool:
         st = self.state
         mode = str(st.test_error_mode or "logic").lower()
         error_type = str(st.test_error_type or "").lower()
         st.test_error_phase = "RECOVERING"
         st.test_error_result = ""
-        st.test_error_health_detail = "RESET RECEIVED - RECOVERY IN PROGRESS"
+        st.test_error_reset_source = str(source or "UNKNOWN")
+        st.test_error_health_detail = (
+            f"RESET RECEIVED ({st.test_error_reset_source}) - RECOVERY IN PROGRESS"
+        )
 
         self.plc.prepare_reset(reset_heartbeat=reset_heartbeat)
         self._save_plc_test_event(
             phase="RECOVERING",
             result="",
-            message=f"D200=3 received mode={mode} type={error_type}",
-            extra={"test_mode": mode},
+            message=(
+                f"reset received source={st.test_error_reset_source} "
+                f"mode={mode} type={error_type}"
+            ),
+            extra={
+                "test_mode": mode,
+                "reset_source": st.test_error_reset_source,
+            },
         )
 
         try:
@@ -1650,15 +1856,24 @@ class VisionApp:
                     raise RuntimeError(
                         "real hardware fault detected during PLC logic test"
                     )
+
+                # Test-only safe cleanup. This mirrors the non-hardware part of
+                # the normal reset path without changing production PLC logic.
+                if bool(st.spot_armed):
+                    self._spot_release(reason="plc_logic_test_reset")
+                self._clear_vision_runtime_state()
                 return self._complete_plc_test_recovery(
                     reset_heartbeat,
-                    "PLC LOGIC RESET OK: D201/D202 CLEARED",
+                    "PLC LOGIC RESET OK: STATUS/RESULT/RUNTIME CLEARED",
                 )
 
             if mode != "recovery":
                 raise RuntimeError(f"unsupported test mode: {mode}")
 
-            # Common runtime recovery path.
+            # Common test-only runtime recovery path. Hardware is never
+            # disconnected by the service panel.
+            if bool(st.spot_armed):
+                self._spot_release(reason="plc_recovery_test_reset")
             self._clear_vision_runtime_state()
 
             if error_type == "inspection":
@@ -1699,6 +1914,7 @@ class VisionApp:
         if st.test_error_active:
             return self._handle_plc_test_reset(
                 reset_heartbeat=reset_heartbeat,
+                source="PLC_D200",
             )
 
         try:
@@ -2122,6 +2338,10 @@ class VisionApp:
                 ok=bool(overall_ok),
                 elapsed_ms=elapsed_ms,
             )
+            self._save_normal_reference_if_due(
+                overall_ok=bool(overall_ok),
+                elapsed_ms=elapsed_ms,
+            )
 
             st.status = (
                 "PLC INSPECT DONE: OK"
@@ -2231,10 +2451,10 @@ class VisionApp:
     def _handle_key_input(self, key, frame_gray8, vis_bgr):
         st = self.state
 
-        if self.service_panel.handle_key(key):
+        if (not st.edit_mode) and self.service_panel.handle_key(key):
             return
 
-        if key in (ord('v'), ord('V')):
+        if (not st.edit_mode) and key in (ord('v'), ord('V')):
             self._toggle_service_panel()
             return
 
@@ -2427,7 +2647,10 @@ class VisionApp:
         st.last_buttons = render_control_bar(
             vis,
             st.edit_mode,
-            show_service=bool(self.service_panel.enabled),
+            show_service=(
+                bool(self.service_panel.enabled)
+                and not st.edit_mode
+            ),
         )
 
         if bool(self.runtime_cfg.get("enable_pose_guide", True)):
@@ -2460,16 +2683,19 @@ class VisionApp:
         except Exception:
             roi_debug = None
 
-        vis = self.service_panel.draw(
-            vis,
-            plc_snapshot=plc_snapshot,
-            recent_events=recent_events,
-            app_state=st,
-            roi_debug=roi_debug,
-            latest_log_path=st.test_error_log_path,
-            error_log_path=st.latest_error_log_path,
-            test_summary=self._get_service_test_summary(),
-        )
+        if not st.edit_mode:
+            vis = self.service_panel.draw(
+                vis,
+                plc_snapshot=plc_snapshot,
+                recent_events=recent_events,
+                app_state=st,
+                roi_debug=roi_debug,
+                latest_log_path=st.test_error_log_path,
+                error_log_path=st.latest_error_log_path,
+                test_summary=self._get_service_test_summary(),
+            )
+        else:
+            self.service_panel.close()
         return vis
     
     def _prepare_frame(self, frame):
@@ -2843,11 +3069,29 @@ class VisionApp:
             pass
 
 
-def main():
+def _parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Daol vision application",
+    )
+    parser.add_argument(
+        "--startup-mode",
+        choices=("auto", "edit", "run"),
+        default="auto",
+        help=(
+            "auto: terminal launch=EDIT, desktop/system autostart=RUN; "
+            "edit/run: explicit override"
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = _parse_args(argv)
+    resolved_startup_mode = _resolve_startup_mode(args.startup_mode)
     app = None
 
     try:
-        app = VisionApp()
+        app = VisionApp(startup_mode=resolved_startup_mode)
         app.run()
 
     except Exception as e:

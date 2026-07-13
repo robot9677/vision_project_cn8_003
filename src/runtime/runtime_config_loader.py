@@ -35,7 +35,7 @@ def load_runtime_config(path):
         "normalize_enabled": False,
         "normalize_target_mean": 120.0,
         "snapshot_cooldown": 5.0,
-        "snapshot_keep": 200,
+        "snapshot_keep": 10,
         "tracker_search_margin": 80,
         "tracker_thr": 0.70,
         "tracker_reacquire_margin": 220,
