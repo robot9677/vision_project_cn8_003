@@ -23,6 +23,12 @@ DEFAULT_TRACE_PATH = os.path.join(
     "logs",
     "plc_live.jsonl",
 )
+DEFAULT_ERROR_LOG_ROOT = os.path.join(
+    PROJECT_ROOT,
+    "data",
+    "logs",
+    "plc_errors",
+)
 
 CMD_NAMES = {
     0: "NONE",
@@ -45,6 +51,24 @@ RESULT_NAMES = {
     0: "NONE",
     1: "OK",
     2: "NG",
+}
+
+ERROR_NAMES = {
+    0: "NO_ERROR",
+    10: "CAMERA_INIT_FAILED",
+    11: "CAMERA_FRAME_TIMEOUT",
+    20: "LIGHT_START_FAILED",
+    21: "LIGHT_COMMUNICATION_FAILED",
+    30: "RECIPE_LOAD_FAILED",
+    31: "ROI_CONFIG_ERROR",
+    40: "INSPECTION_FAILED",
+    41: "INSPECTION_EXCEPTION",
+    50: "COMMAND_SEQUENCE_ERROR",
+    51: "EMERGENCY_STOP",
+    60: "VISION_RESET_FAILED",
+    70: "PLC_SERIAL_OPEN_FAILED",
+    71: "PLC_SERIAL_COMMUNICATION_LOST",
+    90: "SHUTDOWN_FAILED",
 }
 
 
@@ -149,6 +173,74 @@ class TraceFollower:
         return events
 
 
+def _error_name(value: Any) -> str:
+    try:
+        number = int(value)
+    except Exception:
+        return "UNKNOWN"
+    return ERROR_NAMES.get(number, f"UNDEFINED_ERROR({number})")
+
+
+def _latest_error_log(root: str) -> Optional[Dict[str, Any]]:
+    root = os.path.abspath(root)
+    if not os.path.isdir(root):
+        return None
+
+    latest_path = None
+    latest_mtime = -1.0
+
+    for dirpath, _, filenames in os.walk(root):
+        for filename in filenames:
+            if not filename.lower().endswith(".json"):
+                continue
+
+            path = os.path.join(dirpath, filename)
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                latest_path = path
+
+    if latest_path is None:
+        return None
+
+    result: Dict[str, Any] = {
+        "path": latest_path,
+        "mtime": latest_mtime,
+        "timestamp": "",
+        "event_type": "",
+        "error_code": 0,
+        "error_name": "",
+        "message": "",
+        "valid": False,
+    }
+
+    try:
+        with open(
+            latest_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+        error = data.get("error", {}) or {}
+        result.update({
+            "timestamp": str(data.get("timestamp", "")),
+            "event_type": str(data.get("event_type", "")),
+            "error_code": int(error.get("code", 0)),
+            "error_name": str(error.get("name", "")),
+            "message": str(error.get("message", "")),
+            "valid": True,
+        })
+    except Exception as e:
+        result["message"] = f"LOG_READ_FAILED:{e}"
+
+    return result
+
+
 def _clear_screen(enabled: bool):
     if enabled:
         sys.stdout.write("\033[2J\033[H")
@@ -171,6 +263,7 @@ def run_dashboard(
     history_size: int,
     stale_sec: float,
     clear_screen: bool,
+    error_log_root: str,
 ):
     history: Deque[Dict[str, Any]] = deque(maxlen=history_size)
     registers = {"D200": 0, "D201": 0, "D202": 0, "D203": 0}
@@ -183,6 +276,14 @@ def run_dashboard(
     last_heartbeat_value = None
     last_heartbeat_change_epoch = None
     parse_count = 0
+
+    error_code = 0
+    error_detail = ""
+    last_error_epoch = None
+    test_mode_enabled = False
+    test_error_type = ""
+    latest_error_log = None
+    last_error_log_scan_epoch = 0.0
 
     while True:
         events = follower.read_new()
@@ -199,6 +300,33 @@ def run_dashboard(
             serial_open = bool(event.get("serial_open", serial_open))
             comm_fault = bool(event.get("comm_fault_active", comm_fault))
 
+            if "error_code" in event:
+                try:
+                    error_code = int(event.get("error_code", error_code))
+                except Exception:
+                    pass
+
+            if "error_detail" in event:
+                error_detail = str(
+                    event.get("error_detail", error_detail) or ""
+                )
+
+            event_name = str(event.get("event", ""))
+            if event_name == "ERROR_SET":
+                last_error_epoch = event.get("epoch", last_error_epoch)
+            elif event_name == "ERROR_CLEARED":
+                error_code = 0
+                error_detail = ""
+            elif event_name == "ERROR_TEST_MODE_ENABLED":
+                test_mode_enabled = True
+            elif event_name == "TEST_ERROR_INJECTED":
+                test_error_type = str(
+                    event.get("test_error_type", "")
+                )
+                last_error_epoch = event.get("epoch", last_error_epoch)
+            elif event_name == "TEST_ERROR_RECOVERED":
+                test_error_type = ""
+
             direction = str(event.get("direction", ""))
             epoch = event.get("epoch")
             if direction == "RX":
@@ -207,7 +335,7 @@ def run_dashboard(
             elif direction == "TX":
                 last_tx_epoch = epoch
                 history.append(event)
-            elif direction == "SYSTEM":
+            elif direction in ("SYSTEM", "ERROR", "APP"):
                 history.append(event)
             elif direction == "STATE":
                 register = event.get("register")
@@ -232,6 +360,18 @@ def run_dashboard(
         plc_polling = (
             last_rx_epoch is not None
             and now - float(last_rx_epoch) <= stale_sec
+        )
+
+        if now - last_error_log_scan_epoch >= 1.0:
+            latest_error_log = _latest_error_log(
+                error_log_root
+            )
+            last_error_log_scan_epoch = now
+
+        error_active = (
+            int(registers["D201"]) == 3
+            or int(error_code) != 0
+            or comm_fault
         )
 
         _clear_screen(clear_screen)
@@ -271,7 +411,54 @@ def run_dashboard(
         )
         print(f" D203 HEART   : {int(registers['D203']):5d}")
         print("-" * 94)
-        print(" Recent PLC RX / Vision TX / state events")
+
+        if error_active:
+            print(" !!! PLC / VISION ERROR ACTIVE !!!")
+            print(
+                f" Error code    : {int(error_code):5d}  "
+                f"{_error_name(error_code)}"
+            )
+            print(
+                f" Error detail  : "
+                f"{error_detail or 'NO DETAIL'}"
+            )
+            print(
+                f" Error age     : "
+                f"{_age_text(last_error_epoch, now)}"
+            )
+        else:
+            print(" Error state   : CLEAR")
+
+        print(
+            f" Test mode     : "
+            f"{'ENABLED' if test_mode_enabled else 'not detected'}"
+            f"    active type: {test_error_type or 'NONE'}"
+        )
+
+        if latest_error_log:
+            log_state = (
+                "VALID"
+                if latest_error_log.get("valid")
+                else "INVALID"
+            )
+            print(
+                f" Latest log    : {log_state}  "
+                f"{latest_error_log.get('path', '')}"
+            )
+            print(
+                f"   log error   : "
+                f"{latest_error_log.get('error_code', 0)} "
+                f"{latest_error_log.get('error_name', '')}  "
+                f"event={latest_error_log.get('event_type', '')}"
+            )
+        else:
+            print(
+                f" Latest log    : NONE under "
+                f"{os.path.abspath(error_log_root)}"
+            )
+
+        print("-" * 94)
+        print(" Recent PLC RX / Vision TX / error / state events")
         print("-" * 94)
 
         if history:
@@ -317,6 +504,14 @@ def main():
         help="RX/heartbeat stale threshold seconds (default: 2.0)",
     )
     parser.add_argument(
+        "--error-log-root",
+        default=DEFAULT_ERROR_LOG_ROOT,
+        help=(
+            "PLC error JSON root "
+            f"(default: {DEFAULT_ERROR_LOG_ROOT})"
+        ),
+    )
+    parser.add_argument(
         "--stream",
         action="store_true",
         help="print every event instead of the dashboard",
@@ -340,6 +535,7 @@ def main():
                 history_size=max(1, args.history),
                 stale_sec=max(0.5, args.stale_sec),
                 clear_screen=not args.no_clear and sys.stdout.isatty(),
+                error_log_root=args.error_log_root,
             )
     except KeyboardInterrupt:
         print("\n[PLC LIVE MONITOR] stopped. Vision continues running.")

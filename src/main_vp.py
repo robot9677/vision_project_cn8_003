@@ -160,6 +160,12 @@ class AppState:
 
     camera_error_grace_until: float = 0.0
 
+    # PLC forced-error test state
+    test_error_active: bool = False
+    test_error_type: str = ""
+    test_error_code: int = 0
+    test_error_injected_at: str = ""
+
 
 class VisionApp:
     def __init__(self):
@@ -262,6 +268,7 @@ class VisionApp:
         self.baseline = AutoBaseline(self.baseline_path)
         self.baseline_debug = False
         self._inspect_frame_idx = 0
+        self._plc_test_last_request_id = ""
 
     def _get_primary_anchor_roi_id(self):
         align_cfg = self.product_profile.get("align", {}) or {}
@@ -783,6 +790,19 @@ class VisionApp:
             "spot_armed_brightness": int(
                 self.state.spot_armed_brightness
             ),
+
+            "test_error_active": bool(
+                self.state.test_error_active
+            ),
+            "test_error_type": str(
+                self.state.test_error_type
+            ),
+            "test_error_code": int(
+                self.state.test_error_code
+            ),
+            "test_error_injected_at": str(
+                self.state.test_error_injected_at
+            ),
         }
 
     def _save_plc_error_event(
@@ -800,7 +820,7 @@ class VisionApp:
                 "error": str(e),
             }
 
-        save_plc_error_log(
+        saved_path = save_plc_error_log(
             logs_root=LOGS_ROOT,
             event_type=event_type,
             error_code=error_code,
@@ -809,6 +829,26 @@ class VisionApp:
             vision_snapshot=self._get_vision_state_snapshot(),
             exception=exception,
         )
+
+        if saved_path:
+            try:
+                self.plc.trace_application_event(
+                    event="ERROR_LOG_SAVED",
+                    summary=(
+                        f"code={int(error_code)} "
+                        f"event_type={event_type} "
+                        f"path={saved_path}"
+                    ),
+                    extra={
+                        "error_code": int(error_code),
+                        "error_event_type": str(event_type),
+                        "error_log_path": str(saved_path),
+                    },
+                )
+            except Exception:
+                pass
+
+        return saved_path
 
     def _poll_plc_comm_events(self):
         while True:
@@ -848,6 +888,243 @@ class VisionApp:
             self.state.status = (
                 f"PLC COMM ERROR {error_code}: RESET REQUIRED"
             )
+
+    def _get_plc_error_test_cfg(self) -> Dict[str, Any]:
+        cfg = self.plc_cfg.get("error_test", {}) or {}
+
+        request_path = str(
+            cfg.get(
+                "request_path",
+                "data/runtime/plc_error_test_request.json",
+            )
+        ).strip()
+
+        if not os.path.isabs(request_path):
+            request_path = os.path.join(
+                PROJECT_ROOT,
+                request_path,
+            )
+
+        allowed_types = {
+            str(item).strip().lower()
+            for item in (
+                cfg.get(
+                    "allowed_types",
+                    [
+                        "camera",
+                        "light",
+                        "inspection",
+                        "plc_comm",
+                    ],
+                )
+                or []
+            )
+            if str(item).strip()
+        }
+
+        return {
+            "enabled": bool(cfg.get("enabled", False)),
+            "request_path": os.path.abspath(request_path),
+            "delete_after_read": bool(
+                cfg.get("delete_after_read", True)
+            ),
+            "allowed_types": allowed_types,
+        }
+
+    def _inject_plc_test_error(
+        self,
+        error_type: str,
+        request_id: str,
+        custom_message: str = "",
+    ) -> bool:
+        st = self.state
+        error_type = str(error_type or "").strip().lower()
+
+        definitions = {
+            "camera": {
+                "code": 11,
+                "event_type": "PLC_TEST_CAMERA_ERROR",
+                "message": (
+                    "Forced camera error for PLC recovery test"
+                ),
+            },
+            "light": {
+                "code": 21,
+                "event_type": "PLC_TEST_LIGHT_ERROR",
+                "message": (
+                    "Forced light error for PLC recovery test"
+                ),
+            },
+            "inspection": {
+                "code": 40,
+                "event_type": "PLC_TEST_INSPECTION_ERROR",
+                "message": (
+                    "Forced inspection error for PLC recovery test"
+                ),
+            },
+            "plc_comm": {
+                "code": 71,
+                "event_type": "PLC_TEST_COMM_ERROR",
+                "message": (
+                    "Forced PLC communication error state for "
+                    "PLC recovery test; serial remains connected"
+                ),
+            },
+        }
+
+        definition = definitions.get(error_type)
+        if definition is None:
+            print(
+                f"[PLC TEST] unsupported error type: "
+                f"{error_type}"
+            )
+            return False
+
+        try:
+            current_status = int(
+                self.plc.get_state_snapshot().get("status", 0)
+            )
+        except Exception:
+            current_status = 0
+
+        if st.test_error_active or current_status == 3:
+            print(
+                "[PLC TEST] error injection rejected: "
+                "an error is already active; send D200=3 first"
+            )
+            return False
+
+        error_code = int(definition["code"])
+        message = str(custom_message or definition["message"])
+        injected_at = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        if error_type == "camera":
+            st.camera_error_latched = True
+        elif error_type == "light":
+            st.light_error_latched = True
+
+        st.test_error_active = True
+        st.test_error_type = error_type
+        st.test_error_code = error_code
+        st.test_error_injected_at = injected_at
+
+        detail = (
+            f"[TEST:{error_type}] {message} "
+            f"request_id={request_id}"
+        )
+
+        # D201=3과 내부 error code를 먼저 반영한 뒤,
+        # 동일 상태가 오류 JSON snapshot에도 저장되도록 한다.
+        self.plc.set_error(
+            code=error_code,
+            detail=detail,
+        )
+
+        saved_path = self._save_plc_error_event(
+            event_type=str(definition["event_type"]),
+            error_code=error_code,
+            message=detail,
+            exception=RuntimeError(detail),
+        )
+
+        try:
+            self.plc.trace_application_event(
+                event="TEST_ERROR_INJECTED",
+                summary=(
+                    f"type={error_type} code={error_code} "
+                    f"request_id={request_id}"
+                ),
+                extra={
+                    "test_error_type": error_type,
+                    "test_error_code": error_code,
+                    "test_request_id": request_id,
+                    "error_log_path": str(saved_path or ""),
+                },
+            )
+        except Exception:
+            pass
+
+        st.status = (
+            f"TEST ERROR {error_code} "
+            f"{error_type.upper()}: D200=3 RESET REQUIRED"
+        )
+
+        print(
+            f"[PLC TEST] injected type={error_type} "
+            f"code={error_code} log={saved_path}"
+        )
+        return True
+
+    def _poll_plc_error_test_request(self):
+        cfg = self._get_plc_error_test_cfg()
+        if not cfg["enabled"]:
+            return
+
+        request_path = cfg["request_path"]
+        if not os.path.exists(request_path):
+            return
+
+        request = None
+        read_error = None
+
+        try:
+            with open(
+                request_path,
+                "r",
+                encoding="utf-8-sig",
+            ) as file:
+                request = json.load(file)
+        except Exception as e:
+            read_error = e
+        finally:
+            if cfg["delete_after_read"]:
+                try:
+                    os.remove(request_path)
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    print(
+                        f"[PLC TEST] request cleanup failed: {e}"
+                    )
+
+        if read_error is not None:
+            print(
+                f"[PLC TEST] invalid request file: {read_error}"
+            )
+            return
+
+        if not isinstance(request, dict):
+            print("[PLC TEST] request must be a JSON object")
+            return
+
+        request_id = str(
+            request.get(
+                "request_id",
+                f"req-{time.time_ns()}",
+            )
+        )
+        if request_id == self._plc_test_last_request_id:
+            return
+
+        self._plc_test_last_request_id = request_id
+
+        error_type = str(
+            request.get("type", "")
+        ).strip().lower()
+
+        if error_type not in cfg["allowed_types"]:
+            print(
+                f"[PLC TEST] type not allowed: {error_type}"
+            )
+            return
+
+        self._inject_plc_test_error(
+            error_type=error_type,
+            request_id=request_id,
+            custom_message=str(
+                request.get("message", "") or ""
+            ),
+        )
 
     def _clear_spot_runtime_state(self):
         st = self.state
@@ -1168,12 +1445,37 @@ class VisionApp:
                 st.status = "PLC RESET ERROR: LIGHT"
                 return False
 
+        recovered_test_type = str(st.test_error_type)
+        recovered_test_code = int(st.test_error_code)
+
         st.camera_error_latched = False
         st.light_error_latched = False
+        st.test_error_active = False
+        st.test_error_type = ""
+        st.test_error_code = 0
+        st.test_error_injected_at = ""
 
         self.plc.reset_to_ready(
             reset_heartbeat=reset_heartbeat
         )
+
+        if recovered_test_type:
+            try:
+                self.plc.trace_application_event(
+                    event="TEST_ERROR_RECOVERED",
+                    summary=(
+                        f"type={recovered_test_type} "
+                        f"code={recovered_test_code} "
+                        f"reset_heartbeat={bool(reset_heartbeat)}"
+                    ),
+                    extra={
+                        "test_error_type": recovered_test_type,
+                        "test_error_code": recovered_test_code,
+                        "recovery_ok": True,
+                    },
+                )
+            except Exception:
+                pass
 
         st.status = "PLC RESET: READY"
         return True
@@ -1944,12 +2246,34 @@ class VisionApp:
             self.plc.reset_to_ready(reset_heartbeat=False)
             st.status = "PLC READY" if plc_required else "READY"
 
+        test_cfg = self._get_plc_error_test_cfg()
+        if test_cfg["enabled"]:
+            print(
+                "[PLC TEST] forced-error test mode enabled "
+                f"request_path={test_cfg['request_path']}"
+            )
+            try:
+                self.plc.trace_application_event(
+                    event="ERROR_TEST_MODE_ENABLED",
+                    summary=(
+                        "forced-error test mode enabled "
+                        f"request_path={test_cfg['request_path']}"
+                    ),
+                    extra={
+                        "test_mode_enabled": True,
+                        "test_request_path": test_cfg["request_path"],
+                    },
+                )
+            except Exception:
+                pass
+
         recovery_cfg = self._get_plc_recovery_cfg()
         frame_timeout_sec = recovery_cfg["frame_timeout_sec"]
         last_ok_frame_time = time.time()
 
         while True:
             self._poll_plc_comm_events()
+            self._poll_plc_error_test_request()
 
             frame = self._read_frame()
 
@@ -2021,6 +2345,7 @@ class VisionApp:
                 not st.edit_mode
                 and not st.camera_error_latched
                 and not st.light_error_latched
+                and not st.test_error_active
             ):
                 self._run_auto_inspect_tick(frame_gray8, vis)
         

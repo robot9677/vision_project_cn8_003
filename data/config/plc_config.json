@@ -40,5 +40,16 @@
     "keep_files": 2,
     "include_state_changes": true,
     "include_heartbeat": true
+  },
+  "error_test": {
+    "enabled": true,
+    "request_path": "data/runtime/plc_error_test_request.json",
+    "delete_after_read": true,
+    "allowed_types": [
+      "camera",
+      "light",
+      "inspection",
+      "plc_comm"
+    ]
   }
 }

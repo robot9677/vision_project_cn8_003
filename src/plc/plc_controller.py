@@ -94,6 +94,14 @@ class DisabledPlcController:
     def prepare_reset(self, reset_heartbeat: bool = False):
         pass
 
+    def trace_application_event(
+        self,
+        event: str,
+        summary: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ):
+        pass
+
 
 class ModbusRtuSlaveController:
     CMD_NONE = 0
@@ -427,6 +435,10 @@ class ModbusRtuSlaveController:
             "registers": registers,
             "serial_open": self.is_connected(),
             "comm_fault_active": bool(self._comm_fault_active),
+            "error_code": int(self.last_error_code),
+            "error_detail": str(self.last_error_detail),
+            "last_inspect_at": str(self.last_inspect_at),
+            "last_inspect_elapsed_ms": int(self.last_inspect_elapsed_ms),
         }
 
         if extra:
@@ -460,6 +472,19 @@ class ModbusRtuSlaveController:
         except Exception as e:
             self._trace_failed = True
             print(f"[PLC TRACE] write failed: {e}")
+
+    def trace_application_event(
+        self,
+        event: str,
+        summary: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ):
+        self._trace_event(
+            direction="APP",
+            event=str(event),
+            summary=str(summary),
+            extra=extra,
+        )
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
@@ -737,6 +762,14 @@ class ModbusRtuSlaveController:
         )
 
     def reset_to_ready(self, reset_heartbeat: bool = False):
+        previous_error_code = int(self.last_error_code)
+        previous_error_detail = str(self.last_error_detail)
+
+        self.last_error_code = 0
+        self.last_error_detail = ""
+        self.last_inspect_at = ""
+        self.last_inspect_elapsed_ms = 0
+
         self._set_reg(self.reg_status, self.STATUS_READY)
         self._set_reg(self.reg_result, self.RESULT_NONE)
 
@@ -744,11 +777,19 @@ class ModbusRtuSlaveController:
             self._set_reg(self.reg_heartbeat, 0)
             self._last_heartbeat_ts = time.time()
 
-        self.last_error_code = 0
-        self.last_error_detail = ""
-
-        self.last_inspect_at = ""
-        self.last_inspect_elapsed_ms = 0
+        if previous_error_code != 0 or previous_error_detail:
+            self._trace_event(
+                direction="ERROR",
+                event="ERROR_CLEARED",
+                summary=(
+                    f"error cleared code={previous_error_code} "
+                    f"detail={previous_error_detail}"
+                ),
+                extra={
+                    "cleared_error_code": previous_error_code,
+                    "cleared_error_detail": previous_error_detail,
+                },
+            )
 
         print(
             f"[PLC] reset to ready "
@@ -779,10 +820,23 @@ class ModbusRtuSlaveController:
 
     def set_error(self, code: int = 99, detail: str = ""):
         # D202의 기존 OK/NG 값은 유지하고 D201만 Error로 변경
-        self._set_reg(self.reg_status, self.STATUS_ERROR)
-
         self.last_error_code = int(code)
         self.last_error_detail = str(detail or "")
+
+        self._set_reg(self.reg_status, self.STATUS_ERROR)
+
+        self._trace_event(
+            direction="ERROR",
+            event="ERROR_SET",
+            summary=(
+                f"code={self.last_error_code} "
+                f"detail={self.last_error_detail}"
+            ),
+            extra={
+                "error_code": int(self.last_error_code),
+                "error_detail": str(self.last_error_detail),
+            },
+        )
 
         print(
             f"[PLC] error status "

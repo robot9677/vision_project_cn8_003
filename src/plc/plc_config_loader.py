@@ -50,6 +50,18 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "frame_timeout_sec": 1.0,
     },
 
+    "error_test": {
+        "enabled": False,
+        "request_path": "data/runtime/plc_error_test_request.json",
+        "delete_after_read": True,
+        "allowed_types": [
+            "camera",
+            "light",
+            "inspection",
+            "plc_comm",
+        ],
+    },
+
     "shutdown": {
         "command": "sudo /sbin/shutdown -h now",
         "ready_hold_sec": 2.0,
