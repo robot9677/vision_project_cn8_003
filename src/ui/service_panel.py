@@ -53,6 +53,48 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(default)
 
 
+def _normalize_cv_key(key: Any) -> int:
+    """Normalize cv2.waitKeyEx() values across GTK/Qt/NoMachine.
+
+    Some Linux/remote-desktop combinations return printable keys as
+    0x100000 + ASCII.  Comparing that raw value directly makes every
+    password key, Enter and Escape appear unresponsive.
+    """
+    try:
+        raw = int(key)
+    except Exception:
+        return -1
+
+    if raw < 0:
+        return raw
+
+    # X11/GTK keysyms commonly returned by waitKeyEx().
+    aliases = {
+        65307: 27,   # Escape
+        65293: 13,   # Return
+        65421: 13,   # Keypad Enter
+        65288: 8,    # BackSpace
+        65535: 127,  # Delete
+    }
+
+    if raw in aliases:
+        return aliases[raw]
+
+    low16 = raw & 0xFFFF
+    if low16 in aliases:
+        return aliases[low16]
+
+    # OpenCV waitKeyEx() may preserve an implementation-specific high word.
+    # Only strip it when a high word is actually present so X11 arrow keys
+    # such as 65361 are not misread as printable ASCII.
+    if raw >= 0x10000:
+        low8 = raw & 0xFF
+        if low8 in (8, 10, 13, 27, 127) or 32 <= low8 <= 126:
+            return low8
+
+    return raw
+
+
 def _age_text(epoch: Any) -> str:
     try:
         age = max(0.0, time.time() - float(epoch))
@@ -133,6 +175,7 @@ class ServicePanel:
         self.auth_error = ""
         self.auth_error_until = 0.0
         self._buttons: List[Dict[str, Any]] = []
+        self._auth_buttons: List[Dict[str, Any]] = []
         self._action: Optional[str] = None
         self._message = ""
         self._message_until = 0.0
@@ -149,18 +192,21 @@ class ServicePanel:
             self.visible = False
             self.auth_pending = False
             self.password_buffer = ""
+            self._auth_buttons = []
             if self.lock_on_close:
                 self._buttons = []
             return
         self.auth_pending = True
         self.password_buffer = ""
         self.auth_error = ""
+        self._auth_buttons = []
 
     def close(self):
         self.visible = False
         self.auth_pending = False
         self.password_buffer = ""
         self._buttons = []
+        self._auth_buttons = []
 
     def set_message(self, text: str, seconds: float = 2.5):
         self._message = str(text or "")
@@ -177,38 +223,66 @@ class ServicePanel:
         digest = hashlib.sha256(password.encode("utf-8")).hexdigest().lower()
         return digest == self.password_sha256
 
+    def _cancel_auth(self):
+        self.auth_pending = False
+        self.password_buffer = ""
+        self.auth_error = ""
+        self._auth_buttons = []
+
+    def _submit_password(self):
+        if self._password_matches(self.password_buffer):
+            self.visible = True
+            self.auth_pending = False
+            self.password_buffer = ""
+            self.auth_error = ""
+            self._auth_buttons = []
+            self.set_message("SERVICE MODE UNLOCKED", 1.5)
+            return
+
+        self.auth_error = "PASSWORD ERROR"
+        self.auth_error_until = time.time() + 2.0
+        self.password_buffer = ""
+
     def handle_key(self, key: int) -> bool:
         if not self.auth_pending:
             return False
 
+        key = _normalize_cv_key(key)
+
         if key in (-1, 255):
             return True
-        if key in (27,):
-            self.auth_pending = False
-            self.password_buffer = ""
+        if key == 27:
+            self._cancel_auth()
             return True
         if key in (10, 13):
-            if self._password_matches(self.password_buffer):
-                self.visible = True
-                self.auth_pending = False
-                self.password_buffer = ""
-                self.auth_error = ""
-                self.set_message("SERVICE MODE UNLOCKED", 1.5)
-            else:
-                self.auth_error = "PASSWORD ERROR"
-                self.auth_error_until = time.time() + 2.0
-                self.password_buffer = ""
+            self._submit_password()
             return True
-        if key in (8, 127, 65288):
+        if key in (8, 127):
             self.password_buffer = self.password_buffer[:-1]
             return True
 
-        if 32 <= key <= 126 and len(self.password_buffer) < 24:
+        if 32 <= key <= 126 and len(self.password_buffer) < 32:
             self.password_buffer += chr(key)
         return True
 
     def handle_mouse(self, event: int, x: int, y: int) -> bool:
         if self.auth_pending:
+            if event != cv2.EVENT_LBUTTONDOWN:
+                return True
+
+            for button in self._auth_buttons:
+                x1, y1, x2, y2 = button.get("rect", (0, 0, 0, 0))
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    action = str(button.get("action", ""))
+                    if action == "auth_open":
+                        self._submit_password()
+                    elif action == "auth_cancel":
+                        self._cancel_auth()
+                    elif action == "auth_backspace":
+                        self.password_buffer = self.password_buffer[:-1]
+                    elif action == "auth_clear":
+                        self.password_buffer = ""
+                    return True
             return True
         if not self.visible:
             return False
@@ -240,8 +314,8 @@ class ServicePanel:
         cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.62, img, 0.38, 0, img)
 
-        box_w = min(640, max(420, int(w * 0.38)))
-        box_h = 230
+        box_w = min(700, max(460, int(w * 0.42)))
+        box_h = 300
         x1 = (w - box_w) // 2
         y1 = (h - box_h) // 2
         x2 = x1 + box_w
@@ -249,14 +323,41 @@ class ServicePanel:
         cv2.rectangle(img, (x1, y1), (x2, y2), (24, 24, 24), -1)
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 190, 255), 2)
         _put_text(img, "SERVICE / PLC DIAGNOSTIC", x1 + 24, y1 + 42, 0.68, (0, 220, 255), 2)
-        _put_text(img, "Password", x1 + 24, y1 + 92, 0.50, (210, 210, 210), 1)
-        cv2.rectangle(img, (x1 + 24, y1 + 108), (x2 - 24, y1 + 154), (52, 52, 52), -1)
-        cv2.rectangle(img, (x1 + 24, y1 + 108), (x2 - 24, y1 + 154), (160, 160, 160), 1)
+        _put_text(img, "Password (English keyboard)", x1 + 24, y1 + 88, 0.48, (210, 210, 210), 1)
+        cv2.rectangle(img, (x1 + 24, y1 + 104), (x2 - 24, y1 + 152), (52, 52, 52), -1)
+        cv2.rectangle(img, (x1 + 24, y1 + 104), (x2 - 24, y1 + 152), (160, 160, 160), 1)
         masked = "*" * len(self.password_buffer)
-        _put_text(img, masked, x1 + 38, y1 + 140, 0.72, (255, 255, 255), 2)
-        _put_text(img, "ENTER: open   ESC: cancel", x1 + 24, y2 - 24, 0.43, (180, 180, 180), 1)
+        _put_text(img, masked, x1 + 38, y1 + 137, 0.72, (255, 255, 255), 2)
+
+        button_y1 = y1 + 178
+        button_y2 = button_y1 + 42
+        gap = 10
+        button_w = max(96, (box_w - 48 - gap * 3) // 4)
+        labels = [
+            ("BACK", "auth_backspace", (80, 80, 80)),
+            ("CLEAR", "auth_clear", (80, 80, 80)),
+            ("CANCEL", "auth_cancel", (70, 70, 110)),
+            ("OPEN", "auth_open", (0, 120, 0)),
+        ]
+        self._auth_buttons = []
+        bx = x1 + 24
+        for label, action, accent in labels:
+            rect = (bx, button_y1, bx + button_w, button_y2)
+            _draw_button(img, rect, label, True, accent)
+            self._auth_buttons.append({"rect": rect, "action": action})
+            bx += button_w + gap
+
+        _put_text(
+            img,
+            "Type password, then ENTER or click OPEN   |   ESC: cancel",
+            x1 + 24,
+            y2 - 30,
+            0.41,
+            (180, 180, 180),
+            1,
+        )
         if self.auth_error and time.time() <= self.auth_error_until:
-            _put_text(img, self.auth_error, x2 - 190, y1 + 92, 0.46, (0, 0, 255), 2)
+            _put_text(img, self.auth_error, x2 - 196, y1 + 88, 0.46, (0, 0, 255), 2)
 
     def draw(
         self,
