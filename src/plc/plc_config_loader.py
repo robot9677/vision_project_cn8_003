@@ -60,18 +60,22 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
             "inspection",
             "plc_comm",
         ],
+        "allowed_modes": ["logic", "recovery"],
+        "camera_health_frames": 3,
+        "camera_health_timeout_sec": 1.5,
+        "allow_hardware_fault_tests": False,
     },
 
 
 
     "service_panel": {
         "enabled": False,
-        "panel_width": 560,
+        "panel_width": 600,
         "opacity": 0.96,
         "password_sha256": "2e29ae4c214d913412f389feea5bcacf1fca48c8a4669dbd5c7d8c2a989d728f",
         "lock_on_close": True,
         "show_roi_debug": True,
-        "rx_tx_rows": 4,
+        "rx_tx_rows": 3,
     },
 
     "shutdown": {

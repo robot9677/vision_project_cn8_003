@@ -490,53 +490,155 @@ class ServicePanel:
         y += box_h + 12
 
         test_enabled = bool(test_summary.get("enabled", False))
-        test_title = (
-            "FORCED ERROR TEST (LOGICAL / SAFE)"
-            if test_enabled
-            else "FORCED ERROR TEST DISABLED"
+        command_value = _safe_int(plc_snapshot.get("command"))
+        status_value = _safe_int(plc_snapshot.get("status"))
+        active_error_code = _safe_int(plc_snapshot.get("error_code"))
+        test_active = bool(getattr(app_state, "test_error_active", False)) or error_active
+        edit_mode = bool(getattr(app_state, "edit_mode", False))
+
+        ready_common = (
+            test_enabled
+            and serial_open
+            and not comm_fault
+            and not test_active
+            and command_value == 0
+            and status_value == 0
+            and active_error_code == 0
+        )
+        logic_ready = ready_common
+        recovery_ready = ready_common and not edit_mode
+
+        if not test_enabled:
+            block_reason = "TEST DISABLED"
+        elif test_active:
+            block_reason = "WAIT PLC D200=3 RESET"
+        elif command_value != 0:
+            block_reason = f"BLOCKED: PLC D200 MUST RETURN TO 0 (CURRENT={command_value})"
+        elif status_value != 0 or active_error_code != 0:
+            block_reason = "BLOCKED: D201 MUST BE READY"
+        elif not serial_open or comm_fault:
+            block_reason = "BLOCKED: PLC LINK NOT READY"
+        elif edit_mode:
+            block_reason = "RECOVERY TEST REQUIRES RUN MODE"
+        else:
+            block_reason = "READY FOR TEST"
+
+        labels = [
+            ("INSPECT", "inspection"),
+            ("LIGHT", "light"),
+            ("CAMERA", "camera"),
+            ("PLC COMM", "plc_comm"),
+        ]
+        btn_gap = 6
+        btn_h = 34
+        btn_w = max(72, (right - cx - btn_gap * 3) // 4)
+
+        _put_text(img, "PLC LOGIC TEST", cx, y, 0.46, (0, 220, 255), 1)
+        y += 8
+        for idx, (label, error_type) in enumerate(labels):
+            x1 = cx + idx * (btn_w + btn_gap)
+            y1 = y + 8
+            rect = (x1, y1, x1 + btn_w, y1 + btn_h)
+            _draw_button(img, rect, label, logic_ready, (70, 95, 145))
+            self._buttons.append({
+                "rect": rect,
+                "action": f"test:logic:{error_type}",
+                "enabled": logic_ready,
+            })
+        y += btn_h + 22
+
+        _put_text(img, "SAFE RECOVERY TEST", cx, y, 0.46, (0, 220, 255), 1)
+        y += 8
+        for idx, (label, error_type) in enumerate(labels):
+            x1 = cx + idx * (btn_w + btn_gap)
+            y1 = y + 8
+            rect = (x1, y1, x1 + btn_w, y1 + btn_h)
+            _draw_button(img, rect, label, recovery_ready, (90, 105, 155))
+            self._buttons.append({
+                "rect": rect,
+                "action": f"test:recovery:{error_type}",
+                "enabled": recovery_ready,
+            })
+        y += btn_h + 22
+
+        mode = str(test_summary.get("mode", "") or "-").upper()
+        phase = str(test_summary.get("phase", "IDLE") or "IDLE")
+        test_type = str(test_summary.get("type", "") or "-").upper()
+        test_result = str(test_summary.get("result", "") or "-").upper()
+        expected_code = _safe_int(test_summary.get("expected_code"))
+        actual_code = _safe_int(test_summary.get("actual_code"))
+        health_detail = _ellipsize(test_summary.get("health_detail", ""), 58)
+        log_ok = bool(test_summary.get("log_saved", False))
+
+        status_color = (
+            (0, 210, 0)
+            if test_result == "PASS"
+            else ((0, 0, 255) if test_result == "FAIL" else (210, 210, 210))
+        )
+        cv2.rectangle(img, (cx, y), (right, y + 72), (34, 34, 34), -1)
+        cv2.rectangle(img, (cx, y), (right, y + 72), status_color, 1)
+        _put_text(
+            img,
+            f"MODE {mode}   TEST {test_type}   PHASE {phase}   RESULT {test_result}",
+            cx + 8,
+            y + 21,
+            0.38,
+            status_color,
+            1,
         )
         _put_text(
             img,
-            test_title,
-            cx,
-            y,
-            0.48,
-            (0, 220, 255) if test_enabled else (120, 120, 120),
+            f"EXPECTED E{expected_code:02d}   ACTUAL E{actual_code:02d}   LOG {'SAVED' if log_ok else '-'}",
+            cx + 8,
+            y + 42,
+            0.36,
+            (210, 210, 210),
             1,
         )
-        y += 12
-        btn_gap = 8
-        btn_h = 38
-        btn_w = (right - cx - btn_gap) // 2
-        test_active = bool(getattr(app_state, "test_error_active", False)) or error_active
-        buttons = [
-            ("INSPECT ERR", "inject:inspection", (70, 85, 150)),
-            ("LIGHT ERR", "inject:light", (80, 120, 155)),
-            ("CAMERA ERR", "inject:camera", (100, 90, 160)),
-            ("PLC COMM ERR", "inject:plc_comm", (95, 75, 145)),
-        ]
-        for idx, (label, action, color) in enumerate(buttons):
-            row = idx // 2
-            col = idx % 2
-            x1 = cx + col * (btn_w + btn_gap)
-            y1 = y + 10 + row * (btn_h + btn_gap)
-            rect = (x1, y1, x1 + btn_w, y1 + btn_h)
-            enabled = test_enabled and not test_active
-            _draw_button(img, rect, label, enabled, color)
-            self._buttons.append({"rect": rect, "action": action, "enabled": enabled})
-        y += 10 + 2 * (btn_h + btn_gap) + 4
+        _put_text(
+            img,
+            health_detail or block_reason,
+            cx + 8,
+            y + 63,
+            0.34,
+            (0, 210, 255) if ready_common else (150, 190, 255),
+            1,
+        )
+        y += 82
 
-        phase = str(test_summary.get("phase", "IDLE") or "IDLE")
-        test_type = str(test_summary.get("type", "") or "")
-        test_result = str(test_summary.get("result", "") or "")
-        log_ok = bool(test_summary.get("log_saved", False))
-        status_color = (0, 210, 0) if test_result == "PASS" else ((0, 0, 255) if test_result == "FAIL" else (210, 210, 210))
-        _put_text(img, f"TEST {phase}  {test_type.upper()}  {test_result}", cx, y, 0.44, status_color, 1)
-        y += 20
-        _put_text(img, f"TEST LOG {'SAVED' if log_ok else '-'}: {_ellipsize(os.path.basename(latest_log_path), 38)}", cx, y, 0.36, (190, 190, 190), 1)
+        _put_text(img, block_reason, cx, y, 0.36, (160, 200, 255), 1)
         y += 18
-        _put_text(img, f"ERROR LOG: {_ellipsize(os.path.basename(error_log_path), 42)}", cx, y, 0.36, (190, 190, 190), 1)
-        y += 24
+        _put_text(
+            img,
+            "HARD TEST NOT INCLUDED - PHYSICAL FAULTS ARE LOGGED ONLY",
+            cx,
+            y,
+            0.32,
+            (145, 145, 145),
+            1,
+        )
+        y += 20
+
+        _put_text(
+            img,
+            f"TEST LOG: {_ellipsize(os.path.basename(latest_log_path), 36)}",
+            cx,
+            y,
+            0.33,
+            (180, 180, 180),
+            1,
+        )
+        y += 17
+        _put_text(
+            img,
+            f"ERROR LOG: {_ellipsize(os.path.basename(error_log_path), 35)}",
+            cx,
+            y,
+            0.33,
+            (180, 180, 180),
+            1,
+        )
+        y += 23
 
         _put_text(img, "RECENT RX / TX / STATE", cx, y, 0.46, (0, 220, 255), 1)
         y += 20
