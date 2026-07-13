@@ -322,12 +322,12 @@ class ServicePanel:
         y2 = y1 + box_h
         cv2.rectangle(img, (x1, y1), (x2, y2), (24, 24, 24), -1)
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 190, 255), 2)
-        _put_text(img, "SERVICE / PLC DIAGNOSTIC", x1 + 24, y1 + 42, 0.68, (0, 220, 255), 2)
+        _put_text(img, "SERVICE / PLC DIAGNOSTIC", x1 + 24, y1 + 42, 0.68, (0, 220, 255), 1)
         _put_text(img, "Password (English keyboard)", x1 + 24, y1 + 88, 0.48, (210, 210, 210), 1)
         cv2.rectangle(img, (x1 + 24, y1 + 104), (x2 - 24, y1 + 152), (52, 52, 52), -1)
         cv2.rectangle(img, (x1 + 24, y1 + 104), (x2 - 24, y1 + 152), (160, 160, 160), 1)
         masked = "*" * len(self.password_buffer)
-        _put_text(img, masked, x1 + 38, y1 + 137, 0.72, (255, 255, 255), 2)
+        _put_text(img, masked, x1 + 38, y1 + 137, 0.72, (255, 255, 255), 1)
 
         button_y1 = y1 + 178
         button_y2 = button_y1 + 42
@@ -357,7 +357,7 @@ class ServicePanel:
             1,
         )
         if self.auth_error and time.time() <= self.auth_error_until:
-            _put_text(img, self.auth_error, x2 - 196, y1 + 88, 0.46, (0, 0, 255), 2)
+            _put_text(img, self.auth_error, x2 - 196, y1 + 88, 0.46, (0, 0, 255), 1)
 
     def draw(
         self,
@@ -395,7 +395,7 @@ class ServicePanel:
         right = w - pad
         y = 30
 
-        _put_text(img, "SERVICE / PLC DIAGNOSTIC", cx, y, 0.62, (0, 220, 255), 2)
+        _put_text(img, "SERVICE / PLC DIAGNOSTIC", cx, y, 0.62, (0, 220, 255), 1)
         close_rect = (right - 72, 8, right, 38)
         _draw_button(img, close_rect, "CLOSE", True, (70, 70, 70))
         self._buttons.append({"rect": close_rect, "action": "close", "enabled": True})
@@ -413,7 +413,7 @@ class ServicePanel:
             y,
             0.47,
             line_color,
-            2,
+            1,
         )
 
         y += 28
@@ -482,11 +482,11 @@ class ServicePanel:
         cv2.rectangle(img, (cx, y), (right, y + box_h), (35, 35, 35), -1)
         cv2.rectangle(img, (cx, y), (right, y + box_h), (0, 0, 255) if error_active else (80, 130, 80), 2)
         if error_active:
-            _put_text(img, f"ERROR ACTIVE  {error_code} {ERROR_NAMES.get(error_code, 'UNDEFINED')}", cx + 10, y + 24, 0.48, (0, 0, 255), 2)
+            _put_text(img, f"ERROR ACTIVE  {error_code} {ERROR_NAMES.get(error_code, 'UNDEFINED')}", cx + 10, y + 24, 0.48, (0, 0, 255), 1)
             _put_text(img, _ellipsize(error_detail, 62), cx + 10, y + 48, 0.38, (220, 220, 220), 1)
             _put_text(img, "PLC D200=3 RESET REQUIRED", cx + 10, y + 66, 0.38, (0, 200, 255), 1)
         else:
-            _put_text(img, "NO ACTIVE ERROR", cx + 10, y + 29, 0.48, (0, 210, 0), 2)
+            _put_text(img, "NO ACTIVE ERROR", cx + 10, y + 29, 0.48, (0, 210, 0), 1)
         y += box_h + 12
 
         test_enabled = bool(test_summary.get("enabled", False))
@@ -502,7 +502,7 @@ class ServicePanel:
             y,
             0.48,
             (0, 220, 255) if test_enabled else (120, 120, 120),
-            2,
+            1,
         )
         y += 12
         btn_gap = 8
@@ -538,7 +538,7 @@ class ServicePanel:
         _put_text(img, f"ERROR LOG: {_ellipsize(os.path.basename(error_log_path), 42)}", cx, y, 0.36, (190, 190, 190), 1)
         y += 24
 
-        _put_text(img, "RECENT RX / TX / STATE", cx, y, 0.46, (0, 220, 255), 2)
+        _put_text(img, "RECENT RX / TX / STATE", cx, y, 0.46, (0, 220, 255), 1)
         y += 20
         shown = 0
         for event in reversed(recent_events):
@@ -568,7 +568,7 @@ class ServicePanel:
         available_h = h - y - 18
         if self.show_roi_debug and roi_debug is not None and roi_debug.size > 0 and available_h >= 100:
             y += 6
-            _put_text(img, "ROI INSPECTION DEBUG", cx, y, 0.46, (0, 220, 255), 2)
+            _put_text(img, "ROI INSPECTION DEBUG", cx, y, 0.46, (0, 220, 255), 1)
             y += 10
             target_w = right - cx
             target_h = max(80, h - y - 10)
