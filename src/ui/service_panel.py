@@ -168,6 +168,8 @@ class ServicePanel:
         self.lock_on_close = bool(cfg.get("lock_on_close", True))
         self.show_roi_debug = bool(cfg.get("show_roi_debug", True))
         self.rx_tx_rows = max(2, min(8, int(cfg.get("rx_tx_rows", 4))))
+        self.refresh_hz = max(1.0, min(15.0, float(cfg.get("refresh_hz", 5.0))))
+        self.roi_debug_hz = max(0.2, min(5.0, float(cfg.get("roi_debug_hz", 1.0))))
 
         self.visible = False
         self.auth_pending = False
@@ -180,6 +182,8 @@ class ServicePanel:
         self._message = ""
         self._message_until = 0.0
         self._panel_rect: Optional[Tuple[int, int, int, int]] = None
+        self._roi_resize_cache_key = None
+        self._roi_resize_cache = None
 
     def is_modal(self) -> bool:
         return bool(self.auth_pending)
@@ -369,6 +373,7 @@ class ServicePanel:
         latest_log_path: str = "",
         error_log_path: str = "",
         test_summary: Optional[Dict[str, Any]] = None,
+        soak_summary: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         if app_state is not None and bool(getattr(app_state, "edit_mode", False)):
             self.close()
@@ -382,14 +387,29 @@ class ServicePanel:
         plc_snapshot = plc_snapshot or {}
         recent_events = recent_events or []
         test_summary = test_summary or {}
+        soak_summary = soak_summary or {}
         h, w = img.shape[:2]
         pw = min(self.panel_width, max(380, w - 320))
         x0 = w - pw
         self._panel_rect = (x0, 0, w - 1, h - 1)
 
-        panel = img.copy()
-        cv2.rectangle(panel, (x0, 0), (w, h), (18, 22, 28), -1)
-        cv2.addWeighted(panel, self.opacity, img, 1.0 - self.opacity, 0, img)
+        # Blend only the right-side panel region. The previous full-frame
+        # img.copy()/addWeighted path copied the whole 1920x1080 image every
+        # frame while SERVICE was open.
+        panel_roi = img[:, x0:w]
+        if self.opacity >= 0.95:
+            panel_roi[:] = (18, 22, 28)
+        else:
+            background = np.empty_like(panel_roi)
+            background[:] = (18, 22, 28)
+            cv2.addWeighted(
+                background,
+                self.opacity,
+                panel_roi,
+                1.0 - self.opacity,
+                0,
+                panel_roi,
+            )
         cv2.line(img, (x0, 0), (x0, h), (0, 200, 255), 2)
 
         self._buttons = []
@@ -503,6 +523,7 @@ class ServicePanel:
         active_error_code = _safe_int(plc_snapshot.get("error_code"))
         service_test_active = bool(getattr(app_state, "test_error_active", False))
         edit_mode = bool(getattr(app_state, "edit_mode", False))
+        soak_test_running = bool(soak_summary.get("active", False))
         real_error_active = error_active and not service_test_active
 
         ready_common = (
@@ -511,6 +532,7 @@ class ServicePanel:
             and serial_open
             and not comm_fault
             and not service_test_active
+            and not soak_test_running
             and not real_error_active
             and status_value != 8
             and command_value not in (8, 9)
@@ -524,6 +546,8 @@ class ServicePanel:
             block_reason = "TEST AVAILABLE IN RUN MODE ONLY"
         elif service_test_active:
             block_reason = "WAIT PLC RESET OR USE LOCAL RECOVER"
+        elif soak_test_running:
+            block_reason = "SOAK TEST ACTIVE - FAULT TEST BUTTONS LOCKED"
         elif real_error_active:
             block_reason = "BLOCKED: REAL ERROR IS ACTIVE"
         elif status_value == 8 or command_value in (8, 9):
@@ -585,6 +609,71 @@ class ServicePanel:
             "enabled": service_test_active,
         })
         y += 44
+
+        soak_enabled = bool(soak_summary.get("enabled", False))
+        soak_active = bool(soak_summary.get("active", False))
+        soak_phase = str(soak_summary.get("phase", "IDLE") or "IDLE")
+        soak_cycles = _safe_int(soak_summary.get("cycle_count"))
+        soak_ok = _safe_int(soak_summary.get("ok_count"))
+        soak_ng = _safe_int(soak_summary.get("ng_count"))
+        soak_errors = _safe_int(soak_summary.get("error_count"))
+        soak_next = float(soak_summary.get("next_in_sec", 0.0) or 0.0)
+        soak_log = os.path.basename(str(soak_summary.get("log_path", "") or ""))
+        soak_start_ready = (
+            soak_enabled
+            and not soak_active
+            and ready_common
+            and status_value != 1
+        )
+
+        _put_text(
+            img,
+            "OVERNIGHT SOAK TEST (LOCAL 30s CYCLE)",
+            cx,
+            y,
+            0.43,
+            (0, 220, 255),
+            1,
+        )
+        y += 8
+        soak_gap = 8
+        soak_w = max(120, (right - cx - soak_gap) // 2)
+        start_rect = (cx, y + 8, cx + soak_w, y + 42)
+        stop_rect = (cx + soak_w + soak_gap, y + 8, right, y + 42)
+        _draw_button(img, start_rect, "START AUTO CYCLE", soak_start_ready, (50, 120, 70))
+        _draw_button(img, stop_rect, "STOP / FINALIZE LOG", soak_active, (70, 70, 140))
+        self._buttons.append({
+            "rect": start_rect,
+            "action": "soak:start",
+            "enabled": soak_start_ready,
+        })
+        self._buttons.append({
+            "rect": stop_rect,
+            "action": "soak:stop",
+            "enabled": soak_active,
+        })
+        y += 52
+        soak_color = (0, 210, 0) if soak_active else (175, 175, 175)
+        _put_text(
+            img,
+            f"SOAK {soak_phase}  CYCLE {soak_cycles}  OK {soak_ok}  NG {soak_ng}  ERR {soak_errors}  NEXT {soak_next:.1f}s",
+            cx,
+            y,
+            0.34,
+            soak_color,
+            1,
+        )
+        y += 17
+        _put_text(
+            img,
+            f"SOAK LOG: {_ellipsize(soak_log, 44)}",
+            cx,
+            y,
+            0.31,
+            (165, 165, 165),
+            1,
+        )
+        y += 20
 
         mode = str(test_summary.get("mode", "") or "-").upper()
         phase = str(test_summary.get("phase", "IDLE") or "IDLE")
@@ -717,7 +806,15 @@ class ServicePanel:
             scale = min(target_w / max(1, rw), target_h / max(1, rh))
             nw = max(1, int(rw * scale))
             nh = max(1, int(rh * scale))
-            resized = cv2.resize(roi_debug, (nw, nh), interpolation=cv2.INTER_AREA)
+            cache_key = (id(roi_debug), rw, rh, nw, nh)
+            if cache_key != self._roi_resize_cache_key:
+                self._roi_resize_cache = cv2.resize(
+                    roi_debug,
+                    (nw, nh),
+                    interpolation=cv2.INTER_AREA,
+                )
+                self._roi_resize_cache_key = cache_key
+            resized = self._roi_resize_cache
             x_img = cx + (target_w - nw) // 2
             y_img = y + max(0, (target_h - nh) // 2)
             cv2.rectangle(img, (cx, y), (right, h - 8), (45, 45, 45), -1)

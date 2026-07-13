@@ -6,6 +6,8 @@ import json
 from enum import Enum
 import sys
 import subprocess
+import fcntl
+import threading
 from dataclasses import dataclass
 
 import cv2
@@ -44,6 +46,7 @@ from app.command_executor import execute_command
 from inspection.inspect_service import run_inspect_once
 from modes.run_renderer import draw_run_tracking
 from runtime.runtime_config_loader import load_runtime_config
+from runtime.service_soak_test import ServiceSoakTest
 from app.app_setup import ensure_dirs
 from app.app_paths import (
     PLC_CONFIG_PATH,
@@ -136,6 +139,42 @@ def _resolve_startup_mode(requested_mode: str = "auto") -> str:
     except Exception:
         interactive = False
     return "edit" if interactive else "run"
+
+
+_INSTANCE_LOCK_FD = None
+
+
+def _acquire_single_instance_lock(
+    lock_path: str = "/tmp/daol_vision_main.lock",
+):
+    """Prevent two camera clients from opening the same Argus sensor."""
+    global _INSTANCE_LOCK_FD
+
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            owner = os.read(fd, 128).decode("utf-8", errors="replace").strip()
+        except Exception:
+            owner = ""
+        os.close(fd)
+        raise RuntimeError(
+            "vision application is already running"
+            + (f" ({owner})" if owner else "")
+        )
+
+    os.ftruncate(fd, 0)
+    os.write(
+        fd,
+        f"pid={os.getpid()} started={time.strftime('%Y-%m-%d %H:%M:%S')}\n".encode(
+            "utf-8"
+        ),
+    )
+    os.fsync(fd)
+    _INSTANCE_LOCK_FD = fd
+    return fd
 
 
 class LightCommunicationError(RuntimeError):
@@ -325,7 +364,13 @@ class VisionApp:
                 else "RUN MODE / HELD"
             )
             self.state.run_mode_text = "STATIC" if run_mode == "static" else "HELD"
-        self.service_panel = ServicePanel(self.plc_cfg.get("service_panel", {}) or {})
+        service_cfg = self.plc_cfg.get("service_panel", {}) or {}
+        self.service_panel = ServicePanel(service_cfg)
+        self.soak_test = ServiceSoakTest(
+            service_cfg.get("soak_test", {}) or {},
+            LOGS_ROOT,
+        )
+        self._soak_previous_auto_inspect = None
         print(f"[STARTUP] mode={self.startup_mode.upper()}")
 
         # load saved tracker template if exists
@@ -343,6 +388,25 @@ class VisionApp:
         self._plc_test_last_request_id = ""
         self._last_good_camera_frame_epoch = 0.0
         self._normal_reference_counter = 0
+
+        # Non-invasive runtime diagnostics. These values do not change the
+        # camera/inspection/PLC production paths.
+        self._process_started_epoch = time.time()
+        self._camera_frame_seq = 0
+        self._last_camera_read_ms = 0.0
+        self._max_camera_read_ms = 0.0
+        self._slow_camera_read_count = 0
+        self._loop_fps = 0.0
+        self._loop_fps_last_epoch = time.time()
+        self._loop_fps_frames = 0
+
+        # Service data is sampled only while the panel is visible. This avoids
+        # copying PLC event lists and ROI debug images on every camera frame.
+        self._service_cache_epoch = 0.0
+        self._service_roi_cache_epoch = 0.0
+        self._service_plc_snapshot = {}
+        self._service_recent_events = []
+        self._service_roi_debug = None
 
     def _get_primary_anchor_roi_id(self):
         align_cfg = self.product_profile.get("align", {}) or {}
@@ -482,6 +546,8 @@ class VisionApp:
             pass
 
         if st.edit_mode:
+            if self.soak_test.active:
+                self._stop_service_soak_test("EDIT_MODE_ENTERED")
             st.status = "EDIT MODE"
             st.last_overall_ok = None
             st.last_results = None
@@ -538,6 +604,16 @@ class VisionApp:
 
     def _handle_service_action(self, action: str):
         action = str(action or "").strip().lower()
+
+        if action == "soak:start":
+            ok, message = self._start_service_soak_test()
+            self.service_panel.set_message(message, 3.0)
+            return
+
+        if action == "soak:stop":
+            ok, message = self._stop_service_soak_test("USER_STOP")
+            self.service_panel.set_message(message, 3.0)
+            return
 
         if action == "test:local_recover":
             if not self.state.test_error_active:
@@ -614,6 +690,335 @@ class VisionApp:
             "recovery_elapsed_ms": int(st.test_error_recovery_elapsed_ms),
         }
 
+    def _get_process_rss_mb(self) -> float:
+        try:
+            with open("/proc/self/statm", "r", encoding="utf-8") as file:
+                pages = int(file.read().split()[1])
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+            return float(pages * page_size) / (1024.0 * 1024.0)
+        except Exception:
+            return 0.0
+
+    def _get_runtime_health_snapshot(self) -> Dict[str, Any]:
+        now = time.time()
+        frame_age = (
+            max(0.0, now - self._last_good_camera_frame_epoch)
+            if self._last_good_camera_frame_epoch > 0
+            else None
+        )
+        try:
+            light_state = self.light.get_state() if self.light is not None else {}
+        except Exception as e:
+            light_state = {"read_failed": True, "error": str(e)}
+        return {
+            "pid": int(os.getpid()),
+            "process_uptime_sec": max(0.0, now - self._process_started_epoch),
+            "service_panel_visible": bool(self.service_panel.visible),
+            "camera_frame_seq": int(self._camera_frame_seq),
+            "camera_last_frame_age_sec": frame_age,
+            "camera_read_last_ms": round(float(self._last_camera_read_ms), 3),
+            "camera_read_max_ms": round(float(self._max_camera_read_ms), 3),
+            "camera_slow_read_count": int(self._slow_camera_read_count),
+            "loop_fps": round(float(self._loop_fps), 3),
+            "rss_mb": round(self._get_process_rss_mb(), 2),
+            "tracking_stable": bool(self.state.tracking_stable),
+            "stable_frame_count": int(self.state.stable_frame_count),
+            "camera_error_latched": bool(self.state.camera_error_latched),
+            "light_error_latched": bool(self.state.light_error_latched),
+            "light_state": light_state,
+        }
+
+    def _start_service_soak_test(self):
+        st = self.state
+        if not self.soak_test.enabled:
+            return False, "SOAK TEST DISABLED"
+        if self.soak_test.active:
+            return False, "SOAK TEST ALREADY RUNNING"
+        if st.edit_mode:
+            return False, "SOAK TEST REQUIRES RUN MODE"
+        if st.test_error_active:
+            return False, "SOAK TEST BLOCKED: ERROR TEST ACTIVE"
+        if st.camera_error_latched or st.light_error_latched:
+            return False, "SOAK TEST BLOCKED: VISION FAULT ACTIVE"
+
+        try:
+            snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            return False, f"SOAK TEST BLOCKED: PLC SNAPSHOT FAILED ({e})"
+
+        command = int(snapshot.get("command", 0))
+        status = int(snapshot.get("status", 0))
+        if not bool(snapshot.get("serial_open", False)):
+            return False, "SOAK TEST BLOCKED: PLC SERIAL CLOSED"
+        if bool(snapshot.get("comm_fault_active", False)):
+            return False, "SOAK TEST BLOCKED: PLC COMM FAULT"
+        if status == 3 or int(snapshot.get("error_code", 0)) != 0:
+            return False, "SOAK TEST BLOCKED: ERROR STATE ACTIVE"
+        if status == 8 or command in (8, 9):
+            return False, "SOAK TEST BLOCKED: SHUTDOWN/EMERGENCY"
+        if status == 1:
+            return False, "SOAK TEST BLOCKED: CURRENTLY BUSY"
+
+        # The operator explicitly starts the test. Clear an old DONE/OK/NG
+        # state once before the first cycle, using the existing reset path.
+        if status == 2 or int(snapshot.get("result", 0)) != 0:
+            if not self._handle_plc_reset(reset_heartbeat=False):
+                return False, "SOAK TEST START FAILED: INITIAL RESET FAILED"
+            snapshot = self.plc.get_state_snapshot()
+
+        self._soak_previous_auto_inspect = bool(st.auto_inspect)
+        st.auto_inspect = False
+        self.runtime_cfg["_service_soak_active"] = True
+        ok = self.soak_test.start(
+            plc_snapshot=snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+        )
+        if not ok:
+            st.auto_inspect = bool(self._soak_previous_auto_inspect)
+            self.runtime_cfg["_service_soak_active"] = False
+            self._soak_previous_auto_inspect = None
+            return False, "SOAK TEST START FAILED"
+
+        st.status = "SOAK TEST STARTED: 30 SEC CYCLE"
+        try:
+            self.plc.trace_application_event(
+                event="SOAK_TEST_STARTED",
+                summary=(
+                    f"session={self.soak_test.session_id} "
+                    f"interval={self.soak_test.interval_sec:.1f}s"
+                ),
+                extra={
+                    "soak_session_id": self.soak_test.session_id,
+                    "soak_log_path": self.soak_test.log_path,
+                },
+            )
+        except Exception:
+            pass
+        return True, "SOAK TEST STARTED"
+
+    def _stop_service_soak_test(self, reason: str):
+        if not self.soak_test.active:
+            return False, "SOAK TEST IS NOT RUNNING"
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {"snapshot_failed": True, "error": str(e)}
+        self.soak_test.stop(
+            reason=reason,
+            plc_snapshot=plc_snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+        )
+        if self._soak_previous_auto_inspect is not None:
+            self.state.auto_inspect = bool(self._soak_previous_auto_inspect)
+        self.runtime_cfg["_service_soak_active"] = False
+        self._soak_previous_auto_inspect = None
+        self.state.status = f"SOAK TEST STOPPED: {reason}"
+        try:
+            self.plc.trace_application_event(
+                event="SOAK_TEST_STOPPED",
+                summary=(
+                    f"session={self.soak_test.session_id} reason={reason} "
+                    f"cycles={self.soak_test.cycle_count} "
+                    f"ok={self.soak_test.ok_count} ng={self.soak_test.ng_count} "
+                    f"errors={self.soak_test.error_count}"
+                ),
+                extra={
+                    "soak_session_id": self.soak_test.session_id,
+                    "soak_log_path": self.soak_test.log_path,
+                    "soak_summary_path": self.soak_test.summary_path,
+                },
+            )
+        except Exception:
+            pass
+        return True, "SOAK TEST STOPPED / LOG FINALIZED"
+
+    def _fail_service_soak_test(self, reason: str, exception=None):
+        try:
+            plc_snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            plc_snapshot = {"snapshot_failed": True, "error": str(e)}
+        self.soak_test.fail(
+            reason=reason,
+            plc_snapshot=plc_snapshot,
+            vision_snapshot=self._get_vision_state_snapshot(),
+            exception=exception,
+        )
+        if self._soak_previous_auto_inspect is not None:
+            self.state.auto_inspect = bool(self._soak_previous_auto_inspect)
+        self.runtime_cfg["_service_soak_active"] = False
+        self._soak_previous_auto_inspect = None
+        self.state.status = f"SOAK TEST STOPPED ON ERROR: {reason}"
+
+    def _validate_service_soak_result(self):
+        overall_ok = self.state.last_overall_ok
+        results = self.state.last_results
+        if overall_ok is None:
+            raise InspectionResultError("inspection overall result was not generated")
+        if not isinstance(results, dict) or not results:
+            raise InspectionResultError("inspection ROI results were not generated")
+        invalid = []
+        for roi_id, result in results.items():
+            roi_ok = (
+                result.get("ok")
+                if isinstance(result, dict)
+                else getattr(result, "ok", None)
+            )
+            if roi_ok is None:
+                invalid.append(str(roi_id))
+        if invalid:
+            raise InspectionResultError(
+                "ROI result has no OK/NG value: " + ",".join(invalid)
+            )
+        return bool(overall_ok)
+
+    def _run_service_soak_tick(self, frame_gray8, vis_bgr):
+        if not self.soak_test.active:
+            return
+
+        st = self.state
+        if st.edit_mode:
+            self._stop_service_soak_test("EDIT_MODE_ENTERED")
+            return
+
+        try:
+            snapshot = self.plc.get_state_snapshot()
+        except Exception as e:
+            self._fail_service_soak_test("PLC SNAPSHOT FAILED", e)
+            return
+
+        status = int(snapshot.get("status", 0))
+        command = int(snapshot.get("command", 0))
+        error_code = int(snapshot.get("error_code", 0))
+
+        # Preserve unexpected faults for diagnosis. The overnight test does not
+        # automatically erase a real camera/light/PLC error.
+        if (
+            st.camera_error_latched
+            or st.light_error_latched
+            or status == 3
+            or error_code != 0
+            or bool(snapshot.get("comm_fault_active", False))
+        ):
+            self._fail_service_soak_test(
+                f"REAL FAULT DETECTED: STATUS={status} ERROR={error_code}"
+            )
+            return
+        if status == 8 or command in (8, 9):
+            self._stop_service_soak_test("SHUTDOWN_OR_EMERGENCY")
+            return
+
+        now = time.time()
+        if now < float(self.soak_test.next_action_epoch):
+            return
+
+        if self.soak_test.phase == "WAIT_INSPECT":
+            if status == 1:
+                self.soak_test.defer("WAITING: PLC/VISION BUSY", 0.5)
+                return
+            if status != 0 or int(snapshot.get("result", 0)) != 0:
+                self._fail_service_soak_test(
+                    f"UNEXPECTED PRE-CYCLE STATE: D201={status} "
+                    f"D202={int(snapshot.get('result', 0))}"
+                )
+                return
+            if frame_gray8 is None or vis_bgr is None:
+                self.soak_test.defer("WAITING FOR CAMERA FRAME", 0.2)
+                return
+
+            self.soak_test.begin_cycle(
+                plc_snapshot=snapshot,
+                health=self._get_runtime_health_snapshot(),
+            )
+            try:
+                self.plc.set_busy()
+                st.status = f"SOAK CYCLE {self.soak_test.cycle_count}: INSPECT BUSY"
+                st.last_overall_ok = None
+                st.last_results = None
+                started = time.perf_counter()
+                self._run_spot_inspect_once(
+                    frame_gray8,
+                    vis_bgr,
+                    avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
+                    trigger="SOAK",
+                )
+                elapsed_ms = int((time.perf_counter() - started) * 1000.0)
+                overall_ok = self._validate_service_soak_result()
+                self.plc.set_done(ok=overall_ok, elapsed_ms=elapsed_ms)
+                self._save_normal_reference_if_due(
+                    overall_ok=overall_ok,
+                    elapsed_ms=elapsed_ms,
+                )
+                st.status = (
+                    f"SOAK CYCLE {self.soak_test.cycle_count}: OK"
+                    if overall_ok
+                    else f"SOAK CYCLE {self.soak_test.cycle_count}: NG"
+                )
+                self.soak_test.complete_inspection(
+                    overall_ok=overall_ok,
+                    elapsed_ms=elapsed_ms,
+                    plc_snapshot=self.plc.get_state_snapshot(),
+                    inspection_summary={
+                        "overall_ok": overall_ok,
+                        "roi_results": self._compact_inspection_result_summary(),
+                    },
+                    health=self._get_runtime_health_snapshot(),
+                )
+            except LightCommunicationError as e:
+                st.light_error_latched = True
+                self._save_plc_error_event(
+                    event_type="SOAK_TEST_RUNTIME_ERROR",
+                    error_code=21,
+                    message="Light communication failed during soak inspection",
+                    exception=e,
+                )
+                self.plc.set_error(code=21, detail=str(e))
+                self._fail_service_soak_test("LIGHT ERROR DURING SOAK", e)
+            except InspectionResultError as e:
+                self._save_plc_error_event(
+                    event_type="SOAK_TEST_INSPECTION_ERROR",
+                    error_code=40,
+                    message="Soak inspection result generation failed",
+                    exception=e,
+                )
+                self.plc.set_error(code=40, detail=str(e))
+                self._fail_service_soak_test("INSPECTION RESULT ERROR", e)
+            except Exception as e:
+                self._save_plc_error_event(
+                    event_type="SOAK_TEST_INSPECTION_ERROR",
+                    error_code=41,
+                    message="Unexpected exception during soak inspection",
+                    exception=e,
+                )
+                self.plc.set_error(code=41, detail=str(e))
+                self._fail_service_soak_test("INSPECTION EXCEPTION", e)
+            return
+
+        if self.soak_test.phase == "WAIT_RESET":
+            # If the real PLC sent D200=3 first, _run_plc_inspect_tick() has
+            # already returned D201/D202 to zero. Record that real reset source.
+            if status == 0 and int(snapshot.get("result", 0)) == 0:
+                self.soak_test.complete_reset(
+                    plc_snapshot=snapshot,
+                    health=self._get_runtime_health_snapshot(),
+                    source="PLC_D200",
+                )
+            else:
+                # Otherwise use the existing production reset function locally.
+                # No PLC command parser or hardware driver is changed.
+                ok = self._handle_plc_reset(reset_heartbeat=False)
+                if not ok:
+                    self._fail_service_soak_test("VISION RESET FAILED")
+                    return
+                self.soak_test.complete_reset(
+                    plc_snapshot=self.plc.get_state_snapshot(),
+                    health=self._get_runtime_health_snapshot(),
+                    source="SERVICE_LOCAL",
+                )
+            st.status = (
+                f"SOAK TEST: {self.soak_test.cycle_count} CYCLES / "
+                f"OK {self.soak_test.ok_count} NG {self.soak_test.ng_count}"
+            )
+
     def _save_plc_test_event(
         self,
         phase: str,
@@ -661,6 +1066,45 @@ class VisionApp:
                 "metrics": metrics,
             }
         return summary
+
+    def _compact_inspection_result_summary(self) -> Dict[str, Any]:
+        """Keep soak logs small and JSON-friendly.
+
+        Debug images and private runtime objects are intentionally omitted; NG
+        image artifacts continue to be handled by the existing inspection log.
+        """
+        compact = {}
+        for roi_id, result in (self.state.last_results or {}).items():
+            if isinstance(result, dict):
+                ok = result.get("ok")
+                reason = result.get("reason")
+                metrics = result.get("metrics") or {}
+            else:
+                ok = getattr(result, "ok", None)
+                reason = getattr(result, "reason", None)
+                metrics = getattr(result, "metrics", None) or {}
+
+            safe_metrics = {}
+            if isinstance(metrics, dict):
+                for key, value in metrics.items():
+                    key_text = str(key)
+                    if key_text.startswith("_"):
+                        continue
+                    if value is None or isinstance(value, (str, int, float, bool)):
+                        safe_metrics[key_text] = value
+                    elif isinstance(value, (list, tuple)) and len(value) <= 12:
+                        if all(
+                            item is None or isinstance(item, (str, int, float, bool))
+                            for item in value
+                        ):
+                            safe_metrics[key_text] = list(value)
+
+            compact[str(roi_id)] = {
+                "ok": ok,
+                "reason": reason,
+                "metrics": safe_metrics,
+            }
+        return compact
 
     def _save_normal_reference_if_due(
         self,
@@ -1023,6 +1467,19 @@ class VisionApp:
             "camera_device": str(
                 self.camera_info.get("device", "")
             ),
+            "camera_frame_seq": int(self._camera_frame_seq),
+            "camera_last_good_frame_epoch": float(
+                self._last_good_camera_frame_epoch
+            ),
+            "camera_last_read_ms": round(float(self._last_camera_read_ms), 3),
+            "camera_max_read_ms": round(float(self._max_camera_read_ms), 3),
+            "camera_slow_read_count": int(self._slow_camera_read_count),
+            "loop_fps": round(float(self._loop_fps), 3),
+            "process_pid": int(os.getpid()),
+            "process_started_epoch": float(self._process_started_epoch),
+            "process_rss_mb": round(self._get_process_rss_mb(), 2),
+            "service_panel_visible": bool(self.service_panel.visible),
+            "soak_test": self.soak_test.summary(),
 
             "light_state": light_state,
 
@@ -1278,6 +1735,8 @@ class VisionApp:
         blocked = ""
         if st.edit_mode:
             blocked = "TEST BLOCKED: SERVICE TEST REQUIRES RUN MODE"
+        elif self.soak_test.active:
+            blocked = "TEST BLOCKED: OVERNIGHT SOAK TEST IS ACTIVE"
         elif st.test_error_active:
             blocked = "TEST BLOCKED: ANOTHER TEST IS ACTIVE"
         elif status == 8 or command in (8, 9):
@@ -1680,24 +2139,20 @@ class VisionApp:
         st.status = "PLC EMERGENCY RESET: READY"
 
     def _verify_camera_stream_checked(self) -> str:
+        # The service test must never become a second camera consumer.
+        # Health is verified from the frame already received by the main loop.
         cfg = self._get_plc_error_test_cfg()
-        required = int(cfg.get("camera_health_frames", 3))
-        deadline = time.time() + float(cfg.get("camera_health_timeout_sec", 1.5))
-        consecutive = 0
-
-        while time.time() < deadline:
-            frame = self.cam.read()
-            if frame is None:
-                consecutive = 0
-                time.sleep(0.03)
-                continue
-            consecutive += 1
-            self._last_good_camera_frame_epoch = time.time()
-            if consecutive >= required:
-                return f"CAMERA HEALTH OK: {consecutive} CONSECUTIVE FRAMES"
-
-        raise RuntimeError(
-            f"camera health check failed: required={required}, received={consecutive}"
+        max_age = float(cfg.get("camera_health_timeout_sec", 1.5))
+        if self._last_good_camera_frame_epoch <= 0 or self._camera_frame_seq <= 0:
+            raise RuntimeError("camera health check failed: no main-loop frame")
+        age = max(0.0, time.time() - self._last_good_camera_frame_epoch)
+        if age > max_age:
+            raise RuntimeError(
+                f"camera health check failed: last frame age={age:.3f}s"
+            )
+        return (
+            f"CAMERA HEALTH OK: MAIN FRAME#{self._camera_frame_seq} "
+            f"AGE={age:.3f}s"
         )
 
     def _verify_light_recovery_checked(self) -> str:
@@ -2511,6 +2966,16 @@ class VisionApp:
         if st.pending_cmd != UICmd.NONE:
             cmd_to_run = st.pending_cmd
             st.pending_cmd = UICmd.NONE
+            if (
+                self.soak_test.active
+                and cmd_to_run not in (
+                    UICmd.QUIT,
+                    UICmd.TOGGLE_MODE,
+                    UICmd.TOGGLE_SERVICE_PANEL,
+                )
+            ):
+                st.status = "SOAK TEST ACTIVE: MANUAL COMMAND BLOCKED"
+                return
             execute_command(self, cmd_to_run, frame_gray8, vis_bgr)
 
     def _add_baseline_from_last_results(self):
@@ -2663,36 +3128,46 @@ class VisionApp:
         draw_mode_indicator(vis, st.edit_mode)
         draw_dev_hud(vis, st, self.product_profile)
 
-        try:
-            plc_snapshot = self.plc.get_state_snapshot()
-        except Exception as e:
-            plc_snapshot = {
-                "serial_open": False,
-                "comm_fault_active": True,
-                "error_code": 71,
-                "error_detail": str(e),
-            }
-
-        try:
-            recent_events = self.plc.get_recent_events(24)
-        except Exception:
-            recent_events = []
-
-        try:
-            roi_debug = self.inspector.get_debug_grid()
-        except Exception:
-            roi_debug = None
-
         if not st.edit_mode:
+            # Expensive service diagnostics are sampled only while the panel is
+            # actually visible. Password input needs no PLC/ROI data.
+            if self.service_panel.visible:
+                now = time.time()
+                refresh_interval = 1.0 / max(1.0, float(self.service_panel.refresh_hz))
+                if (now - self._service_cache_epoch) >= refresh_interval:
+                    try:
+                        self._service_plc_snapshot = self.plc.get_state_snapshot()
+                    except Exception as e:
+                        self._service_plc_snapshot = {
+                            "serial_open": False,
+                            "comm_fault_active": True,
+                            "error_code": 71,
+                            "error_detail": str(e),
+                        }
+                    try:
+                        self._service_recent_events = self.plc.get_recent_events(24)
+                    except Exception:
+                        self._service_recent_events = []
+                    self._service_cache_epoch = now
+
+                roi_interval = 1.0 / max(0.2, float(self.service_panel.roi_debug_hz))
+                if (now - self._service_roi_cache_epoch) >= roi_interval:
+                    try:
+                        self._service_roi_debug = self.inspector.get_debug_grid()
+                    except Exception:
+                        self._service_roi_debug = None
+                    self._service_roi_cache_epoch = now
+
             vis = self.service_panel.draw(
                 vis,
-                plc_snapshot=plc_snapshot,
-                recent_events=recent_events,
+                plc_snapshot=self._service_plc_snapshot,
+                recent_events=self._service_recent_events,
                 app_state=st,
-                roi_debug=roi_debug,
+                roi_debug=self._service_roi_debug,
                 latest_log_path=st.test_error_log_path,
                 error_log_path=st.latest_error_log_path,
                 test_summary=self._get_service_test_summary(),
+                soak_summary=self.soak_test.summary(),
             )
         else:
             self.service_panel.close()
@@ -2728,10 +3203,20 @@ class VisionApp:
         return frame_gray8, vis
     
     def _read_frame(self):
+        started = time.perf_counter()
         try:
-            return self.cam.read()
+            frame = self.cam.read()
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._last_camera_read_ms = elapsed_ms
+            self._max_camera_read_ms = max(self._max_camera_read_ms, elapsed_ms)
+            if elapsed_ms >= 100.0:
+                self._slow_camera_read_count += 1
+            return frame
 
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._last_camera_read_ms = elapsed_ms
+            self._max_camera_read_ms = max(self._max_camera_read_ms, elapsed_ms)
             st = self.state
 
             if not st.camera_error_latched:
@@ -2878,7 +3363,7 @@ class VisionApp:
         frame_timeout_sec = recovery_cfg["frame_timeout_sec"]
         last_ok_frame_time = time.time()
         last_camera_vis = None
-        last_gray_frame = None
+        last_camera_vis_update_epoch = 0.0
 
         while True:
             self._poll_plc_comm_events()
@@ -2893,6 +3378,7 @@ class VisionApp:
                 # 영상이 없어도 PLC 명령과 조명 타임아웃은 계속 처리
                 self._run_plc_inspect_tick(None, None)
                 self._spot_timeout_tick()
+                self._run_service_soak_tick(None, None)
 
                 if (
                     no_frame_sec > frame_timeout_sec
@@ -2978,6 +3464,18 @@ class VisionApp:
 
             last_ok_frame_time = time.time()
             self._last_good_camera_frame_epoch = last_ok_frame_time
+            self._camera_frame_seq += 1
+            self._loop_fps_frames += 1
+            fps_elapsed = last_ok_frame_time - self._loop_fps_last_epoch
+            if fps_elapsed >= 1.0:
+                instant_fps = float(self._loop_fps_frames) / max(0.001, fps_elapsed)
+                self._loop_fps = (
+                    instant_fps
+                    if self._loop_fps <= 0
+                    else (self._loop_fps * 0.75 + instant_fps * 0.25)
+                )
+                self._loop_fps_frames = 0
+                self._loop_fps_last_epoch = last_ok_frame_time
 
             frame_gray8, vis = self._prepare_frame(frame)
             if frame_gray8 is None:
@@ -2992,17 +3490,26 @@ class VisionApp:
             else:
                 self._render_run_frame(vis, frame_gray8)
 
-            last_gray_frame = frame_gray8.copy()
-            last_camera_vis = vis.copy()
+            # Keep only a low-rate fallback frame for camera-error display.
+            # Copying full HD BGR/GRAY frames every loop created unnecessary
+            # memory-bandwidth pressure while the service panel was open.
+            if (
+                last_camera_vis is None
+                or (last_ok_frame_time - last_camera_vis_update_epoch) >= 1.0
+            ):
+                last_camera_vis = vis.copy()
+                last_camera_vis_update_epoch = last_ok_frame_time
 
             self._run_plc_inspect_tick(frame_gray8, vis)
             self._spot_timeout_tick()
+            self._run_service_soak_tick(frame_gray8, vis)
 
             if (
                 not st.edit_mode
                 and not st.camera_error_latched
                 and not st.light_error_latched
                 and not st.test_error_active
+                and not self.soak_test.active
             ):
                 self._run_auto_inspect_tick(frame_gray8, vis)
         
@@ -3022,6 +3529,9 @@ class VisionApp:
 
             if st.quit_requested:
                 break
+
+        if self.soak_test.active:
+            self._stop_service_soak_test("APP_EXIT")
 
         try:
             cv2.destroyWindow(self.win)
@@ -3049,7 +3559,34 @@ class VisionApp:
             fast_exit = False
 
         if fast_exit:
-            print("[CAM] fast exit: skip blocking nvargus release")
+            # Give Argus a bounded cleanup opportunity. If release blocks, the
+            # daemon thread is abandoned and the process still exits quickly.
+            release_done = threading.Event()
+
+            def _release_camera():
+                try:
+                    self.cam.release()
+                except Exception as e:
+                    print("[CAM] release failed:", e)
+                finally:
+                    release_done.set()
+
+            release_thread = threading.Thread(
+                target=_release_camera,
+                name="nvargus-release",
+                daemon=True,
+            )
+            release_thread.start()
+            release_thread.join(timeout=2.5)
+            if release_done.is_set():
+                print("[CAM] nvargus release completed")
+                try:
+                    cv2.destroyAllWindows()
+                except Exception:
+                    pass
+                return
+
+            print("[CAM] nvargus release timeout: force process exit")
             try:
                 cv2.destroyAllWindows()
             except Exception:
@@ -3091,6 +3628,7 @@ def main(argv=None):
     app = None
 
     try:
+        _acquire_single_instance_lock()
         app = VisionApp(startup_mode=resolved_startup_mode)
         app.run()
 

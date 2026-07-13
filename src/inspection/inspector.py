@@ -25,6 +25,23 @@ from inspection.engine.decision_engine import decide_overall
 from inspection.engine.job_executor import execute_inspection_job
 from inspection.engine.result_model import ROIResult
 
+
+def _json_safe_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_value(item)
+            for key, item in value.items()
+            if not isinstance(item, np.ndarray)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    return str(value)
+
+
 def _run_presence_job(crop, cfg):
     params = cfg if isinstance(cfg, dict) else {}
 
@@ -231,6 +248,7 @@ class Inspector:
             self.baseline = None
 
         self._roi_debug_window_init = False
+        self._save_run_counter = 0
 
         register_enhance_tools()
         register_measure_tools()
@@ -429,9 +447,70 @@ class Inspector:
         )
         return overall_ok, results
 
+    def _should_save_full_run(self, overall_ok: bool) -> bool:
+        self._save_run_counter += 1
+        if not bool(overall_ok):
+            return True
+
+        cfg = self.runtime_cfg.get("inspect_logging", {}) or {}
+        soak_active = bool(self.runtime_cfg.get("_service_soak_active", False))
+        every = int(
+            cfg.get(
+                "soak_ok_full_every" if soak_active else "ok_full_every",
+                120 if soak_active else 20,
+            )
+        )
+        every = max(1, every)
+        return self._save_run_counter == 1 or (self._save_run_counter % every) == 0
+
+    def _prune_full_run_dirs(self):
+        cfg = self.runtime_cfg.get("inspect_logging", {}) or {}
+        max_runs = max(1, int(cfg.get("max_full_runs", 30)))
+        items = []
+        try:
+            for day_name in os.listdir(self.logs_root):
+                day_path = os.path.join(self.logs_root, day_name)
+                if not (os.path.isdir(day_path) and day_name.isdigit() and len(day_name) == 8):
+                    continue
+                for run_name in os.listdir(day_path):
+                    run_path = os.path.join(day_path, run_name)
+                    if not os.path.isdir(run_path):
+                        continue
+                    result_path = os.path.join(run_path, "result.json")
+                    if not os.path.isfile(result_path):
+                        continue
+                    try:
+                        items.append((os.path.getmtime(run_path), run_path))
+                    except OSError:
+                        pass
+            items.sort(reverse=True)
+            for _, path in items[max_runs:]:
+                for root, dirs, files in os.walk(path, topdown=False):
+                    for filename in files:
+                        try:
+                            os.remove(os.path.join(root, filename))
+                        except OSError:
+                            pass
+                    for dirname in dirs:
+                        try:
+                            os.rmdir(os.path.join(root, dirname))
+                        except OSError:
+                            pass
+                try:
+                    os.rmdir(path)
+                except OSError:
+                    pass
+        except Exception as e:
+            print("[INSPECT LOG] prune failed:", e)
+
     def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
+        # Keep every NG, but only a small number of OK comparison images.
+        # The separate soak JSONL still records every overnight cycle.
+        if not self._should_save_full_run(overall_ok):
+            return ""
+
         day = time.strftime("%Y%m%d")
-        ts  = time.strftime("%H%M%S")
+        ts = time.strftime("%H%M%S")
         mmm = int((time.time() * 1000) % 1000)
         run_dir = os.path.join(self.logs_root, day, f"{ts}_{mmm:03d}")
         os.makedirs(run_dir, exist_ok=True)
@@ -442,20 +521,29 @@ class Inspector:
         out = {
             "overall_ok": bool(overall_ok),
             "ts": time.time(),
+            "soak_test": bool(self.runtime_cfg.get("_service_soak_active", False)),
             "results": {
                 k: {
                     "roi_id": str(v.roi_id),
                     "ok": bool(v.ok),
                     "reason": v.reason,
-                    "metrics": {k: v2 for k, v2 in v.metrics.items() if not isinstance(v2, np.ndarray)},
-                } for k, v in results.items()
-            }
+                    "metrics": {
+                        k2: _json_safe_value(v2)
+                        for k2, v2 in v.metrics.items()
+                        if not isinstance(v2, np.ndarray)
+                    },
+                }
+                for k, v in results.items()
+            },
         }
-        with open(os.path.join(run_dir, "result.json"), "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
-
+        final_path = os.path.join(run_dir, "result.json")
+        temp_path = final_path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as file:
+            json.dump(out, file, ensure_ascii=False, indent=2)
+        os.replace(temp_path, final_path)
+        self._prune_full_run_dirs()
         return run_dir
-    
+
     # def save_recipe(path: str, recipe: Dict[str, Any]) -> None:
     #     import os, json
     #     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -550,75 +638,67 @@ class Inspector:
 
     def log_result(self, overall_ok, results):
         os.makedirs(self.logs_root, exist_ok=True)
+        now = time.time()
         ts = time.strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(self.logs_root, f"inspect_{ts}.json")
+        mmm = int((now * 1000) % 1000)
+        path = os.path.join(self.logs_root, f"inspect_{ts}_{mmm:03d}.json")
 
         payload = {
-            "ts": ts,
+            "ts": f"{ts}_{mmm:03d}",
+            "epoch": now,
             "overall_ok": bool(overall_ok),
+            "soak_test": bool(self.runtime_cfg.get("_service_soak_active", False)),
             "results": {
                 str(k): {
                     "ok": bool(v.ok) if hasattr(v, "ok") else bool(v.get("ok")),
-                    "reason": (v.reason if hasattr(v, "reason") else v.get("reason","")),
-                    "metrics": (v.metrics if hasattr(v, "metrics") else v.get("metrics", {})),
+                    "reason": (v.reason if hasattr(v, "reason") else v.get("reason", "")),
+                    "metrics": {
+                        str(mk): _json_safe_value(mv)
+                        for mk, mv in (
+                            (v.metrics if hasattr(v, "metrics") else v.get("metrics", {}))
+                            or {}
+                        ).items()
+                        if not isinstance(mv, np.ndarray) and not str(mk).startswith("_")
+                    },
                 }
                 for k, v in (results or {}).items()
-            }
+            },
         }
-        with open(path, "w") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-        
-        self._prune_logs(max_keep=200)
+        temp_path = path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
+        os.replace(temp_path, path)
+
+        cfg = self.runtime_cfg.get("inspect_logging", {}) or {}
+        self._prune_logs(max_keep=max(20, int(cfg.get("summary_keep", 200))))
 
     def _prune_logs(self, max_keep=200, max_mb=300):
+        """Prune only inspection-owned top-level summary files.
+
+        Older code recursively deleted arbitrary files below data/logs when the
+        size limit was exceeded, which could remove PLC errors, service tests
+        and diagnostics. Full run directories are pruned separately by
+        _prune_full_run_dirs().
+        """
         try:
             os.makedirs(self.logs_root, exist_ok=True)
-
-            # 1) inspect_*.json만 정리(최신 max_keep 유지)
             jsons = []
-            for fn in os.listdir(self.logs_root):
-                if fn.startswith("inspect_") and fn.endswith(".json"):
-                    p = os.path.join(self.logs_root, fn)
-                    jsons.append(p)
+            for filename in os.listdir(self.logs_root):
+                if not (filename.startswith("inspect_") and filename.endswith(".json")):
+                    continue
+                path = os.path.join(self.logs_root, filename)
+                if os.path.isfile(path):
+                    jsons.append(path)
 
-            jsons.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-
-            for p in jsons[max_keep:]:
+            jsons.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+            for path in jsons[int(max_keep):]:
                 try:
-                    os.remove(p)
-                except Exception:
+                    os.remove(path)
+                except OSError:
                     pass
+        except Exception as e:
+            print("[INSPECT LOG] summary prune failed:", e)
 
-            # 2) 폴더 용량 제한 (오래된 것부터 삭제)
-            max_bytes = int(max_mb * 1024 * 1024)
-            files = []
-            total = 0
-
-            for root, _, fns in os.walk(self.logs_root):
-                for fn in fns:
-                    p = os.path.join(root, fn)
-                    try:
-                        st = os.stat(p)
-                    except Exception:
-                        continue
-                    files.append((st.st_mtime, p, st.st_size))
-                    total += st.st_size
-
-            if total <= max_bytes:
-                return
-
-            files.sort(key=lambda t: t[0])  # 오래된 순
-            for _mtime, p, sz in files:
-                try:
-                    os.remove(p)
-                    total -= sz
-                except Exception:
-                    pass
-                if total <= max_bytes:
-                    break
-
-        except Exception:
-            pass
 
     def _check_baseline(self, roi_id, metrics):
         if not self.baseline:

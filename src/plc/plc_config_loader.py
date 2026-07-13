@@ -89,6 +89,17 @@ DEFAULT_PLC_CONFIG: Dict[str, Any] = {
         "lock_on_close": True,
         "show_roi_debug": True,
         "rx_tx_rows": 3,
+        "refresh_hz": 5.0,
+        "roi_debug_hz": 1.0,
+        "soak_test": {
+            "enabled": True,
+            "interval_sec": 30.0,
+            "reset_delay_sec": 2.0,
+            "start_delay_sec": 1.0,
+            "log_dir": "soak_tests",
+            "keep_days": 14,
+            "keep_sessions": 20,
+        },
     },
 
     "shutdown": {

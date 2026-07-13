@@ -66,7 +66,18 @@
     "password_sha256": "2e29ae4c214d913412f389feea5bcacf1fca48c8a4669dbd5c7d8c2a989d728f",
     "lock_on_close": true,
     "show_roi_debug": true,
-    "rx_tx_rows": 3
+    "rx_tx_rows": 3,
+    "refresh_hz": 5.0,
+    "roi_debug_hz": 1.0,
+    "soak_test": {
+      "enabled": true,
+      "interval_sec": 30.0,
+      "reset_delay_sec": 2.0,
+      "start_delay_sec": 1.0,
+      "log_dir": "soak_tests",
+      "keep_days": 14,
+      "keep_sessions": 20
+    }
   },
   "diagnostics": {
     "enabled": true,
