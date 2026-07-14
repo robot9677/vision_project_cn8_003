@@ -58,7 +58,30 @@ def run_toolchain(crop: np.ndarray, cfg: Dict[str, Any]) -> Tuple[bool, Dict[str
 
     ctx["metrics"]["_last_image"] = cur
     ret_metrics = dict(ctx["metrics"])
-    return bool(final_ok), ret_metrics, ("OK" if final_ok else last_reason)
+
+    if final_ok:
+        final_reason = "OK"
+
+    elif decision == "last":
+        # 마지막 Tool의 결과를 최종 판정으로 사용하는 경우
+        final_reason = str(ctx["steps"][-1].get("reason") or "TOOL_FAILED")
+
+    else:
+        # all_ok 또는 any_ok 실패 시 실제로 실패한 첫 번째 Tool의 원인 유지
+        failed_step = next(
+            (step for step in ctx["steps"] if not bool(step.get("ok"))),
+            None,
+        )
+
+        if failed_step is not None:
+            final_reason = str(
+                failed_step.get("reason") or
+                f"TOOL_FAILED:{failed_step.get('tool', 'unknown')}"
+            )
+        else:
+            final_reason = "TOOLCHAIN_FAILED"
+
+    return bool(final_ok), ret_metrics, final_reason
 
 def tool_measure_mean_raw_range(crop: np.ndarray, params: Dict[str, Any], ctx: Dict[str, Any]):
     if crop is None or crop.size == 0:
