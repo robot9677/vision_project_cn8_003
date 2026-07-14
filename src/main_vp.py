@@ -1073,41 +1073,10 @@ class VisionApp:
                 self.soak_test.defer("WAITING FOR CAMERA FRAME", 0.2)
                 return
 
-            # A product judgement is invalid until the tracker has reacquired
-            # after the previous full Vision Reset. Keep the soak session alive,
-            # log the wait periodically, and never count this as product NG.
-            if not self._service_soak_tracking_ready():
-                if self._soak_tracking_wait_started_epoch <= 0:
-                    self._soak_tracking_wait_started_epoch = now
-                log_interval = max(
-                    1.0,
-                    float(getattr(self.soak_test, "tracking_wait_log_sec", 5.0)),
-                )
-                if (now - self._soak_tracking_wait_log_epoch) >= log_interval:
-                    self._soak_tracking_wait_log_epoch = now
-                    self.soak_test.record_external_event(
-                        "WAIT_TRACKING",
-                        {
-                            "wait_sec": round(
-                                now - self._soak_tracking_wait_started_epoch,
-                                3,
-                            ),
-                            "tracking_stable": bool(st.tracking_stable),
-                            "stable_frame_count": int(st.stable_frame_count),
-                            "required_frames": int(
-                                getattr(self.soak_test, "tracking_stable_frames", 3)
-                            ),
-                            "health": self._get_runtime_health_snapshot(),
-                        },
-                    )
-                st.status = (
-                    "SOAK WAIT: TRACKING STABLE "
-                    f"{st.stable_frame_count}/"
-                    f"{int(getattr(self.soak_test, 'tracking_stable_frames', 3))}"
-                )
-                self.soak_test.defer("WAITING FOR TRACKING STABILITY", 0.2)
-                return
-
+            # Do not require tracking stability at the idle-light level.
+            # In a dark installation that creates a permanent wait at 20% and
+            # prevents the soak cycle from ever reaching the 90% inspection
+            # light. Tracking is validated after prearm and fresh frames below.
             self._soak_tracking_wait_started_epoch = 0.0
             self._soak_tracking_wait_log_epoch = 0.0
             self.soak_test.begin_cycle(
@@ -1182,11 +1151,52 @@ class VisionApp:
                 return
             if not self.soak_test.is_fresh_frame_ready(self._camera_frame_seq):
                 return
+
+            # The tracker must reacquire under the real inspection brightness,
+            # not under the dark 20% idle condition. Keep the 90% light armed,
+            # wait without counting NG, and log the condition periodically.
             if not self._service_soak_tracking_ready():
-                self._fail_service_soak_test(
-                    "TRACKING LOST DURING SOAK LIGHT PREARM"
+                now = time.time()
+                if self._soak_tracking_wait_started_epoch <= 0:
+                    self._soak_tracking_wait_started_epoch = now
+                log_interval = max(
+                    1.0,
+                    float(getattr(self.soak_test, "tracking_wait_log_sec", 5.0)),
+                )
+                if (now - self._soak_tracking_wait_log_epoch) >= log_interval:
+                    self._soak_tracking_wait_log_epoch = now
+                    self.soak_test.record_external_event(
+                        "WAIT_TRACKING_INSPECT_LIGHT",
+                        {
+                            "wait_sec": round(
+                                now - self._soak_tracking_wait_started_epoch,
+                                3,
+                            ),
+                            "tracking_stable": bool(st.tracking_stable),
+                            "stable_frame_count": int(st.stable_frame_count),
+                            "required_frames": int(
+                                getattr(self.soak_test, "tracking_stable_frames", 3)
+                            ),
+                            "spot_armed": bool(st.spot_armed),
+                            "spot_armed_brightness": int(
+                                getattr(st, "spot_armed_brightness", 0)
+                            ),
+                            "health": self._get_runtime_health_snapshot(),
+                        },
+                    )
+                st.status = (
+                    "SOAK WAIT: INSPECT LIGHT TRACKING "
+                    f"{st.stable_frame_count}/"
+                    f"{int(getattr(self.soak_test, 'tracking_stable_frames', 3))}"
+                )
+                self.soak_test.defer(
+                    "WAITING FOR TRACKING AT INSPECTION LIGHT",
+                    0.2,
                 )
                 return
+
+            self._soak_tracking_wait_started_epoch = 0.0
+            self._soak_tracking_wait_log_epoch = 0.0
             self._execute_service_soak_inspection(
                 frame_gray8,
                 vis_bgr,
@@ -1547,6 +1557,16 @@ class VisionApp:
             return
 
         if not bool(getattr(st, "spot_armed", False)):
+            return
+
+        # During a service soak cycle the inspection light must remain armed
+        # while fresh frames arrive and the tracker reacquires under the actual
+        # inspection brightness. The normal 3-second safety timeout would
+        # otherwise restore the light to idle before tracking can stabilize.
+        if (
+            self.soak_test.active
+            and self.soak_test.phase == "WAIT_FRESH_FRAME"
+        ):
             return
 
         timeout_ms = int(cfg.get("armed_timeout_ms", 3000))
