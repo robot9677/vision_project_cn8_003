@@ -6,6 +6,7 @@ import cv2
 from app.app_paths import TEMPLATE_PATH, PROFILES_DIR
 from .roi_tracker import ROITracker
 
+
 class MultiAnchorAligner:
     """
     0..N anchor aligner with hold/grace tracking state.
@@ -96,8 +97,6 @@ class MultiAnchorAligner:
                 "last_output_dx": 0,
                 "last_output_dy": 0,
                 "last_output_dangle": 0.0,
-                "stable_count": 0,
-
                 # tracking state
                 "last_pose": {
                     "dx": 0,
@@ -168,30 +167,48 @@ class MultiAnchorAligner:
 
     def load_templates_from_disk(self) -> int:
         loaded = 0
-        for a in self._anchors:
-            src_mode = a.get("template_source", "file_or_runtime")
+        profile = str(
+            self.product_profile.get("recipe_name")
+            or (self.runtime_cfg.get("_product_profile") or {}).get("recipe_name")
+            or ""
+        ).strip()
+
+        for index, anchor in enumerate(self._anchors):
+            src_mode = anchor.get("template_source", "file_or_runtime")
+            tracker = anchor["tracker"]
+
             if src_mode == "roi_runtime":
                 continue
 
-            path = self._resolve_template_path(a.get("template_path"))
+            # Reload must not leave a stale template from a previous profile.
+            tracker.set_template(None)
 
-            # profile별 template override
-            profile = str(self.runtime_cfg.get("_product_profile", {}).get("recipe_name", "") or "").strip()
+            candidates = []
+            configured_path = self._resolve_template_path(anchor.get("template_path"))
+            if configured_path:
+                candidates.append(configured_path)
 
-            if profile:
-                fname = f"align_template_{profile}.png"
-                candidate = os.path.join(PROFILES_DIR, fname)
-                if os.path.exists(candidate):
-                    path = candidate
-                    
-            if not path or not os.path.exists(path):
+            # The profile and generic fallback images represent the primary
+            # anchor only. Additional anchors must use their configured paths.
+            if index == 0 and profile:
+                candidates.append(
+                    os.path.join(PROFILES_DIR, f"align_template_{profile}.png")
+                )
+            if index == 0:
+                candidates.append(TEMPLATE_PATH)
+
+            path = next(
+                (candidate for candidate in candidates if candidate and os.path.exists(candidate)),
+                None,
+            )
+            if path is None:
                 continue
 
-            tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if tpl is None or tpl.size == 0:
+            template = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if template is None or template.size == 0:
                 continue
 
-            a["tracker"].set_template(tpl)
+            tracker.set_template(template)
             loaded += 1
 
         return loaded
@@ -244,35 +261,6 @@ class MultiAnchorAligner:
             "fallback_mode": self._get_fallback_mode(),
         }
 
-    def _make_hold_pose(self, anchor_id: str, pose: Dict[str, Any], all_roi_ids: List[int], reason: str) -> Dict[str, Any]:
-        per_roi = {}
-        for rid in all_roi_ids:
-            per_roi[int(rid)] = {
-                "dx": int(pose.get("dx", 0)),
-                "dy": int(pose.get("dy", 0)),
-                "dangle": float(pose.get("dangle", 0.0)),
-                "score": float(pose.get("score", 0.0)),
-                "anchor_id": anchor_id,
-                "fallback": False,
-                "reason": reason,
-            }
-
-        return {
-            "enabled": self.is_enabled(),
-            "anchors": [],
-            "per_roi": per_roi,
-            "global": {
-                "ok": True,
-                "dx": int(pose.get("dx", 0)),
-                "dy": int(pose.get("dy", 0)),
-                "dangle": float(pose.get("dangle", 0.0)),
-                "score": float(pose.get("score", 0.0)),
-                "fallback": False,
-                "reason": reason,
-            },
-            "fallback_mode": self._get_fallback_mode(),
-        }
-
     def estimate(self, frame_gray8, roi_mgr) -> Dict[str, Any]:
         result = {
             "enabled": self.is_enabled(),
@@ -297,23 +285,35 @@ class MultiAnchorAligner:
         all_roi_ids = [int(r.get("id")) for r in rois]
         self.ensure_runtime_templates(frame_gray8, roi_mgr)
 
+        align_cfg = self._get_align_cfg()
         min_score = self._get_min_score()
-        grace_frames = self._get_grace_frames()
+        grace_frames = max(0, self._get_grace_frames())
+        hold_min_score = float(align_cfg.get("hold_min_score", min_score - 0.12))
+        smooth_cfg = (
+            align_cfg.get("smooth", {})
+            if isinstance(align_cfg.get("smooth", {}), dict)
+            else {}
+        )
+        max_step_x = int(smooth_cfg.get("max_step_x", 9999))
+        max_step_y = int(smooth_cfg.get("max_step_y", 9999))
+        max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
+        jump_guard_score = float(align_cfg.get("jump_guard_score", min_score + 0.08))
+
         best_global = None
         any_success = False
         any_hold = False
 
-        for a in self._anchors:
-            if not a.get("enabled", True):
+        for anchor in self._anchors:
+            if not anchor.get("enabled", True):
                 continue
 
-            roi = roi_mgr.get(a["roi_id"])
-            tracker = a["tracker"]
+            roi = roi_mgr.get(anchor["roi_id"])
+            tracker = anchor["tracker"]
 
             if roi is None or tracker.template is None:
                 result["anchors"].append({
-                    "id": a["id"],
-                    "roi_id": a["roi_id"],
+                    "id": anchor["id"],
+                    "roi_id": anchor["roi_id"],
                     "ok": False,
                     "dx": 0,
                     "dy": 0,
@@ -329,158 +329,166 @@ class MultiAnchorAligner:
             base_h = int(roi.get("h", 0))
             base_a = float(roi.get("angle", 0.0))
 
-            # 핵심: 직전 성공 pose를 적용한 위치를 다음 검색 중심으로 사용
-            last_pose = a.get("last_pose", {})
-            fail_count = int(a.get("fail_count", 0))
+            last_pose = anchor.get("last_pose", {})
+            previous_fail_count = int(anchor.get("fail_count", 0))
+            was_locked = bool(anchor.get("has_lock", False))
 
-            # fail 누적되면 search를 원점으로 복귀
-            # if fail_count >= 3:
-            #     search_x = base_x
-            #     search_y = base_y
-            # else:
-            #     search_x = base_x + int(last_pose.get("dx", 0))
-            #     search_y = base_y + int(last_pose.get("dy", 0))
+            # Search around the last accepted pose. During grace frames this
+            # keeps reacquisition local instead of snapping back to fixed ROI.
             search_x = base_x + int(last_pose.get("dx", 0))
             search_y = base_y + int(last_pose.get("dy", 0))
-
             search_a = base_a + float(last_pose.get("dangle", 0.0))
 
             nrx, nry, _, _, na, score = tracker.track_pose(
                 frame_gray8,
-                search_x, search_y, base_w, base_h,
+                search_x,
+                search_y,
+                base_w,
+                base_h,
                 angle=search_a,
-                angle_range=float(a.get("angle_range", 0.0)),
-                angle_step=float(a.get("angle_step", 1.0)),
+                angle_range=float(anchor.get("angle_range", 0.0)),
+                angle_step=float(anchor.get("angle_step", 1.0)),
                 base_angle=base_a,
-                enable_rotation=bool(a.get("enable_rotation", False)),
-                max_abs_angle=float(a.get("max_abs_angle", 8.0)),
+                enable_rotation=bool(anchor.get("enable_rotation", False)),
+                max_abs_angle=float(anchor.get("max_abs_angle", 8.0)),
             )
 
-            # base 기준 pose로 환산
-            dx = int(nrx - base_x)
-            dy = int(nry - base_y)
-            dangle = float(na - base_a)
+            raw_dx = int(nrx - base_x)
+            raw_dy = int(nry - base_y)
+            raw_dangle = float(na - base_a)
             score = float(score)
 
-            lock_thr = float(min_score)
-            hold_thr = float(self._get_align_cfg().get("hold_min_score", lock_thr - 0.12))
+            strong_match = score >= min_score
+            weak_hold_match = was_locked and score >= hold_min_score
+            match_ok = strong_match or weak_hold_match
+            reject_reason = "LOW_SCORE"
 
-            was_locked = bool(a.get("has_lock", False))
-
-            ok = False
-            anchor_pose = None
-
-            if score >= lock_thr:
-                ok = True
-            elif was_locked and score >= hold_thr:
-                ok = True
-
-            if ok:
-                raw_dx = int(dx)
-                raw_dy = int(dy)
-                raw_dangle = float(dangle)
-
-                prev_dx = int(a.get("last_output_dx", 0))
-                prev_dy = int(a.get("last_output_dy", 0))
-                prev_da = float(a.get("last_output_dangle", 0.0))
-
-                align_cfg = self._get_align_cfg()
-                smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
-
-                max_step_x = int(smooth_cfg.get("max_step_x", 9999))
-                max_step_y = int(smooth_cfg.get("max_step_y", 9999))
-                max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
-                jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
+            if match_ok:
+                prev_dx = int(anchor.get("last_output_dx", 0))
+                prev_dy = int(anchor.get("last_output_dy", 0))
+                prev_angle = float(anchor.get("last_output_dangle", 0.0))
 
                 jump_x = abs(raw_dx - prev_dx)
                 jump_y = abs(raw_dy - prev_dy)
-                jump_a = abs(raw_dangle - prev_da)
+                jump_angle = abs(raw_dangle - prev_angle)
 
                 suspicious_jump = (
-                    jump_x > (max_step_x * 2) or
-                    jump_y > (max_step_y * 2) or
-                    jump_a > (max_step_angle * 2.0)
+                    jump_x > (max_step_x * 2)
+                    or jump_y > (max_step_y * 2)
+                    or jump_angle > (max_step_angle * 2.0)
                 )
 
-                align_cfg = self._get_align_cfg()
-                smooth_cfg = align_cfg.get("smooth", {}) if isinstance(align_cfg.get("smooth", {}), dict) else {}
-
-                max_step_x = int(smooth_cfg.get("max_step_x", 9999))
-                max_step_y = int(smooth_cfg.get("max_step_y", 9999))
-                max_step_angle = float(smooth_cfg.get("max_step_angle", 999.0))
-                jump_guard_score = float(align_cfg.get("jump_guard_score", lock_thr + 0.08))
-
-                jump_x = abs(raw_dx - prev_dx)
-                jump_y = abs(raw_dy - prev_dy)
-                jump_a = abs(raw_dangle - prev_da)
-
-                suspicious_jump = (
-                    jump_x > (max_step_x * 2) or
-                    jump_y > (max_step_y * 2) or
-                    jump_a > (max_step_angle * 2.0)
+                step_reject = (
+                    (jump_x > max_step_x or jump_y > max_step_y)
+                    and score < (jump_guard_score + 0.03)
+                )
+                jump_reject = (
+                    suspicious_jump
+                    and previous_fail_count == 0
+                    and score < jump_guard_score
                 )
 
-                step_dx = jump_x
-                step_dy = jump_y
+                if step_reject:
+                    match_ok = False
+                    reject_reason = "STEP_REJECT"
+                elif jump_reject:
+                    match_ok = False
+                    reject_reason = "JUMP_REJECT"
 
-                step_reject = False
-                if step_dx > max_step_x or step_dy > max_step_y:
-                    if score < (jump_guard_score + 0.03):
-                        step_reject = True
+            if match_ok:
+                anchor["fail_count"] = 0
+                anchor["has_lock"] = True
 
-                jump_reject = False
-                if suspicious_jump and fail_count == 0 and score < jump_guard_score:
-                    jump_reject = True
+                dx, dy, dangle = self._clamp_step(
+                    anchor, raw_dx, raw_dy, raw_dangle
+                )
+                self._commit_output_pose(anchor, dx, dy, dangle)
 
-                if step_reject or jump_reject:
-                    ok = False
-                else:
-                    a["fail_count"] = 0
-                    a["has_lock"] = True
+                anchor["last_pose"] = {
+                    "dx": dx,
+                    "dy": dy,
+                    "dangle": dangle,
+                    "score": score,
+                }
 
-                    dx, dy, dangle = self._clamp_step(a, raw_dx, raw_dy, raw_dangle)
-                    self._commit_output_pose(a, dx, dy, dangle)
+                success_reason = "OK" if strong_match else "HOLD_SCORE"
+                anchor_pose = self._append_success_result(
+                    result=result,
+                    all_roi_ids=all_roi_ids,
+                    anchor=anchor,
+                    dx=dx,
+                    dy=dy,
+                    dangle=dangle,
+                    score=score,
+                    reason=success_reason,
+                )
 
-                    a["last_pose"] = {
-                        "dx": dx,
-                        "dy": dy,
-                        "dangle": dangle,
-                        "score": score,
-                    }
-
-                    anchor_pose = self._append_success_result(
-                        result=result,
-                        all_roi_ids=all_roi_ids,
-                        anchor=a,
-                        dx=dx,
-                        dy=dy,
-                        dangle=dangle,
-                        score=score,
+                self._last_global_state = "TRACKING" if strong_match else "HOLD"
+                log_state = "OK" if strong_match else "HOLD_SCORE"
+                if self._should_log_anchor(anchor, log_state, dx, dy, score):
+                    print(
+                        f"[DBG ALIGN] {anchor['id']} reason={success_reason} "
+                        f"dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}"
                     )
 
-                    self._last_global_state = "TRACKING"
-                    if self._should_log_anchor(a, "OK", dx, dy, score):
-                        print(f"[DBG ALIGN] {a['id']} ok=True dx={dx} dy={dy} da={dangle:.2f} sc={score:.3f}")
+                any_success = True
+                if best_global is None or score > float(best_global.get("score", -1.0)):
+                    best_global = anchor_pose
+                continue
 
-                    any_success = True
+            fail_count = previous_fail_count + 1
+            anchor["fail_count"] = fail_count
 
-                    if best_global is None or score > float(best_global.get("score", -1.0)):
-                        best_global = anchor_pose
-                    continue
+            if was_locked and fail_count <= grace_frames:
+                held_dx = int(last_pose.get("dx", anchor.get("last_output_dx", 0)))
+                held_dy = int(last_pose.get("dy", anchor.get("last_output_dy", 0)))
+                held_angle = float(
+                    last_pose.get("dangle", anchor.get("last_output_dangle", 0.0))
+                )
 
-            # grace 초과 시에만 fallback
-            a["has_lock"] = False
-            a["last_pose"] = {"dx": 0, "dy": 0, "dangle": 0.0, "score": 0.0}
+                hold_pose = self._append_hold_result(
+                    result=result,
+                    all_roi_ids=all_roi_ids,
+                    anchor=anchor,
+                    dx=held_dx,
+                    dy=held_dy,
+                    dangle=held_angle,
+                    score=score,
+                    fail_count=fail_count,
+                    grace_frames=grace_frames,
+                )
+                any_hold = True
+                self._last_global_state = "HOLD"
+
+                if self._should_log_anchor(anchor, "HOLD", held_dx, held_dy, score):
+                    print(
+                        f"[DBG ALIGN] {anchor['id']} hold=True "
+                        f"count={fail_count}/{grace_frames} sc={score:.3f}"
+                    )
+
+                if best_global is None or score > float(best_global.get("score", -1.0)):
+                    best_global = hold_pose
+                continue
+
+            # Grace expired (or no previous lock): release the lock. The last
+            # output remains available for fallback_mode=hold overlay only.
+            anchor["has_lock"] = False
+            anchor["last_pose"] = {
+                "dx": 0,
+                "dy": 0,
+                "dangle": 0.0,
+                "score": 0.0,
+            }
 
             result["anchors"].append({
-                "id": a["id"],
-                "roi_id": a["roi_id"],
+                "id": anchor["id"],
+                "roi_id": anchor["roi_id"],
                 "ok": False,
                 "dx": 0,
                 "dy": 0,
                 "dangle": 0.0,
                 "score": score,
-                "reason": f"LOW_SCORE({fail_count}>{grace_frames})",
+                "reason": f"{reject_reason}({fail_count}>{grace_frames})",
             })
 
         if not any_success and not any_hold:
@@ -499,50 +507,54 @@ class MultiAnchorAligner:
                         "reason": "HOLD_NO_SUCCESS",
                     }
 
-                gdx = 0
-                gdy = 0
-                gda = 0.0
-                gsc = 0.0
-                gid = None
+                global_dx = 0
+                global_dy = 0
+                global_angle = 0.0
+                global_score = 0.0
+                global_anchor_id = None
 
-                for a in self._anchors:
-                    if not a.get("enabled", True):
+                for anchor in self._anchors:
+                    if not anchor.get("enabled", True):
                         continue
 
-                    adx = int(a.get("last_output_dx", 0))
-                    ady = int(a.get("last_output_dy", 0))
-                    ada = float(a.get("last_output_dangle", 0.0))
-                    asc = float(a.get("last_pose", {}).get("score", 0.0))
+                    dx = int(anchor.get("last_output_dx", 0))
+                    dy = int(anchor.get("last_output_dy", 0))
+                    dangle = float(anchor.get("last_output_dangle", 0.0))
+                    score = float(anchor.get("last_pose", {}).get("score", 0.0))
 
-                    targets = all_roi_ids if a.get("targets") == "all" else list(a.get("targets") or [])
+                    targets = (
+                        all_roi_ids
+                        if anchor.get("targets") == "all"
+                        else list(anchor.get("targets") or [])
+                    )
                     for rid in targets:
                         per_roi[int(rid)] = {
-                            "dx": adx,
-                            "dy": ady,
-                            "dangle": ada,
-                            "score": asc,
-                            "anchor_id": a.get("id"),
+                            "dx": dx,
+                            "dy": dy,
+                            "dangle": dangle,
+                            "score": score,
+                            "anchor_id": anchor.get("id"),
                             "fallback": False,
                             "reason": "HOLD_NO_SUCCESS",
                         }
 
-                    if asc >= gsc:
-                        gdx = adx
-                        gdy = ady
-                        gda = ada
-                        gsc = asc
-                        gid = a.get("id")
+                    if score >= global_score:
+                        global_dx = dx
+                        global_dy = dy
+                        global_angle = dangle
+                        global_score = score
+                        global_anchor_id = anchor.get("id")
 
                 result["per_roi"] = per_roi
                 result["global"] = {
                     "ok": False,
-                    "dx": gdx,
-                    "dy": gdy,
-                    "dangle": gda,
-                    "score": gsc,
+                    "dx": global_dx,
+                    "dy": global_dy,
+                    "dangle": global_angle,
+                    "score": global_score,
                     "fallback": False,
                     "reason": "HOLD_NO_SUCCESS",
-                    "anchor_id": gid,
+                    "anchor_id": global_anchor_id,
                 }
                 return result
 
@@ -571,6 +583,7 @@ class MultiAnchorAligner:
                 "score": float(best_global.get("score", 0.0)),
                 "fallback": False,
                 "reason": str(best_global.get("reason", "OK")),
+                "anchor_id": best_global.get("id"),
             }
 
         return result
@@ -628,6 +641,7 @@ class MultiAnchorAligner:
         dy: int,
         dangle: float,
         score: float,
+        reason: str = "OK",
     ):
         anchor_pose = {
             "id": anchor["id"],
@@ -637,7 +651,7 @@ class MultiAnchorAligner:
             "dy": dy,
             "dangle": dangle,
             "score": score,
-            "reason": "OK",
+            "reason": reason,
         }
         result["anchors"].append(anchor_pose)
 
@@ -652,7 +666,7 @@ class MultiAnchorAligner:
                     "score": score,
                     "anchor_id": anchor["id"],
                     "fallback": False,
-                    "reason": "OK",
+                    "reason": reason,
                 }
 
         return anchor_pose

@@ -26,12 +26,6 @@ def execute_inspection_job(
     default_evaluator,
 ):
     job_type = (cfg.get("type") or "").strip().lower()
-    orig_margin = None
-
-    if job_type == "washer_presence":
-        orig_margin = getattr(inspector.tracker, "search_margin", None)
-        inspector.tracker.search_margin = int(cfg.get("tracker_margin", 50))
-
     registry_pair = job_registry.get(job_type)
     if registry_pair is not None:
         runner, evaluator = registry_pair
@@ -74,8 +68,5 @@ def execute_inspection_job(
         recipe_default=recipe_default,
         runtime_cfg=runtime_cfg,
     )
-
-    if orig_margin is not None:
-        inspector.tracker.search_margin = orig_margin
 
     return job_ok, metrics, job_reason, job_type

@@ -8,9 +8,8 @@ import numpy as np
 from .analyzers import run_analyzer
 from .preprocess import normalize_by_roi
 from .temporal import TemporalMeanFilter
-from .roi_tracker import ROITracker
 from .aligner import MultiAnchorAligner
-# add near top of file
+from app.app_paths import PROJECT_ROOT
 from .recipe import load_recipe, get_roi_cfg, save_recipe
 from typing import Dict
 from inspection.toolchain import run_toolchain
@@ -227,16 +226,10 @@ class Inspector:
         self.debug_view_enabled = bool(self.runtime_cfg.get("debug_view_enabled", True))
         self.debug_view_roi_id = str(self.runtime_cfg.get("debug_view_roi_id", "1"))
         self.debug_view_scale = float(self.runtime_cfg.get("debug_view_scale", 1))
-        self.tracker = ROITracker(
-            search_margin=int(self.runtime_cfg.get("tracker_search_margin", 80)),
-            thr=float(self.runtime_cfg.get("tracker_thr", 0.70)),
-            reacquire_margin=int(self.runtime_cfg.get("tracker_reacquire_margin", 220)),
-            reacquire_scale=float(self.runtime_cfg.get("tracker_reacquire_scale", 0.5)),
-        )
         self.aligner = MultiAnchorAligner(
             runtime_cfg=self.runtime_cfg,
             product_profile=(self.runtime_cfg.get("_product_profile") or {}),
-            project_root=os.path.abspath(os.path.join(os.path.dirname(recipe_path), "..", "..")),
+            project_root=PROJECT_ROOT,
         )
         self.debug_tiles = {}
         self.debug_grid = None
@@ -260,6 +253,11 @@ class Inspector:
         if key not in self.mean_filters:
             self.mean_filters[key] = TemporalMeanFilter(win=5)
         return self.mean_filters[key]
+
+    def reset_temporal_filters(self):
+        for mean_filter in self.mean_filters.values():
+            mean_filter.reset()
+        self.mean_filters.clear()
 
     def _run_inspection_job(
         self,
@@ -632,7 +630,6 @@ class Inspector:
         return recipe
     
     def reset_tracker_template(self):
-        self.tracker.template = None
         if getattr(self, "aligner", None) is not None:
             self.aligner.reset_templates()
 

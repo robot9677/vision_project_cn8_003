@@ -22,7 +22,6 @@ from roi.roi_editor import ROIEditor
 from inspection.inspector import Inspector
 from inspection.stabilizer import Stabilizer
 from inspection.normalize import normalize_frame
-from inspection.logger import save_snapshot, save_template_copy
 
 from plc.plc_config_loader import load_plc_config
 from plc.plc_controller import create_plc_controller
@@ -59,7 +58,6 @@ from app.app_paths import (
     DATA_DIR,
     ROI_DIR,
     ROI_PATH,
-    RECIPE_PATH,
     RECIPES_DIR,
     DEFAULT_RECIPE_PATH,
     RUNTIME_CONFIG_PATH,
@@ -104,21 +102,6 @@ def roi_label_pos(x, y, w, h, margin=25):
     if ty < 18:
         ty = y + h + 18
     return int(tx), int(ty)
-
-def _extract_info_from_results(results):
-    if not results:
-        return {}
-    total = len(results)
-    ng = sum(1 for r in results.values() if not getattr(r, "ok", False))
-    info = {"total": total, "ng": ng}
-    for r in results.values():
-        m = getattr(r, "metrics", None) or {}
-        if "norm_gain" in m: info["norm_gain"] = m["norm_gain"]
-        if "dx" in m: info["dx"] = m["dx"]
-        if "dy" in m: info["dy"] = m["dy"]
-        break
-    return info
-
 
 
 def _resolve_startup_mode(requested_mode: str = "auto") -> str:
@@ -228,8 +211,6 @@ class AppState:
     edit_mode: bool = True
     status: str = "EDIT MODE"
     quit_requested: bool = False
-    space_lock: bool = False
-
     last_results: Optional[Dict[str, Any]] = None   # {"1": Result, ...}
     last_overall_ok: Optional[bool] = None
 
@@ -244,9 +225,6 @@ class AppState:
 
     # UI
     last_buttons: list = None
-
-    # snapshot cooldown
-    last_snapshot_time: float = 0.0
 
     # spot light pre-arm
     spot_armed: bool = False
@@ -263,7 +241,6 @@ class AppState:
     baseline_count: int = 0
 
     # PLC shutdown
-    plc_shutdown_requested: bool = False
     plc_shutdown_started: bool = False
 
     # Vision error latch
@@ -520,15 +497,19 @@ class VisionApp:
     def _load_alignment_template(self):
         try:
             aligner = getattr(self.inspector, "aligner", None)
-            loaded = 0
-            if aligner is not None and hasattr(aligner, "load_templates_from_disk"):
-                loaded = int(aligner.load_templates_from_disk() or 0)
+            if aligner is None or not hasattr(aligner, "load_templates_from_disk"):
+                print("[WARN] alignment template loader is unavailable")
+                return 0
+
+            loaded = int(aligner.load_templates_from_disk() or 0)
             if loaded > 0:
                 print(f"[INFO] alignment template loaded: {loaded}")
-            elif os.path.exists(TEMPLATE_PATH):
-                tpl = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
+            else:
+                print("[WARN] no alignment template loaded; runtime ROI template will be used")
+            return loaded
         except Exception as e:
             print("[WARN] failed to load alignment template:", e)
+            return 0
 
     # -------------------------
     # Input handlers
@@ -572,23 +553,30 @@ class VisionApp:
     def _toggle_mode(self):
         st = self.state
         st.edit_mode = not st.edit_mode
-        try:
-            self.inspector.mean_filter.reset()
-        except Exception as e:
-            pass
 
-        # switching into edit: clear runtime template (optional)
         try:
-            trk = getattr(self.inspector, "tracker", None)
+            self.inspector.reset_temporal_filters()
+        except Exception as e:
+            print("[WARN] failed to reset temporal filters:", e)
+
+        try:
+            self.stabilizer.reset()
+            st.tracking_stable = False
+            st.stable_frame_count = 0
+            st._trk_frame_idx = 0
+            st._trk_cache = None
+            st._trk_smoothed_cache = None
+            st._trk_motion_stable = False
+
+            aligner = getattr(self.inspector, "aligner", None)
+
             if st.edit_mode:
-                if trk is not None and hasattr(trk, "set_template"):
-                    trk.set_template(None)
-                if getattr(self.inspector, "aligner", None) is not None:
-                    self.inspector.aligner.reset_templates()
+                if aligner is not None:
+                    aligner.reset_templates()
             else:
                 self._load_alignment_template()
         except Exception as e:
-            pass
+            print("[WARN] failed to reset tracker state on mode change:", e)
 
         if st.edit_mode:
             if self.soak_test.active:
@@ -2187,17 +2175,16 @@ class VisionApp:
         self._clear_spot_runtime_state()
 
         try:
-            mean_filters = getattr(self.inspector, "mean_filters", {}) or {}
-            for mean_filter in mean_filters.values():
-                mean_filter.reset()
-            mean_filters.clear()
+            self.inspector.reset_temporal_filters()
         except Exception as e:
             errors.append(f"mean filters: {e}")
 
         try:
-            stabilizer_state = getattr(self.stabilizer, "state", None)
-            if hasattr(stabilizer_state, "clear"):
-                stabilizer_state.clear()
+            self.stabilizer.reset()
+            st._trk_frame_idx = 0
+            st._trk_cache = None
+            st._trk_smoothed_cache = None
+            st._trk_motion_stable = False
         except Exception as e:
             errors.append(f"stabilizer: {e}")
 
