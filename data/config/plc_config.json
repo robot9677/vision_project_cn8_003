@@ -71,12 +71,15 @@
     "roi_debug_hz": 1.0,
     "soak_test": {
       "enabled": true,
-      "interval_sec": 30.0,
+      "interval_sec": 10.0,
       "reset_delay_sec": 2.0,
       "start_delay_sec": 1.0,
       "log_dir": "soak_tests",
       "keep_days": 14,
-      "keep_sessions": 20
+      "keep_sessions": 20,
+      "tracking_stable_frames": 3,
+      "tracking_wait_log_sec": 5.0,
+      "fresh_frame_count": 4
     }
   },
   "diagnostics": {

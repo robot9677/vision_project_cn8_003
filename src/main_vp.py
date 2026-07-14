@@ -8,6 +8,8 @@ import sys
 import subprocess
 import fcntl
 import threading
+import traceback
+import faulthandler
 from dataclasses import dataclass
 
 import cv2
@@ -177,6 +179,46 @@ def _acquire_single_instance_lock(
     return fd
 
 
+_RUNTIME_FAULT_LOG_HANDLE = None
+
+
+def _enable_runtime_fault_log():
+    """Persist Python fatal traces even when the launch terminal is unavailable."""
+    global _RUNTIME_FAULT_LOG_HANDLE
+    try:
+        log_dir = os.path.join(LOGS_ROOT, "terminal")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, "faulthandler.log")
+        if os.path.exists(path) and os.path.getsize(path) > (5 * 1024 * 1024):
+            backup = path + ".1"
+            try:
+                os.remove(backup)
+            except OSError:
+                pass
+            os.replace(path, backup)
+        _RUNTIME_FAULT_LOG_HANDLE = open(path, "a", encoding="utf-8", buffering=1)
+        _RUNTIME_FAULT_LOG_HANDLE.write(
+            f"\n===== START {time.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"pid={os.getpid()} =====\n"
+        )
+        faulthandler.enable(file=_RUNTIME_FAULT_LOG_HANDLE, all_threads=True)
+        return path
+    except Exception as e:
+        print(f"[RUNTIME LOG] faulthandler setup failed: {e}")
+        return ""
+
+
+def _write_runtime_marker(message: str):
+    try:
+        if _RUNTIME_FAULT_LOG_HANDLE is not None:
+            _RUNTIME_FAULT_LOG_HANDLE.write(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n"
+            )
+            _RUNTIME_FAULT_LOG_HANDLE.flush()
+    except Exception:
+        pass
+
+
 class LightCommunicationError(RuntimeError):
     pass
 class InspectionResultError(RuntimeError):
@@ -226,6 +268,7 @@ class AppState:
 
     # Vision error latch
     camera_error_latched: bool = False
+    camera_read_blocked: bool = False
     light_error_latched: bool = False
 
     camera_error_grace_until: float = 0.0
@@ -371,6 +414,8 @@ class VisionApp:
             LOGS_ROOT,
         )
         self._soak_previous_auto_inspect = None
+        self._soak_tracking_wait_started_epoch = 0.0
+        self._soak_tracking_wait_log_epoch = 0.0
         print(f"[STARTUP] mode={self.startup_mode.upper()}")
 
         # load saved tracker template if exists
@@ -724,6 +769,7 @@ class VisionApp:
             "tracking_stable": bool(self.state.tracking_stable),
             "stable_frame_count": int(self.state.stable_frame_count),
             "camera_error_latched": bool(self.state.camera_error_latched),
+            "camera_read_blocked": bool(self.state.camera_read_blocked),
             "light_error_latched": bool(self.state.light_error_latched),
             "light_state": light_state,
         }
@@ -799,6 +845,13 @@ class VisionApp:
     def _stop_service_soak_test(self, reason: str):
         if not self.soak_test.active:
             return False, "SOAK TEST IS NOT RUNNING"
+        if bool(getattr(self.state, "spot_armed", False)):
+            try:
+                self._spot_release(reason="soak_stop")
+            except Exception as e:
+                print(f"[SOAK TEST] spot release on stop failed: {e}")
+        self._soak_tracking_wait_started_epoch = 0.0
+        self._soak_tracking_wait_log_epoch = 0.0
         try:
             plc_snapshot = self.plc.get_state_snapshot()
         except Exception as e:
@@ -833,6 +886,13 @@ class VisionApp:
         return True, "SOAK TEST STOPPED / LOG FINALIZED"
 
     def _fail_service_soak_test(self, reason: str, exception=None):
+        if bool(getattr(self.state, "spot_armed", False)):
+            try:
+                self._spot_release(reason="soak_error")
+            except Exception as e:
+                print(f"[SOAK TEST] spot release on error failed: {e}")
+        self._soak_tracking_wait_started_epoch = 0.0
+        self._soak_tracking_wait_log_epoch = 0.0
         try:
             plc_snapshot = self.plc.get_state_snapshot()
         except Exception as e:
@@ -870,6 +930,93 @@ class VisionApp:
                 "ROI result has no OK/NG value: " + ",".join(invalid)
             )
         return bool(overall_ok)
+
+    def _service_soak_tracking_ready(self) -> bool:
+        run_mode = str(self.runtime_cfg.get("run_mode", "held") or "held").lower()
+        if run_mode == "static":
+            return True
+        required = max(
+            1,
+            int(
+                getattr(
+                    self.soak_test,
+                    "tracking_stable_frames",
+                    self.runtime_cfg.get("auto_inspect_stable_frames", 3),
+                )
+            ),
+        )
+        return bool(
+            self.state.tracking_stable
+            and self.state.stable_frame_count >= required
+        )
+
+    def _execute_service_soak_inspection(
+        self,
+        frame_gray8,
+        vis_bgr,
+        *,
+        allow_camera_flush: bool,
+    ):
+        st = self.state
+        try:
+            started = time.perf_counter()
+            self._run_spot_inspect_once(
+                frame_gray8,
+                vis_bgr,
+                avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
+                trigger="SOAK",
+                allow_camera_flush=allow_camera_flush,
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000.0)
+            overall_ok = self._validate_service_soak_result()
+            self.plc.set_done(ok=overall_ok, elapsed_ms=elapsed_ms)
+            self._save_normal_reference_if_due(
+                overall_ok=overall_ok,
+                elapsed_ms=elapsed_ms,
+            )
+            st.status = (
+                f"SOAK CYCLE {self.soak_test.cycle_count}: OK"
+                if overall_ok
+                else f"SOAK CYCLE {self.soak_test.cycle_count}: NG"
+            )
+            self.soak_test.complete_inspection(
+                overall_ok=overall_ok,
+                elapsed_ms=elapsed_ms,
+                plc_snapshot=self.plc.get_state_snapshot(),
+                inspection_summary={
+                    "overall_ok": overall_ok,
+                    "roi_results": self._compact_inspection_result_summary(),
+                },
+                health=self._get_runtime_health_snapshot(),
+            )
+        except LightCommunicationError as e:
+            st.light_error_latched = True
+            self._save_plc_error_event(
+                event_type="SOAK_TEST_RUNTIME_ERROR",
+                error_code=21,
+                message="Light communication failed during soak inspection",
+                exception=e,
+            )
+            self.plc.set_error(code=21, detail=str(e))
+            self._fail_service_soak_test("LIGHT ERROR DURING SOAK", e)
+        except InspectionResultError as e:
+            self._save_plc_error_event(
+                event_type="SOAK_TEST_INSPECTION_ERROR",
+                error_code=40,
+                message="Soak inspection result generation failed",
+                exception=e,
+            )
+            self.plc.set_error(code=40, detail=str(e))
+            self._fail_service_soak_test("INSPECTION RESULT ERROR", e)
+        except Exception as e:
+            self._save_plc_error_event(
+                event_type="SOAK_TEST_INSPECTION_ERROR",
+                error_code=41,
+                message="Unexpected exception during soak inspection",
+                exception=e,
+            )
+            self.plc.set_error(code=41, detail=str(e))
+            self._fail_service_soak_test("INSPECTION EXCEPTION", e)
 
     def _run_service_soak_tick(self, frame_gray8, vis_bgr):
         if not self.soak_test.active:
@@ -916,15 +1063,53 @@ class VisionApp:
                 self.soak_test.defer("WAITING: PLC/VISION BUSY", 0.5)
                 return
             if status != 0 or int(snapshot.get("result", 0)) != 0:
-                self._fail_service_soak_test(
-                    f"UNEXPECTED PRE-CYCLE STATE: D201={status} "
-                    f"D202={int(snapshot.get('result', 0))}"
+                self.soak_test.defer(
+                    f"WAITING FOR READY: D201={status} "
+                    f"D202={int(snapshot.get('result', 0))}",
+                    0.5,
                 )
                 return
             if frame_gray8 is None or vis_bgr is None:
                 self.soak_test.defer("WAITING FOR CAMERA FRAME", 0.2)
                 return
 
+            # A product judgement is invalid until the tracker has reacquired
+            # after the previous full Vision Reset. Keep the soak session alive,
+            # log the wait periodically, and never count this as product NG.
+            if not self._service_soak_tracking_ready():
+                if self._soak_tracking_wait_started_epoch <= 0:
+                    self._soak_tracking_wait_started_epoch = now
+                log_interval = max(
+                    1.0,
+                    float(getattr(self.soak_test, "tracking_wait_log_sec", 5.0)),
+                )
+                if (now - self._soak_tracking_wait_log_epoch) >= log_interval:
+                    self._soak_tracking_wait_log_epoch = now
+                    self.soak_test.record_external_event(
+                        "WAIT_TRACKING",
+                        {
+                            "wait_sec": round(
+                                now - self._soak_tracking_wait_started_epoch,
+                                3,
+                            ),
+                            "tracking_stable": bool(st.tracking_stable),
+                            "stable_frame_count": int(st.stable_frame_count),
+                            "required_frames": int(
+                                getattr(self.soak_test, "tracking_stable_frames", 3)
+                            ),
+                            "health": self._get_runtime_health_snapshot(),
+                        },
+                    )
+                st.status = (
+                    "SOAK WAIT: TRACKING STABLE "
+                    f"{st.stable_frame_count}/"
+                    f"{int(getattr(self.soak_test, 'tracking_stable_frames', 3))}"
+                )
+                self.soak_test.defer("WAITING FOR TRACKING STABILITY", 0.2)
+                return
+
+            self._soak_tracking_wait_started_epoch = 0.0
+            self._soak_tracking_wait_log_epoch = 0.0
             self.soak_test.begin_cycle(
                 plc_snapshot=snapshot,
                 health=self._get_runtime_health_snapshot(),
@@ -934,63 +1119,79 @@ class VisionApp:
                 st.status = f"SOAK CYCLE {self.soak_test.cycle_count}: INSPECT BUSY"
                 st.last_overall_ok = None
                 st.last_results = None
-                started = time.perf_counter()
-                self._run_spot_inspect_once(
-                    frame_gray8,
-                    vis_bgr,
-                    avg5=bool(self.runtime_cfg.get("plc_inspect_avg5", False)),
-                    trigger="SOAK",
-                )
-                elapsed_ms = int((time.perf_counter() - started) * 1000.0)
-                overall_ok = self._validate_service_soak_result()
-                self.plc.set_done(ok=overall_ok, elapsed_ms=elapsed_ms)
-                self._save_normal_reference_if_due(
-                    overall_ok=overall_ok,
-                    elapsed_ms=elapsed_ms,
-                )
-                st.status = (
-                    f"SOAK CYCLE {self.soak_test.cycle_count}: OK"
-                    if overall_ok
-                    else f"SOAK CYCLE {self.soak_test.cycle_count}: NG"
-                )
-                self.soak_test.complete_inspection(
-                    overall_ok=overall_ok,
-                    elapsed_ms=elapsed_ms,
-                    plc_snapshot=self.plc.get_state_snapshot(),
-                    inspection_summary={
-                        "overall_ok": overall_ok,
-                        "roi_results": self._compact_inspection_result_summary(),
-                    },
-                    health=self._get_runtime_health_snapshot(),
-                )
+
+                spot_cfg = self._get_spot_light_cfg()
+                if bool(spot_cfg.get("enabled", False)):
+                    # Service soak must not become a nested camera consumer.
+                    # Ramp/settle the light, then wait for fresh frames delivered
+                    # by the normal main loop before judging the product.
+                    self._spot_prearm(
+                        trigger="SOAK_PREPARE",
+                        flush_frames=False,
+                    )
+                    required_frames = max(
+                        1,
+                        int(getattr(self.soak_test, "fresh_frame_count", 4)),
+                    )
+                    settle_sec = max(
+                        0.0,
+                        float(spot_cfg.get("inspect_settle_ms", 0)) / 1000.0,
+                    )
+                    self.soak_test.prepare_fresh_frame_wait(
+                        start_frame_seq=self._camera_frame_seq,
+                        required_frames=required_frames,
+                        settle_sec=settle_sec,
+                    )
+                    st.status = (
+                        f"SOAK CYCLE {self.soak_test.cycle_count}: "
+                        f"WAIT FRESH FRAME {required_frames}"
+                    )
+                else:
+                    self._execute_service_soak_inspection(
+                        frame_gray8,
+                        vis_bgr,
+                        allow_camera_flush=False,
+                    )
             except LightCommunicationError as e:
                 st.light_error_latched = True
                 self._save_plc_error_event(
                     event_type="SOAK_TEST_RUNTIME_ERROR",
                     error_code=21,
-                    message="Light communication failed during soak inspection",
+                    message="Light communication failed during soak prearm",
                     exception=e,
                 )
                 self.plc.set_error(code=21, detail=str(e))
-                self._fail_service_soak_test("LIGHT ERROR DURING SOAK", e)
-            except InspectionResultError as e:
-                self._save_plc_error_event(
-                    event_type="SOAK_TEST_INSPECTION_ERROR",
-                    error_code=40,
-                    message="Soak inspection result generation failed",
-                    exception=e,
-                )
-                self.plc.set_error(code=40, detail=str(e))
-                self._fail_service_soak_test("INSPECTION RESULT ERROR", e)
+                self._fail_service_soak_test("LIGHT PREARM ERROR DURING SOAK", e)
             except Exception as e:
                 self._save_plc_error_event(
                     event_type="SOAK_TEST_INSPECTION_ERROR",
                     error_code=41,
-                    message="Unexpected exception during soak inspection",
+                    message="Unexpected exception during soak preparation",
                     exception=e,
                 )
                 self.plc.set_error(code=41, detail=str(e))
-                self._fail_service_soak_test("INSPECTION EXCEPTION", e)
+                self._fail_service_soak_test("SOAK PREPARATION EXCEPTION", e)
+            return
+
+        if self.soak_test.phase == "WAIT_FRESH_FRAME":
+            if frame_gray8 is None or vis_bgr is None:
+                self.soak_test.defer("WAITING FOR FRESH CAMERA FRAME", 0.1)
+                return
+            if not bool(getattr(st, "spot_armed", False)):
+                self._fail_service_soak_test("SPOT PREARM LOST BEFORE INSPECTION")
+                return
+            if not self.soak_test.is_fresh_frame_ready(self._camera_frame_seq):
+                return
+            if not self._service_soak_tracking_ready():
+                self._fail_service_soak_test(
+                    "TRACKING LOST DURING SOAK LIGHT PREARM"
+                )
+                return
+            self._execute_service_soak_inspection(
+                frame_gray8,
+                vis_bgr,
+                allow_camera_flush=False,
+            )
             return
 
         if self.soak_test.phase == "WAIT_RESET":
@@ -1265,7 +1466,7 @@ class VisionApp:
 
         return True
 
-    def _spot_prearm(self, trigger="PLC"):
+    def _spot_prearm(self, trigger="PLC", flush_frames: bool = True):
         st = self.state
         cfg = self._get_spot_light_cfg()
 
@@ -1304,7 +1505,8 @@ class VisionApp:
         if int(cfg["pre_ready_settle_ms"]) > 0:
             time.sleep(float(cfg["pre_ready_settle_ms"]) / 1000.0)
 
-        self._flush_camera_frames(int(cfg["pre_ready_flush_frames"]))
+        if bool(flush_frames):
+            self._flush_camera_frames(int(cfg["pre_ready_flush_frames"]))
 
         st.spot_armed = True
         st.spot_armed_ts = time.time()
@@ -1380,7 +1582,14 @@ class VisionApp:
 
                 st.status = "LIGHT COMM ERROR: RESET REQUIRED"
 
-    def _run_spot_inspect_once(self, frame_gray8, vis_bgr, avg5=False, trigger="PLC"):
+    def _run_spot_inspect_once(
+        self,
+        frame_gray8,
+        vis_bgr,
+        avg5=False,
+        trigger="PLC",
+        allow_camera_flush: bool = True,
+    ):
         st = self.state
         cfg = self._get_spot_light_cfg()
 
@@ -1392,15 +1601,19 @@ class VisionApp:
         try:
             if use_spot:
                 if not bool(getattr(st, "spot_armed", False)):
-                    self._spot_prearm(trigger=f"{trigger}_DIRECT")
+                    self._spot_prearm(
+                        trigger=f"{trigger}_DIRECT",
+                        flush_frames=allow_camera_flush,
+                    )
 
-                if int(cfg["inspect_settle_ms"]) > 0:
-                    time.sleep(float(cfg["inspect_settle_ms"]) / 1000.0)
+                if bool(allow_camera_flush):
+                    if int(cfg["inspect_settle_ms"]) > 0:
+                        time.sleep(float(cfg["inspect_settle_ms"]) / 1000.0)
 
-                g, v = self._flush_camera_frames(int(cfg["inspect_flush_frames"]))
-                if g is not None and v is not None:
-                    inspect_frame_gray8 = g
-                    inspect_vis_bgr = v
+                    g, v = self._flush_camera_frames(int(cfg["inspect_flush_frames"]))
+                    if g is not None and v is not None:
+                        inspect_frame_gray8 = g
+                        inspect_vis_bgr = v
 
             run_inspect_once(
                 cam=self.cam,
@@ -2022,6 +2235,7 @@ class VisionApp:
         if recovered_frame is None:
             raise RuntimeError("camera reopened but no frame was received")
 
+        self.state.camera_read_blocked = False
         self.state.camera_error_grace_until = (
             time.time()
             + recovery_cfg["camera_grace_sec"]
@@ -2449,6 +2663,7 @@ class VisionApp:
             try:
                 self._restart_camera_checked()
                 st.camera_error_latched = False
+                st.camera_read_blocked = False
             except Exception as e:
                 st.camera_error_latched = True
 
@@ -2480,6 +2695,7 @@ class VisionApp:
                 return False
 
         st.camera_error_latched = False
+        st.camera_read_blocked = False
         st.light_error_latched = False
 
         self.plc.reset_to_ready(
@@ -3218,6 +3434,7 @@ class VisionApp:
             self._last_camera_read_ms = elapsed_ms
             self._max_camera_read_ms = max(self._max_camera_read_ms, elapsed_ms)
             st = self.state
+            st.camera_read_blocked = True
 
             if not st.camera_error_latched:
                 st.camera_error_latched = True
@@ -3261,6 +3478,7 @@ class VisionApp:
         try:
             self.cam.open()
             st.camera_error_latched = False
+            st.camera_read_blocked = False
             recovery_cfg = self._get_plc_recovery_cfg()
             st.camera_error_grace_until = (
                 time.time()
@@ -3270,6 +3488,7 @@ class VisionApp:
         except Exception as e:
             startup_error = True
             st.camera_error_latched = True
+            st.camera_read_blocked = True
             st.status = f"CAMERA INIT ERROR: {e}"
 
             self._save_plc_error_event(
@@ -3369,17 +3588,15 @@ class VisionApp:
             self._poll_plc_comm_events()
             self._poll_plc_error_test_request()
 
-            frame = self._read_frame()
+            frame = None if st.camera_read_blocked else self._read_frame()
 
             if frame is None:
                 now = time.time()
                 no_frame_sec = now - last_ok_frame_time
 
-                # 영상이 없어도 PLC 명령과 조명 타임아웃은 계속 처리
-                self._run_plc_inspect_tick(None, None)
-                self._spot_timeout_tick()
-                self._run_service_soak_tick(None, None)
-
+                # A real camera failure must be latched before the soak/PLC
+                # callbacks run. Otherwise the next loop can enter another native
+                # cap.read() block before the service test notices the fault.
                 if (
                     no_frame_sec > frame_timeout_sec
                     and now >= st.camera_error_grace_until
@@ -3390,6 +3607,7 @@ class VisionApp:
                     )
 
                     st.camera_error_latched = True
+                    st.camera_read_blocked = True
 
                     self._save_plc_error_event(
                         event_type="VISION_RUNTIME_ERROR",
@@ -3410,6 +3628,13 @@ class VisionApp:
                     and not st.camera_error_latched
                 ):
                     st.status = "WAITING FOR CAMERA FRAME"
+
+                # 영상이 없어도 PLC reset/종료 명령과 UI는 계속 처리한다.
+                # camera_read_blocked가 True인 동안에는 다음 루프에서
+                # cap.read()를 다시 호출하지 않는다.
+                self._run_plc_inspect_tick(None, None)
+                self._spot_timeout_tick()
+                self._run_service_soak_tick(None, None)
 
                 if last_camera_vis is not None:
                     no_frame_vis = last_camera_vis.copy()
@@ -3629,11 +3854,19 @@ def main(argv=None):
 
     try:
         _acquire_single_instance_lock()
+        fault_log_path = _enable_runtime_fault_log()
+        if fault_log_path:
+            print(f"[RUNTIME LOG] {fault_log_path}")
         app = VisionApp(startup_mode=resolved_startup_mode)
         app.run()
+        _write_runtime_marker("NORMAL APP RETURN")
 
     except Exception as e:
         print(f"[FATAL] vision application terminated: {e}")
+        traceback.print_exc()
+        _write_runtime_marker(
+            f"UNHANDLED EXCEPTION {type(e).__name__}: {e}"
+        )
 
         if app is not None:
             try:

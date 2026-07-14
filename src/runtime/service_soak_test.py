@@ -32,6 +32,9 @@ class ServiceSoakTest:
         self.start_delay_sec = max(0.2, float(cfg.get("start_delay_sec", 1.0)))
         self.keep_days = max(1, int(cfg.get("keep_days", 14)))
         self.keep_sessions = max(2, int(cfg.get("keep_sessions", 20)))
+        self.tracking_stable_frames = max(1, int(cfg.get("tracking_stable_frames", 3)))
+        self.tracking_wait_log_sec = max(1.0, float(cfg.get("tracking_wait_log_sec", 5.0)))
+        self.fresh_frame_count = max(1, int(cfg.get("fresh_frame_count", 4)))
 
         rel_dir = str(cfg.get("log_dir", "soak_tests") or "soak_tests").strip()
         self.log_root = (
@@ -56,6 +59,9 @@ class ServiceSoakTest:
         self.last_elapsed_ms = 0
         self.last_message = ""
         self.stop_reason = ""
+        self.fresh_frame_start_seq = 0
+        self.fresh_frame_target_seq = 0
+        self.fresh_frame_settle_until = 0.0
         self.log_path = ""
         self.summary_path = ""
         self._fp = None
@@ -154,6 +160,9 @@ class ServiceSoakTest:
         self.last_elapsed_ms = 0
         self.last_message = "STARTED"
         self.stop_reason = ""
+        self.fresh_frame_start_seq = 0
+        self.fresh_frame_target_seq = 0
+        self.fresh_frame_settle_until = 0.0
 
         self._write(
             "SESSION_START",
@@ -163,6 +172,9 @@ class ServiceSoakTest:
                     "reset_delay_sec": self.reset_delay_sec,
                     "start_delay_sec": self.start_delay_sec,
                     "source": "SERVICE_LOCAL_COMMAND_PATH",
+                    "tracking_stable_frames": self.tracking_stable_frames,
+                    "tracking_wait_log_sec": self.tracking_wait_log_sec,
+                    "fresh_frame_count": self.fresh_frame_count,
                 },
                 "plc_state": plc_snapshot,
                 "vision_state": vision_snapshot,
@@ -184,6 +196,38 @@ class ServiceSoakTest:
             },
         )
 
+    def prepare_fresh_frame_wait(
+        self,
+        start_frame_seq: int,
+        required_frames: int,
+        settle_sec: float = 0.0,
+    ):
+        required = max(1, int(required_frames))
+        self.fresh_frame_start_seq = int(start_frame_seq)
+        self.fresh_frame_target_seq = self.fresh_frame_start_seq + required
+        self.fresh_frame_settle_until = time.time() + max(0.0, float(settle_sec))
+        self.phase = "WAIT_FRESH_FRAME"
+        self.next_action_epoch = time.time()
+        self.last_message = (
+            f"CYCLE {self.cycle_count} WAIT FRESH FRAME "
+            f"{required} (TARGET={self.fresh_frame_target_seq})"
+        )
+        self._write(
+            "WAIT_FRESH_FRAME",
+            {
+                "start_frame_seq": self.fresh_frame_start_seq,
+                "target_frame_seq": self.fresh_frame_target_seq,
+                "required_frames": required,
+                "settle_until_epoch": self.fresh_frame_settle_until,
+            },
+        )
+
+    def is_fresh_frame_ready(self, current_frame_seq: int) -> bool:
+        return bool(
+            int(current_frame_seq) >= int(self.fresh_frame_target_seq)
+            and time.time() >= float(self.fresh_frame_settle_until)
+        )
+
     def complete_inspection(
         self,
         overall_ok: bool,
@@ -192,6 +236,9 @@ class ServiceSoakTest:
         inspection_summary: Dict[str, Any],
         health: Dict[str, Any],
     ):
+        self.fresh_frame_start_seq = 0
+        self.fresh_frame_target_seq = 0
+        self.fresh_frame_settle_until = 0.0
         self.last_result = "OK" if overall_ok else "NG"
         self.last_elapsed_ms = int(elapsed_ms)
         if overall_ok:
@@ -222,6 +269,9 @@ class ServiceSoakTest:
         source: str = "SERVICE_LOCAL",
     ):
         self.phase = "WAIT_INSPECT"
+        self.fresh_frame_start_seq = 0
+        self.fresh_frame_target_seq = 0
+        self.fresh_frame_settle_until = 0.0
         self.last_cycle_finished_epoch = time.time()
         target = self.last_cycle_started_epoch + self.interval_sec
         self.next_action_epoch = max(time.time() + 0.1, target)
@@ -303,6 +353,7 @@ class ServiceSoakTest:
                 pass
             self._fp = None
 
+        self.active = False
         summary = self.summary()
         try:
             temp_path = self.summary_path + ".tmp"
@@ -312,7 +363,6 @@ class ServiceSoakTest:
         except Exception as e:
             print(f"[SOAK TEST] summary save failed: {e}")
 
-        self.active = False
         return True
 
     def summary(self) -> Dict[str, Any]:
@@ -335,6 +385,9 @@ class ServiceSoakTest:
             ) if self.started_epoch > 0 else 0.0,
             "next_in_sec": remaining,
             "interval_sec": float(self.interval_sec),
+            "tracking_stable_frames": int(self.tracking_stable_frames),
+            "fresh_frame_count": int(self.fresh_frame_count),
+            "fresh_frame_target_seq": int(self.fresh_frame_target_seq),
             "cycle_count": int(self.cycle_count),
             "ok_count": int(self.ok_count),
             "ng_count": int(self.ng_count),
