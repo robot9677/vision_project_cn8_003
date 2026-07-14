@@ -86,7 +86,7 @@
         {
           "tool": "measure.mean_raw_range",
           "params": {
-            "max_mean_raw": 150.0
+            "max_mean_raw": 185.0
           }
     }
       ],
@@ -121,19 +121,20 @@
           "params": {
             "blur": 3,
 
-            "connector_bright_thresh": 150,
-            "connector_min_area": 3000,
+            "connector_bright_thresh": 220,
+            "connector_min_area": 20000,
+            "connector_max_area": 45000,
             "connector_min_w": 70,
             "connector_min_h": 90,
             "connector_close": 5,
 
-            "tip_bright_thresh": 120,
+            "tip_bright_thresh": 210,
             "tip_left_min_coverage": 0.40,
 
             "tip_band_x0_ratio": 0.00,
-            "tip_band_y0_ratio": 0.72,
+            "tip_band_y0_ratio": 0.86,
             "tip_band_w_ratio": 0.65,
-            "tip_band_h_ratio": 0.20,
+            "tip_band_h_ratio": 0.10,
 
             "tip_left_gap_min": 1.0,
             "tip_left_gap_max": 15.0,
