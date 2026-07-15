@@ -35,7 +35,7 @@
           "capture_width": 3840,
           "capture_height": 2160,
           "capture_fps": 30,
-          "flip_method": 2,
+          "flip_method": 1,
           "pipeline_type": "nvargus_bgr",
           "camera_profile": "default"
         }
