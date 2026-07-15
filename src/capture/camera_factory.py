@@ -70,7 +70,7 @@ def build_gst_pipeline(cam_cfg: Dict[str, Any]) -> str:
         cap_height = int(cam_cfg.get("capture_height", out_height))
         cap_fps = int(cam_cfg.get("capture_fps", out_fps))
 
-        flip_method = int(cam_cfg.get("flip_method", 0))
+        flip_method = int(cam_cfg.get("flip_method", 2))
 
         return (
             f"nvarguscamerasrc sensor-id={sensor_id} ! "
