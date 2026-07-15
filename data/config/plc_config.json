@@ -79,7 +79,7 @@
       "keep_sessions": 20,
       "tracking_stable_frames": 3,
       "tracking_wait_log_sec": 5.0,
-      "fresh_frame_count": 4
+      "fresh_frame_count": 30
     }
   },
   "diagnostics": {
