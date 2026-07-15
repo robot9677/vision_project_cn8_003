@@ -2067,24 +2067,6 @@ class VisionApp:
                 use_cache=False,
                 cache_every_n=1,
             )
-
-            # ROI6 튜닝 임시 저장: 모든 검사 결과 저장
-            if st.last_overall_ok is not None:
-                save_key = ord("K") if bool(st.last_overall_ok) else ord("N")
-
-                consumed, save_msg = handle_sample_keys(
-                    save_key,
-                    inspect_frame_gray8,
-                    inspect_vis_bgr,
-                    edit_mode=False,
-                    roi_mgr=self.roi_mgr,
-                    data_dir=DATA_DIR,
-                    snapshot_keep=50,
-                    last_results=st.last_results,
-                )
-
-                if consumed and save_msg:
-                    print(save_msg)
                     
             self._save_all_inspection_capture(
                 inspect_frame_gray8,

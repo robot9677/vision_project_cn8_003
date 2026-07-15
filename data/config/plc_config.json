@@ -90,8 +90,8 @@
     "keep_days": 14,
     "error_keep_files": 60,
     "test_keep_files": 120,
-    "normal_keep_files": 5,
-    "normal_sample_every": 20,
+    "normal_keep_files": 50,
+    "normal_sample_every": 1,
     "prune_interval_sec": 30.0,
     "capture_all_inspections": true,
     "capture_all_keep": 50
