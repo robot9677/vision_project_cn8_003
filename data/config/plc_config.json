@@ -17,7 +17,12 @@
     "command": 200,
     "status": 201,
     "result": 202,
-    "heartbeat": 203
+    "heartbeat": 203,
+    "vision_ready": 204
+  },
+  "vision_ready": {
+  "ready_value": 100,
+  "not_ready_value": 0
   },
   "heartbeat": {
     "interval_sec": 0.5,

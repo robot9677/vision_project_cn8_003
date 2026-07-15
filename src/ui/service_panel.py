@@ -458,6 +458,11 @@ class ServicePanel:
                 _safe_int(plc_snapshot.get("heartbeat")),
                 { _safe_int(plc_snapshot.get("heartbeat")): "MOVING" if heartbeat_moving else "STOPPED" },
             ),
+            (
+                "D204 READY",
+                _safe_int(plc_snapshot.get("vision_ready")),
+                {0: "NOT READY", 100: "READY"},
+            ),
         ]
         for label, value, names in regs:
             if label.startswith("D201") and value == 3:
@@ -589,7 +594,28 @@ class ServicePanel:
                 "action": f"test:logic:{error_type}",
                 "enabled": logic_ready,
             })
-        y += btn_h + 22
+        y += btn_h + 18
+
+        d204_value = _safe_int(plc_snapshot.get("vision_ready"))
+        d204_label = (
+            "D201/202=0 + D204=100 (ACTIVE)"
+            if d204_value == 100
+            else "D201/202=0 + D204=100"
+        )
+        d204_rect = (cx, y, right, y + 32)
+        _draw_button(
+            img,
+            d204_rect,
+            d204_label,
+            logic_ready,
+            (45, 115, 85),
+        )
+        self._buttons.append({
+            "rect": d204_rect,
+            "action": "plc:vision_ready:100",
+            "enabled": logic_ready,
+        })
+        y += 44
 
         _put_text(img, "SAFE RECOVERY TEST", cx, y, 0.46, (0, 220, 255), 1)
         y += 8

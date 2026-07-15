@@ -251,6 +251,9 @@ class AppState:
     # PLC shutdown
     plc_shutdown_started: bool = False
 
+    # PLC ready
+    plc_vision_ready: bool = False
+
     # Vision error latch
     camera_error_latched: bool = False
     camera_read_blocked: bool = False
@@ -595,6 +598,7 @@ class VisionApp:
             print("[WARN] failed to reset tracker state on mode change:", e)
 
         if st.edit_mode:
+            self._set_plc_vision_ready(False, "EDIT_MODE")
             if self.soak_test.active:
                 self._stop_service_soak_test("EDIT_MODE_ENTERED")
             st.status = "EDIT MODE"
@@ -662,6 +666,60 @@ class VisionApp:
         if action == "soak:stop":
             ok, message = self._stop_service_soak_test("USER_STOP")
             self.service_panel.set_message(message, 3.0)
+            return
+
+        if action == "plc:vision_ready:100":
+            try:
+                snapshot = self.plc.get_state_snapshot()
+                serial_open = bool(snapshot.get("serial_open", False))
+                comm_fault = bool(snapshot.get("comm_fault_active", False))
+
+                if not serial_open or comm_fault:
+                    self.service_panel.set_message(
+                        "D204 TEST BLOCKED: PLC LINK NOT READY",
+                        3.0,
+                    )
+                    return
+
+                self.plc.set_service_vision_ready()
+                self.state.plc_vision_ready = True
+
+                updated = self.plc.get_state_snapshot()
+                d201 = int(updated.get("status", -1))
+                d202 = int(updated.get("result", -1))
+                d204 = int(updated.get("vision_ready", -1))
+
+                try:
+                    self.plc.trace_application_event(
+                        event="SERVICE_D204_READY_100",
+                        summary=(
+                            "service panel manual set "
+                            f"D201={d201} D202={d202} D204={d204}"
+                        ),
+                        extra={
+                            "D201": d201,
+                            "D202": d202,
+                            "D204": d204,
+                            "source": "SERVICE_UI",
+                        },
+                    )
+                except Exception:
+                    pass
+
+                self.service_panel.set_message(
+                    f"D201={d201} D202={d202} D204={d204}",
+                    3.0,
+                )
+                self.state.status = (
+                    f"SERVICE TEST: D201={d201} D202={d202} D204={d204}"
+                )
+
+            except Exception as e:
+                print(f"[PLC READY TEST] D204=100 failed: {e}")
+                self.service_panel.set_message(
+                    f"D204 TEST FAILED: {e}",
+                    3.0,
+                )
             return
 
         if action == "test:recovery:camera":
@@ -797,6 +855,24 @@ class VisionApp:
             return float(age) <= max(0.1, float(max_age_sec))
         except Exception:
             return False
+        
+    def _set_plc_vision_ready(self, ready: bool, reason: str = ""):
+        ready = bool(ready)
+
+        if self.state.plc_vision_ready == ready:
+            return
+
+        try:
+            self.plc.set_vision_ready(ready)
+            self.state.plc_vision_ready = ready
+
+            print(
+                f"[PLC READY] D204={100 if ready else 0} "
+                f"reason={reason or '-'}"
+            )
+
+        except Exception as e:
+            print(f"[PLC READY] update failed: {e}")
 
     def _start_camera_recovery_demo(
         self,
@@ -955,6 +1031,7 @@ class VisionApp:
         st = self.state
 
         if state == "RECOVERING":
+            self._set_plc_vision_ready(False, "CAMERA_RECOVERING")
             if previous != "RECOVERING":
                 try:
                     snapshot = self.plc.get_state_snapshot()
@@ -4149,6 +4226,37 @@ class VisionApp:
                     break
                 continue
 
+            try:
+                plc_snapshot = self.plc.get_state_snapshot()
+                plc_healthy = bool(
+                    not plc_required
+                    or (
+                        bool(plc_snapshot.get("serial_open", False))
+                        and not bool(
+                            plc_snapshot.get("comm_fault_active", False)
+                        )
+                        and int(plc_snapshot.get("status", 0)) not in (3, 8)
+                        and int(plc_snapshot.get("error_code", 0)) == 0
+                        and int(plc_snapshot.get("command", 0)) not in (8, 9)
+                    )
+                )
+            except Exception:
+                plc_healthy = not plc_required
+
+            vision_ready = bool(
+                not st.edit_mode
+                and not st.camera_error_latched
+                and not st.light_error_latched
+                and not st.plc_shutdown_started
+                and not self._camera_is_recovering()
+                and plc_healthy
+            )
+
+            self._set_plc_vision_ready(
+                vision_ready,
+                "RUN_HEALTHY_FRAME" if vision_ready else "NOT_READY",
+            )
+
             # edit / run draw
             if st.edit_mode:
                 self.editor.update(vis)
@@ -4223,6 +4331,7 @@ class VisionApp:
             pass
 
         try:
+            self._set_plc_vision_ready(False, "APP_EXIT")
             self.plc.stop()
         except Exception as e:
             print("[PLC] stop failed:", e)

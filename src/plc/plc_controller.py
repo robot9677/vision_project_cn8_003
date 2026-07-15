@@ -77,6 +77,7 @@ class DisabledPlcController:
             "status": 0,
             "result": 0,
             "heartbeat": 0,
+            "vision_ready": 0,
             "error_code": 0,
             "error_detail": "",
             "last_inspect_at": "",
@@ -115,6 +116,12 @@ class DisabledPlcController:
 
     def get_recent_events(self, limit: int = 20):
         return []
+    
+    def set_vision_ready(self, ready: bool):
+        pass
+
+    def set_service_vision_ready(self):
+        pass
 
 
 class ModbusRtuSlaveController:
@@ -143,6 +150,7 @@ class ModbusRtuSlaveController:
         modbus_cfg = cfg.get("modbus", {}) or {}
         regs_cfg = cfg.get("registers", {}) or {}
         heartbeat_cfg = cfg.get("heartbeat", {}) or {}
+        vision_ready_cfg = cfg.get("vision_ready", {}) or {}
 
         self.port = str(serial_cfg.get("port", "/dev/ttyUSB0"))
         self.baudrate = int(serial_cfg.get("baudrate", 9600))
@@ -163,6 +171,15 @@ class ModbusRtuSlaveController:
         self.reg_result = int(regs_cfg.get("result", 202))
         self.reg_heartbeat = int(regs_cfg.get("heartbeat", 203))
 
+        self.reg_vision_ready = int(regs_cfg.get("vision_ready", 204))
+
+        self.vision_ready_value = int(
+            vision_ready_cfg.get("ready_value", 100)
+        )
+        self.vision_not_ready_value = int(
+            vision_ready_cfg.get("not_ready_value", 0)
+        )
+
         if not 1 <= self.slave_id <= 247:
             raise ValueError(
                 f"modbus slave_id must be 1..247: {self.slave_id}"
@@ -173,6 +190,7 @@ class ModbusRtuSlaveController:
             self.reg_status,
             self.reg_result,
             self.reg_heartbeat,
+            self.reg_vision_ready,
         ]
 
         if any(reg < 0 or reg > 0xFFFF for reg in register_addresses):
@@ -190,6 +208,7 @@ class ModbusRtuSlaveController:
             self.reg_status,
             self.reg_result,
             self.reg_heartbeat,
+            self.reg_vision_ready,
         )
 
         self.register_count = max_reg + 1
@@ -439,6 +458,7 @@ class ModbusRtuSlaveController:
                 "D201": int(self.regs[self.reg_status]),
                 "D202": int(self.regs[self.reg_result]),
                 "D203": int(self.regs[self.reg_heartbeat]),
+                "D204": int(self.regs[self.reg_vision_ready]),
             }
 
         raw = bytes(frame or b"")
@@ -543,6 +563,8 @@ class ModbusRtuSlaveController:
         self._trace_failed = False
         self._start_trace()
         self.reset_to_ready(reset_heartbeat=True)
+
+        self.set_vision_ready(False)
 
         self._stop.clear()
         self._last_reconnect_ts = 0.0
@@ -711,6 +733,7 @@ class ModbusRtuSlaveController:
             return False
         
     def stop(self):
+        self.set_vision_ready(False)
         self._stop.set()
 
         # read() 대기를 즉시 해제한 뒤 스레드를 종료한다.
@@ -868,6 +891,7 @@ class ModbusRtuSlaveController:
         )
 
     def set_error(self, code: int = 99, detail: str = ""):
+        self.set_vision_ready(False)
         # D202의 기존 OK/NG 값은 유지하고 D201만 Error로 변경
         self.last_error_code = int(code)
         self.last_error_detail = str(detail or "")
@@ -894,9 +918,39 @@ class ModbusRtuSlaveController:
         )
 
     def set_shutdown(self):
+        self.set_vision_ready(False)
         # 종료 상태는 D201=8 하나만 사용
         self._set_reg(self.reg_status, self.STATUS_SHUTDOWN)
         print("[PLC] shutdown status set: D201=8")
+
+    def set_vision_ready(self, ready: bool):
+        value = (
+            self.vision_ready_value
+            if bool(ready)
+            else self.vision_not_ready_value
+        )
+
+        current = self._get_reg(self.reg_vision_ready)
+        if current == value:
+            return
+
+        self._set_reg(self.reg_vision_ready, value)
+        print(f"[PLC] vision ready D{self.reg_vision_ready}={value}")
+
+    def set_service_vision_ready(self):
+        """Service-only PLC handshake test.
+
+        Clear D201/D202 first, then assert D204=100. This is intentionally
+        separate from the production readiness path.
+        """
+        self._set_reg(self.reg_status, self.STATUS_READY)
+        self._set_reg(self.reg_result, self.RESULT_NONE)
+        self.set_vision_ready(True)
+        print(
+            f"[PLC SERVICE] D{self.reg_status}=0 "
+            f"D{self.reg_result}=0 "
+            f"D{self.reg_vision_ready}={self.vision_ready_value}"
+        )
 
     def get_state_snapshot(self) -> Dict[str, Any]:
         return {
@@ -920,6 +974,7 @@ class ModbusRtuSlaveController:
             "last_tx_summary": str(self._last_tx_summary),
             "last_rx_hex": str(self._last_rx_hex),
             "last_tx_hex": str(self._last_tx_hex),
+            "vision_ready": self._get_reg(self.reg_vision_ready),
             "heartbeat_last_change_epoch": float(self._last_heartbeat_ts)
             if self._last_heartbeat_ts > 0
             else None,
@@ -1161,6 +1216,7 @@ class ModbusRtuSlaveController:
             self.reg_status,
             self.reg_result,
             self.reg_heartbeat,
+            self.reg_vision_ready,
         }
 
         requested_registers = range(
