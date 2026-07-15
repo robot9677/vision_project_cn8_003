@@ -253,6 +253,7 @@ class AppState:
 
     # PLC ready
     plc_vision_ready: bool = False
+    plc_ready_consumed: bool = False
 
     # Vision error latch
     camera_error_latched: bool = False
@@ -681,6 +682,8 @@ class VisionApp:
                     )
                     return
 
+                # SERVICE test re-arms the one-shot ready handshake.
+                self.state.plc_ready_consumed = False
                 self.plc.set_service_vision_ready()
                 self.state.plc_vision_ready = True
 
@@ -870,6 +873,11 @@ class VisionApp:
         except Exception as e:
             print(f"[PLC READY] update failed: {e}")
 
+    def _consume_plc_vision_ready(self, reason: str = "D200_PREPARE"):
+        """Clear the one-shot D204 ready signal when D200=1 is received."""
+        self.state.plc_ready_consumed = True
+        self._set_plc_vision_ready(False, reason)
+
     def _start_camera_recovery_demo(
         self,
         request_id: str,
@@ -1016,6 +1024,8 @@ class VisionApp:
 
         if command_value in (1, 2):
             command = self.plc.poll_command()
+            if command == "prepare":
+                self._consume_plc_vision_ready("D200_PREPARE_RECEIVED")
             if command in ("prepare", "inspect"):
                 self._pending_plc_camera_command = command
             self.plc.set_busy()
@@ -3207,6 +3217,9 @@ class VisionApp:
         if cmd is None:
             return
 
+        if cmd == "prepare":
+            self._consume_plc_vision_ready("D200_PREPARE_RECEIVED")
+
         if cmd == "reset":
             self._handle_plc_reset()
             return
@@ -4244,6 +4257,7 @@ class VisionApp:
                 and not st.camera_error_latched
                 and not st.light_error_latched
                 and not st.plc_shutdown_started
+                and not st.plc_ready_consumed
                 and not self._camera_is_recovering()
                 and plc_healthy
             )
