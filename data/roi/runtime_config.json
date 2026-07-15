@@ -32,8 +32,8 @@
     "global_reacquire_interval": 15
   },
   "inspect_logging": {
-    "ok_full_every": 1,
-    "soak_ok_full_every": 1,
+    "ok_full_every": 20,
+    "soak_ok_full_every": 120,
     "max_full_runs": 30,
     "summary_keep": 200
   }
