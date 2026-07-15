@@ -3217,8 +3217,13 @@ class VisionApp:
         if cmd is None:
             return
 
-        if cmd == "prepare":
-            self._consume_plc_vision_ready("D200_PREPARE_RECEIVED")
+        if cmd in ("prepare", "inspect"):
+            reason = (
+                "D200_PREPARE_RECEIVED"
+                if cmd == "prepare"
+                else "D200_INSPECT_RECEIVED"
+            )
+            self._consume_plc_vision_ready(reason)
 
         if cmd == "reset":
             self._handle_plc_reset()
