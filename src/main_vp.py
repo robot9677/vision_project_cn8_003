@@ -41,7 +41,11 @@ from ui.hud import draw_mode_indicator, draw_dev_hud
 from ui.pose_guide import draw_pose_message
 from ui.service_panel import ServicePanel
 from runtime.product_profile_loader import load_product_profile
-from data_io.sample_capture import handle_sample_keys, prune_snapshots
+from data_io.sample_capture import (
+    handle_sample_keys,
+    prune_snapshots,
+    save_inspection_capture,
+)
 from ui.control_bar import render_control_bar, key_to_cmd, button_id_to_cmd
 from app.command_executor import execute_command
 from inspection.inspect_service import run_inspect_once
@@ -1949,6 +1953,67 @@ class VisionApp:
 
                 st.status = "LIGHT COMM ERROR: RESET REQUIRED"
 
+    def _save_all_inspection_capture(
+        self,
+        frame_gray8,
+        *,
+        trigger: str,
+    ) -> str:
+        diag_cfg = self.plc_cfg.get("diagnostics", {}) or {}
+        if not bool(diag_cfg.get("capture_all_inspections", False)):
+            return ""
+        if frame_gray8 is None or not self.state.last_results:
+            return ""
+
+        try:
+            capture_vis = cv2.cvtColor(frame_gray8, cv2.COLOR_GRAY2BGR)
+            overlay.draw_rois(
+                capture_vis,
+                rois=[
+                    {
+                        "id": roi.get("id"),
+                        "label": roi.get("name"),
+                        "rect": (
+                            int(roi.get("x", 0)),
+                            int(roi.get("y", 0)),
+                            int(roi.get("w", 0)),
+                            int(roi.get("h", 0)),
+                        ),
+                        "angle": float(roi.get("angle", 0.0)),
+                    }
+                    for roi in getattr(self.roi_mgr, "rois", [])
+                ],
+                active_id=self.roi_mgr.selected_id,
+                roi_results=self.state.last_results,
+                show_metrics=True,
+            )
+            if self.state.last_overall_ok is not None:
+                overlay.draw_overall_banner(
+                    capture_vis,
+                    bool(self.state.last_overall_ok),
+                    info=getattr(self.state, "last_overall_info", None),
+                )
+
+            path = save_inspection_capture(
+                frame_gray8,
+                capture_vis,
+                roi_mgr=self.roi_mgr,
+                data_dir=DATA_DIR,
+                last_results=self.state.last_results,
+                overall_ok=self.state.last_overall_ok,
+                trigger=trigger,
+                snapshot_keep=max(
+                    1,
+                    int(diag_cfg.get("capture_all_keep", 50)),
+                ),
+            )
+            if path:
+                print(f"[CAPTURE ALL] saved: {path}")
+            return path
+        except Exception as error:
+            print(f"[CAPTURE ALL] save failed: {error}")
+            return ""
+
     def _run_spot_inspect_once(
         self,
         frame_gray8,
@@ -2003,6 +2068,10 @@ class VisionApp:
                 cache_every_n=1,
             )
 
+            self._save_all_inspection_capture(
+                inspect_frame_gray8,
+                trigger=trigger,
+            )
             return st.last_overall_ok
 
         finally:

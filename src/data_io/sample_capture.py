@@ -170,6 +170,146 @@ def _link_or_copy(source_path, destination_path):
         pass
 
 
+
+def _json_safe(value):
+    """Convert inspection metrics to JSON-safe values without storing image arrays."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe(item)
+            for key, item in value.items()
+            if not str(key).startswith("_")
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "shape") and hasattr(value, "dtype"):
+        try:
+            return {
+                "type": "ndarray",
+                "shape": [int(v) for v in value.shape],
+                "dtype": str(value.dtype),
+            }
+        except Exception:
+            return "ndarray"
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _result_to_dict(result):
+    if result is None:
+        return None
+    if isinstance(result, dict):
+        ok = result.get("ok")
+        reason = result.get("reason")
+        metrics = result.get("metrics") or {}
+    else:
+        ok = getattr(result, "ok", None)
+        reason = getattr(result, "reason", None)
+        metrics = getattr(result, "metrics", None) or {}
+    return {
+        "ok": None if ok is None else bool(ok),
+        "reason": reason,
+        "metrics": _json_safe(metrics),
+    }
+
+
+def _prune_inspection_capture_dirs(root_dir, keep=50):
+    try:
+        items = []
+        for name in os.listdir(root_dir):
+            path = os.path.join(root_dir, name)
+            if os.path.isdir(path):
+                items.append((os.path.getmtime(path), path))
+        items.sort(reverse=True)
+        for _, path in items[max(1, int(keep)):]:
+            shutil.rmtree(path, ignore_errors=True)
+    except Exception as error:
+        print(f"[CAPTURE ALL] pruning failed: {error}")
+
+
+def save_inspection_capture(
+    frame_gray8,
+    vis_bgr,
+    *,
+    roi_mgr,
+    data_dir,
+    last_results,
+    overall_ok,
+    trigger="INSPECT",
+    snapshot_keep=50,
+):
+    """Temporarily save every completed inspection for ROI tuning.
+
+    Output:
+      data/dataset/ALL/<timestamp>/
+        raw.png
+        overlay.png
+        ROI1_crop.png ...
+        result.json
+    """
+    if frame_gray8 is None or vis_bgr is None:
+        return ""
+
+    root_dir = os.path.join(data_dir, "dataset", "ALL")
+    os.makedirs(root_dir, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    run_dir = os.path.join(root_dir, ts)
+    os.makedirs(run_dir, exist_ok=False)
+
+    raw_path = os.path.join(run_dir, "raw.png")
+    overlay_path = os.path.join(run_dir, "overlay.png")
+    cv2.imwrite(raw_path, frame_gray8)
+    cv2.imwrite(overlay_path, vis_bgr)
+
+    results = last_results or {}
+    roi_payload = {}
+
+    for roi in getattr(roi_mgr, "rois", []):
+        roi_id = int(roi.get("id"))
+        crop = crop_roi(frame_gray8, roi_mgr, roi_id)
+        crop_name = f"ROI{roi_id}_crop.png"
+        crop_path = os.path.join(run_dir, crop_name)
+        if crop is not None:
+            cv2.imwrite(crop_path, crop)
+
+        roi_payload[str(roi_id)] = {
+            "roi": {
+                "id": roi_id,
+                "name": str(roi.get("name", f"ROI{roi_id}")),
+                "x": int(roi.get("x", 0)),
+                "y": int(roi.get("y", 0)),
+                "w": int(roi.get("w", 0)),
+                "h": int(roi.get("h", 0)),
+                "angle": float(roi.get("angle", 0.0)),
+            },
+            "crop": crop_name if crop is not None else None,
+            "result": _result_to_dict(results.get(str(roi_id))),
+        }
+
+    payload = {
+        "ts": ts,
+        "trigger": str(trigger),
+        "overall_ok": None if overall_ok is None else bool(overall_ok),
+        "raw": "raw.png",
+        "overlay": "overlay.png",
+        "results": roi_payload,
+    }
+
+    result_path = os.path.join(run_dir, "result.json")
+    temp_path = result_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+    os.replace(temp_path, result_path)
+
+    _prune_inspection_capture_dirs(root_dir, keep=max(1, int(snapshot_keep)))
+    return run_dir
+
 def handle_sample_keys(
     key,
     frame_gray8,
