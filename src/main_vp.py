@@ -706,12 +706,8 @@ class VisionApp:
                 except Exception:
                     pass
 
-                self.service_panel.set_message(
-                    f"D201={d201} D202={d202} D204={d204}",
-                    3.0,
-                )
-                self.state.status = (
-                    f"SERVICE TEST: D201={d201} D202={d202} D204={d204}"
+                print(
+                    f"[PLC READY TEST] D201={d201} D202={d202} D204={d204}"
                 )
 
             except Exception as e:

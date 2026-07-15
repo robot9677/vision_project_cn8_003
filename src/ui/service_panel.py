@@ -572,57 +572,46 @@ class ServicePanel:
         else:
             block_reason = f"READY FROM CURRENT STATE D200={command_value} D201={status_value}"
 
-        labels = [
+        fault_labels = [
             ("INSPECT", "inspection"),
             ("LIGHT", "light"),
             ("CAMERA", "camera"),
             ("PLC COMM", "plc_comm"),
         ]
+        logic_buttons = [
+            ("INSPECT", "test:logic:inspection", (70, 95, 145)),
+            ("LIGHT", "test:logic:light", (70, 95, 145)),
+            ("CAMERA", "test:logic:camera", (70, 95, 145)),
+            ("PLC COMM", "test:logic:plc_comm", (70, 95, 145)),
+            ("D204", "plc:vision_ready:100", (45, 115, 85)),
+        ]
         btn_gap = 6
         btn_h = 34
-        btn_w = max(72, (right - cx - btn_gap * 3) // 4)
+        logic_btn_w = max(64, (right - cx - btn_gap * 4) // 5)
 
         _put_text(img, "PLC LOGIC TEST", cx, y, 0.46, (0, 220, 255), 1)
         y += 8
-        for idx, (label, error_type) in enumerate(labels):
-            x1 = cx + idx * (btn_w + btn_gap)
+        for idx, (label, action, accent) in enumerate(logic_buttons):
+            x1 = cx + idx * (logic_btn_w + btn_gap)
             y1 = y + 8
-            rect = (x1, y1, x1 + btn_w, y1 + btn_h)
-            _draw_button(img, rect, label, logic_ready, (70, 95, 145))
+            x2 = right if idx == len(logic_buttons) - 1 else x1 + logic_btn_w
+            rect = (x1, y1, x2, y1 + btn_h)
+            _draw_button(img, rect, label, logic_ready, accent)
             self._buttons.append({
                 "rect": rect,
-                "action": f"test:logic:{error_type}",
+                "action": action,
                 "enabled": logic_ready,
             })
         y += btn_h + 18
 
-        d204_value = _safe_int(plc_snapshot.get("vision_ready"))
-        d204_label = (
-            "D201/202=0 + D204=100 (ACTIVE)"
-            if d204_value == 100
-            else "D201/202=0 + D204=100"
-        )
-        d204_rect = (cx, y, right, y + 32)
-        _draw_button(
-            img,
-            d204_rect,
-            d204_label,
-            logic_ready,
-            (45, 115, 85),
-        )
-        self._buttons.append({
-            "rect": d204_rect,
-            "action": "plc:vision_ready:100",
-            "enabled": logic_ready,
-        })
-        y += 44
-
         _put_text(img, "SAFE RECOVERY TEST", cx, y, 0.46, (0, 220, 255), 1)
         y += 8
-        for idx, (label, error_type) in enumerate(labels):
-            x1 = cx + idx * (btn_w + btn_gap)
+        recovery_btn_w = max(72, (right - cx - btn_gap * 3) // 4)
+        for idx, (label, error_type) in enumerate(fault_labels):
+            x1 = cx + idx * (recovery_btn_w + btn_gap)
             y1 = y + 8
-            rect = (x1, y1, x1 + btn_w, y1 + btn_h)
+            x2 = right if idx == len(fault_labels) - 1 else x1 + recovery_btn_w
+            rect = (x1, y1, x2, y1 + btn_h)
             button_ready = (
                 camera_recovery_ready if error_type == "camera" else recovery_ready
             )
