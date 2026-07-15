@@ -1,6 +1,8 @@
+import os
 from typing import Any, Dict, Tuple
 
 from capture.camera_gst import CameraGST
+from capture.camera_process import CameraProcessProxy
 
 
 def _active_camera_set(hw_cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,14 +88,37 @@ def build_gst_pipeline(cam_cfg: Dict[str, Any]) -> str:
     raise ValueError(f"unsupported pipeline_type: {pipeline_type}")
 
 
-def create_camera_from_hardware_config(hw_cfg: Dict[str, Any]) -> Tuple[CameraGST, Dict[str, Any]]:
+def create_camera_from_hardware_config(hw_cfg: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     camera_set = _active_camera_set(hw_cfg)
     cam_cfg = _primary_camera_cfg(camera_set)
     gst = build_gst_pipeline(cam_cfg)
 
-    cam = CameraGST(gst)
+    pipeline_type = str(cam_cfg.get("pipeline_type", "") or "").strip()
+    process_cfg = cam_cfg.get("process_isolation", {}) or {}
+    use_process = bool(process_cfg.get("enabled", pipeline_type == "nvargus_bgr"))
+
+    if pipeline_type == "nvargus_bgr" and use_process:
+        project_root = str(
+            hw_cfg.get(
+                "project_root",
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
+            )
+        )
+        cam = CameraProcessProxy(
+            gst,
+            width=int(cam_cfg.get("width", 1920)),
+            height=int(cam_cfg.get("height", 1080)),
+            channels=3,
+            process_cfg=process_cfg,
+            project_root=project_root,
+        )
+    else:
+        cam = CameraGST(gst)
 
     info = dict(cam_cfg)
+    info["process_isolation_enabled"] = bool(
+        pipeline_type == "nvargus_bgr" and use_process
+    )
     info["gst_pipeline"] = gst
     info["camera_set_mode"] = str(camera_set.get("mode", "single"))
     info["camera_set_backend"] = str(camera_set.get("backend", "gstreamer"))

@@ -69,6 +69,10 @@ from inspection.auto_baseline import AutoBaseline
 # =========================
 # Commands
 # =========================
+class CameraRecoveryInProgress(RuntimeError):
+    pass
+
+
 class UICmd(Enum):
     NONE = 0
     TOGGLE_MODE = 1
@@ -430,6 +434,14 @@ class VisionApp:
         self._service_recent_events = []
         self._service_roi_debug = None
 
+        # Isolated Argus capture-process recovery state.
+        self._camera_process_last_state = ""
+        self._camera_recovery_plc_status_before = None
+        self._camera_recovery_logged_count = 0
+        self._camera_recovery_request_id = ""
+        self._pending_plc_camera_command = None
+        self._camera_recovery_soak_retry = False
+
     def _get_primary_anchor_roi_id(self):
         align_cfg = self.product_profile.get("align", {}) or {}
         anchors = align_cfg.get("anchors") or []
@@ -648,6 +660,14 @@ class VisionApp:
             self.service_panel.set_message(message, 3.0)
             return
 
+        if action == "test:recovery:camera":
+            ok, message = self._start_camera_recovery_demo(
+                request_id=f"ui-{int(time.time() * 1000)}",
+                source="SERVICE_UI",
+            )
+            self.service_panel.set_message(message, 4.0)
+            return
+
         if action == "test:local_recover":
             if not self.state.test_error_active:
                 self.service_panel.set_message("NO ACTIVE TEST ERROR", 2.0)
@@ -721,7 +741,333 @@ class VisionApp:
             "pre_error_code": int(st.test_error_pre_error_code),
             "reset_source": str(st.test_error_reset_source),
             "recovery_elapsed_ms": int(st.test_error_recovery_elapsed_ms),
+            "camera_recovery_capable": bool(self._camera_recovery_capable()),
+            "camera_process": self._get_camera_process_status(),
         }
+
+
+    def _get_camera_process_status(self) -> Dict[str, Any]:
+        getter = getattr(self.cam, "get_status", None)
+        if not callable(getter):
+            return {
+                "state": "DIRECT",
+                "is_opened": bool(
+                    getattr(getattr(self.cam, "cap", None), "isOpened", lambda: False)()
+                ),
+                "recovery_count": 0,
+                "recovery_elapsed_sec": 0.0,
+                "last_recovery_result": "",
+                "detail": "direct in-process camera",
+            }
+        try:
+            return dict(getter() or {})
+        except Exception as e:
+            return {
+                "state": "FAILED",
+                "is_opened": False,
+                "recovery_count": 0,
+                "recovery_elapsed_sec": 0.0,
+                "last_recovery_result": "FAIL",
+                "detail": f"camera status read failed: {e}",
+            }
+
+    def _camera_recovery_capable(self) -> bool:
+        return bool(
+            getattr(self.cam, "supports_auto_recovery", False)
+            and callable(getattr(self.cam, "request_recovery", None))
+        )
+
+    def _camera_is_recovering(self) -> bool:
+        return str(self._get_camera_process_status().get("state", "")) == "RECOVERING"
+
+    def _camera_frame_healthy(self, max_age_sec: float = 0.35) -> bool:
+        status = self._get_camera_process_status()
+        if str(status.get("state", "")) == "DIRECT":
+            return True
+        if str(status.get("state", "")) != "RUNNING":
+            return False
+        age = status.get("frame_age_sec")
+        if age is None:
+            return False
+        try:
+            return float(age) <= max(0.1, float(max_age_sec))
+        except Exception:
+            return False
+
+    def _start_camera_recovery_demo(
+        self,
+        request_id: str,
+        source: str = "SERVICE_UI",
+    ):
+        st = self.state
+        if not self._camera_recovery_capable():
+            return False, "CAMERA PROCESS RECOVERY IS NOT ENABLED"
+        if st.edit_mode:
+            return False, "CAMERA RECOVERY TEST REQUIRES RUN MODE"
+        if self.soak_test.active:
+            return False, "CAMERA RECOVERY TEST BLOCKED: SOAK ACTIVE"
+        if st.camera_error_latched or st.light_error_latched:
+            return False, "CAMERA RECOVERY TEST BLOCKED: REAL FAULT ACTIVE"
+        if st.test_error_active or self._camera_is_recovering():
+            return False, "CAMERA RECOVERY TEST ALREADY ACTIVE"
+
+        try:
+            snapshot = self.plc.get_state_snapshot()
+        except Exception:
+            snapshot = {}
+
+        st.test_error_active = True
+        st.test_error_mode = "recovery"
+        st.test_error_type = "camera"
+        st.test_error_code = 11
+        st.test_error_expected_code = 0
+        st.test_error_actual_code = 0
+        st.test_error_injected_at = time.strftime("%Y-%m-%d %H:%M:%S")
+        st.test_error_request_id = str(request_id)
+        st.test_error_phase = "WAIT_CAMERA_STALL"
+        st.test_error_result = ""
+        st.test_error_health_detail = "SIMULATED CAPTURE STALL - AUTO RECOVERY WAIT"
+        st.test_error_block_reason = ""
+        st.test_error_recovered_at = ""
+        st.test_error_pre_command = int(snapshot.get("command", 0))
+        st.test_error_pre_status = int(snapshot.get("status", 0))
+        st.test_error_pre_result = int(snapshot.get("result", 0))
+        st.test_error_pre_error_code = int(snapshot.get("error_code", 0))
+        st.test_error_reset_source = "AUTO_CAMERA_PROCESS"
+        st.test_error_started_monotonic = time.monotonic()
+        st.test_error_recovery_elapsed_ms = 0
+        self._camera_recovery_request_id = str(request_id)
+
+        ok = bool(
+            self.cam.simulate_hang(
+                reason=f"camera recovery test source={source} request_id={request_id}"
+            )
+        )
+        if not ok:
+            st.test_error_active = False
+            st.test_error_phase = "START_FAILED"
+            st.test_error_result = "FAIL"
+            st.test_error_health_detail = "FAILED TO INJECT SIMULATED CAMERA STALL"
+            return False, st.test_error_health_detail
+
+        self._save_plc_test_event(
+            phase="CAMERA_STALL_INJECTED",
+            result="",
+            message=st.test_error_health_detail,
+            extra={
+                "source": str(source),
+                "request_id": str(request_id),
+                "plc_error_changed": False,
+                "camera_process_isolated": True,
+            },
+        )
+        st.status = "CAMERA RECOVERY TEST: STALL INJECTED"
+        return True, "CAMERA STALL INJECTED - WATCH AUTO RECOVERY TIME"
+
+    def _poll_camera_process_request(self):
+        path = str(getattr(self.cam, "request_path", "") or "")
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                request = json.load(file)
+        except Exception as e:
+            print("[CAM RECOVERY] invalid request:", e)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            return
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+        action = str(request.get("action", "simulate_hang") or "simulate_hang").lower()
+        request_id = str(
+            request.get("request_id", f"file-{int(time.time() * 1000)}")
+        )
+        if request_id == self._camera_recovery_request_id:
+            return
+        if action == "simulate_hang":
+            ok, message = self._start_camera_recovery_demo(
+                request_id=request_id,
+                source="FILE_REQUEST",
+            )
+            print(f"[CAM RECOVERY TEST] {message} ok={ok}")
+        elif action == "recover":
+            self._camera_recovery_request_id = request_id
+            ok = bool(self.cam.request_recovery(f"file request {request_id}"))
+            print(f"[CAM RECOVERY] manual request={request_id} accepted={ok}")
+
+    def _reset_tracking_after_camera_recovery(self):
+        st = self.state
+        st.tracking_stable = False
+        st.stable_frame_count = 0
+        st.run_mode_text = "HELD"
+        try:
+            self.stabilizer.reset()
+            st._trk_frame_idx = 0
+            st._trk_cache = None
+            st._trk_smoothed_cache = None
+            st._trk_motion_stable = False
+        except Exception as e:
+            print("[CAM RECOVERY] stabilizer reset failed:", e)
+        try:
+            aligner = getattr(self.inspector, "aligner", None)
+            if aligner is not None:
+                aligner.reset_templates()
+            self._load_alignment_template()
+        except Exception as e:
+            print("[CAM RECOVERY] tracker reload failed:", e)
+
+    def _handle_camera_recovery_plc_tick(self):
+        try:
+            snapshot = self.plc.get_state_snapshot()
+            command_value = int(snapshot.get("command", 0))
+        except Exception:
+            return
+
+        if command_value in (3, 8, 9):
+            command = self.plc.poll_command()
+            if command == "reset":
+                self._handle_plc_reset()
+            elif command == "shutdown":
+                self._handle_plc_shutdown()
+            elif command == "emergency":
+                self._handle_plc_emergency()
+            return
+
+        if command_value in (1, 2):
+            command = self.plc.poll_command()
+            if command in ("prepare", "inspect"):
+                self._pending_plc_camera_command = command
+            self.plc.set_busy()
+
+    def _sync_camera_process_state(self) -> Dict[str, Any]:
+        status = self._get_camera_process_status()
+        state = str(status.get("state", ""))
+        previous = str(self._camera_process_last_state or "")
+        st = self.state
+
+        if state == "RECOVERING":
+            if previous != "RECOVERING":
+                try:
+                    snapshot = self.plc.get_state_snapshot()
+                    before_status = int(snapshot.get("status", 0))
+                except Exception:
+                    before_status = 0
+                self._camera_recovery_plc_status_before = before_status
+                if before_status in (0, 1):
+                    self.plc.set_busy()
+                st.camera_error_latched = False
+                st.camera_read_blocked = False
+
+                recovery_count = int(status.get("recovery_count", 0))
+                if recovery_count != self._camera_recovery_logged_count:
+                    self._camera_recovery_logged_count = recovery_count
+                    try:
+                        self.plc.trace_application_event(
+                            event="CAMERA_AUTO_RECOVERY_STARTED",
+                            summary=(
+                                f"count={recovery_count} "
+                                f"reason={status.get('last_recovery_reason', '')}"
+                            ),
+                            extra=status,
+                        )
+                    except Exception:
+                        pass
+
+            elapsed = float(status.get("recovery_elapsed_sec", 0.0) or 0.0)
+            st.status = f"CAMERA AUTO RECOVERY: {elapsed:.1f}s"
+            if st.test_error_active and st.test_error_type == "camera":
+                st.test_error_phase = "RECOVERING"
+                st.test_error_health_detail = (
+                    f"CAMERA PROCESS RECOVERY IN PROGRESS {elapsed:.1f}s"
+                )
+                st.test_error_recovery_elapsed_ms = int(elapsed * 1000.0)
+
+        elif state == "RUNNING" and previous == "RECOVERING":
+            elapsed = float(status.get("recovery_elapsed_sec", 0.0) or 0.0)
+            st.camera_error_latched = False
+            st.camera_read_blocked = False
+            recovery_cfg = self._get_plc_recovery_cfg()
+            st.camera_error_grace_until = time.time() + recovery_cfg["camera_grace_sec"]
+            self._reset_tracking_after_camera_recovery()
+
+            try:
+                snapshot = self.plc.get_state_snapshot()
+                command_value = int(snapshot.get("command", 0))
+            except Exception:
+                command_value = 0
+            if self._camera_recovery_soak_retry and self.soak_test.active:
+                self._camera_recovery_soak_retry = False
+                self.soak_test.phase = "WAIT_INSPECT"
+                self.soak_test.next_action_epoch = time.time() + 0.2
+                self.soak_test.record_external_event(
+                    "CAMERA_AUTO_RECOVERY_RESUME",
+                    {"camera_process": status},
+                )
+                self.plc.set_idle()
+            elif (
+                self._camera_recovery_plc_status_before == 0
+                and command_value not in (1, 2)
+                and not self.soak_test.active
+            ):
+                self.plc.set_idle()
+
+            if st.test_error_active and st.test_error_type == "camera":
+                st.test_error_phase = "RECOVERY_COMPLETE"
+                st.test_error_result = "PASS"
+                st.test_error_health_detail = (
+                    f"CAMERA AUTO RECOVERY OK: {elapsed:.3f}s "
+                    f"WORKER#{status.get('generation', 0)}"
+                )
+                st.test_error_recovery_elapsed_ms = int(elapsed * 1000.0)
+                st.test_error_recovered_at = time.strftime("%Y-%m-%d %H:%M:%S")
+                st.test_error_active = False
+                self._save_plc_test_event(
+                    phase="RECOVERY_COMPLETE",
+                    result="PASS",
+                    message=st.test_error_health_detail,
+                    extra={"camera_process": status},
+                )
+
+            st.status = f"CAMERA RECOVERED {elapsed:.2f}s - TRACKING REACQUIRE"
+            try:
+                self.plc.trace_application_event(
+                    event="CAMERA_AUTO_RECOVERY_COMPLETED",
+                    summary=f"elapsed={elapsed:.3f}s",
+                    extra=status,
+                )
+            except Exception:
+                pass
+            self._camera_recovery_plc_status_before = None
+
+        elif state == "FAILED":
+            if previous != "FAILED":
+                detail = str(status.get("detail", "camera process recovery failed"))
+                st.camera_error_latched = True
+                st.camera_read_blocked = True
+                st.status = "CAMERA AUTO RECOVERY FAILED: PLC RESET REQUIRED"
+                self._save_plc_error_event(
+                    event_type="CAMERA_AUTO_RECOVERY_FAILED",
+                    error_code=11,
+                    message="Isolated camera process recovery failed",
+                    exception=RuntimeError(detail),
+                )
+                self.plc.set_error(code=11, detail=detail)
+                if st.test_error_active and st.test_error_type == "camera":
+                    st.test_error_phase = "RECOVERY_FAILED"
+                    st.test_error_result = "FAIL"
+                    st.test_error_health_detail = detail
+                    st.test_error_recovery_elapsed_ms = int(
+                        float(status.get("recovery_elapsed_sec", 0.0) or 0.0) * 1000.0
+                    )
+                    st.test_error_active = False
+
+        self._camera_process_last_state = state
+        return status
 
     def _get_process_rss_mb(self) -> float:
         try:
@@ -752,6 +1098,7 @@ class VisionApp:
             "camera_read_last_ms": round(float(self._last_camera_read_ms), 3),
             "camera_read_max_ms": round(float(self._max_camera_read_ms), 3),
             "camera_slow_read_count": int(self._slow_camera_read_count),
+            "camera_process": self._get_camera_process_status(),
             "loop_fps": round(float(self._loop_fps), 3),
             "rss_mb": round(self._get_process_rss_mb(), 2),
             "tracking_stable": bool(self.state.tracking_stable),
@@ -977,6 +1324,18 @@ class VisionApp:
                 },
                 health=self._get_runtime_health_snapshot(),
             )
+        except CameraRecoveryInProgress as e:
+            self._camera_recovery_soak_retry = True
+            self.plc.set_busy()
+            self.soak_test.defer("CAMERA AUTO RECOVERY - RETRY CURRENT CYCLE", 0.2)
+            self.soak_test.record_external_event(
+                "CAMERA_AUTO_RECOVERY_DEFER",
+                {
+                    "reason": str(e),
+                    "camera_process": self._get_camera_process_status(),
+                },
+            )
+            st.status = "SOAK PAUSED: CAMERA AUTO RECOVERY"
         except LightCommunicationError as e:
             st.light_error_latched = True
             self._save_plc_error_event(
@@ -1623,6 +1982,15 @@ class VisionApp:
                         inspect_frame_gray8 = g
                         inspect_vis_bgr = v
 
+            if (
+                inspect_frame_gray8 is None
+                or inspect_vis_bgr is None
+                or not self._camera_frame_healthy(max_age_sec=0.35)
+            ):
+                raise CameraRecoveryInProgress(
+                    "camera frame is not healthy; inspection deferred for auto recovery"
+                )
+
             run_inspect_once(
                 cam=self.cam,
                 inspector=self.inspector,
@@ -2223,24 +2591,31 @@ class VisionApp:
     def _restart_camera_checked(self):
         recovery_cfg = self._get_plc_recovery_cfg()
 
-        self.cam.release()
-        time.sleep(0.2)
-        self.cam.open()
+        recover_blocking = getattr(self.cam, "recover_blocking", None)
+        if callable(recover_blocking):
+            recovered_frame = recover_blocking(
+                reason="PLC reset camera recovery",
+                timeout_sec=max(20.0, recovery_cfg["camera_open_timeout_sec"] + 15.0),
+            )
+        else:
+            self.cam.release()
+            time.sleep(0.2)
+            self.cam.open()
 
-        recovered_frame = None
-        recovery_deadline = (
-            time.time()
-            + recovery_cfg["camera_open_timeout_sec"]
-        )
+            recovered_frame = None
+            recovery_deadline = (
+                time.time()
+                + recovery_cfg["camera_open_timeout_sec"]
+            )
 
-        while time.time() < recovery_deadline:
-            recovered_frame = self.cam.read()
-            if recovered_frame is not None:
-                break
-            time.sleep(recovery_cfg["camera_retry_interval_sec"])
+            while time.time() < recovery_deadline:
+                recovered_frame = self.cam.read()
+                if recovered_frame is not None:
+                    break
+                time.sleep(recovery_cfg["camera_retry_interval_sec"])
 
-        if recovered_frame is None:
-            raise RuntimeError("camera reopened but no frame was received")
+            if recovered_frame is None:
+                raise RuntimeError("camera reopened but no frame was received")
 
         self.state.camera_read_blocked = False
         self.state.camera_error_grace_until = (
@@ -2742,10 +3117,16 @@ class VisionApp:
 
         print(f"[PLC] {message}")
 
-    def _run_plc_inspect_tick(self, frame_gray8, vis_bgr):
+    def _run_plc_inspect_tick(
+        self,
+        frame_gray8,
+        vis_bgr,
+        forced_cmd: Optional[str] = None,
+    ):
         st = self.state
+        is_camera_retry = forced_cmd is not None
 
-        cmd = self.plc.poll_command()
+        cmd = forced_cmd if is_camera_retry else self.plc.poll_command()
         if cmd is None:
             return
 
@@ -2803,7 +3184,11 @@ class VisionApp:
             return
 
         # Busy 중 중복 명령 차단
-        if current_status == 1 and cmd in ("prepare", "inspect"):
+        if (
+            current_status == 1
+            and cmd in ("prepare", "inspect")
+            and not is_camera_retry
+        ):
             self._log_plc_command_sequence_error(
                 command_name=str(cmd),
                 current_status=current_status,
@@ -2854,22 +3239,21 @@ class VisionApp:
                 return
 
             if frame_gray8 is None or vis_bgr is None:
+                if self._camera_is_recovering():
+                    self._pending_plc_camera_command = "prepare"
+                    self.plc.set_busy()
+                    st.status = "PLC PREPARE PAUSED: CAMERA AUTO RECOVERY"
+                    return
+
                 error = RuntimeError("camera frame is unavailable")
-
                 st.camera_error_latched = True
-
                 self._save_plc_error_event(
                     event_type="VISION_RUNTIME_ERROR",
                     error_code=11,
                     message="D200=1 received but camera frame is unavailable",
                     exception=error,
                 )
-
-                self.plc.set_error(
-                    code=11,
-                    detail=str(error),
-                )
-
+                self.plc.set_error(code=11, detail=str(error))
                 st.status = "PLC PREPARE ERROR: NO CAMERA FRAME"
                 return
 
@@ -2878,16 +3262,27 @@ class VisionApp:
                 st.status = "PLC PREPARE BUSY"
 
                 armed = self._spot_prearm(trigger="PLC")
+                if not self._camera_frame_healthy(max_age_sec=0.35):
+                    raise CameraRecoveryInProgress(
+                        "camera became unavailable during PLC prepare"
+                    )
 
                 # 준비 완료 후 Ready
                 # D202 값은 변경하지 않음
                 self.plc.set_idle()
+                self._pending_plc_camera_command = None
 
                 st.status = (
                     "PLC READY: SPOT ARMED"
                     if armed
                     else "PLC READY"
                 )
+
+            except CameraRecoveryInProgress as e:
+                self._pending_plc_camera_command = "prepare"
+                self.plc.set_busy()
+                st.status = "PLC PREPARE PAUSED: CAMERA AUTO RECOVERY"
+                print("[PLC] prepare deferred:", e)
 
             except LightCommunicationError as e:
                 st.light_error_latched = True
@@ -2937,22 +3332,21 @@ class VisionApp:
             return
 
         if frame_gray8 is None or vis_bgr is None:
+            if self._camera_is_recovering():
+                self._pending_plc_camera_command = "inspect"
+                self.plc.set_busy()
+                st.status = "PLC INSPECT PAUSED: CAMERA AUTO RECOVERY"
+                return
+
             error = RuntimeError("camera frame is unavailable")
-
             st.camera_error_latched = True
-
             self._save_plc_error_event(
                 event_type="VISION_RUNTIME_ERROR",
                 error_code=11,
                 message="D200=2 received but camera frame is unavailable",
                 exception=error,
             )
-
-            self.plc.set_error(
-                code=11,
-                detail=str(error),
-            )
-
+            self.plc.set_error(code=11, detail=str(error))
             st.status = "PLC INSPECT ERROR: NO CAMERA FRAME"
             return
 
@@ -3016,6 +3410,7 @@ class VisionApp:
                 ok=bool(overall_ok),
                 elapsed_ms=elapsed_ms,
             )
+            self._pending_plc_camera_command = None
             self._save_normal_reference_if_due(
                 overall_ok=bool(overall_ok),
                 elapsed_ms=elapsed_ms,
@@ -3026,6 +3421,12 @@ class VisionApp:
                 if overall_ok
                 else "PLC INSPECT DONE: NG"
             )
+
+        except CameraRecoveryInProgress as e:
+            self._pending_plc_camera_command = "inspect"
+            self.plc.set_busy()
+            st.status = "PLC INSPECT PAUSED: CAMERA AUTO RECOVERY"
+            print("[PLC] inspection deferred:", e)
 
         except LightCommunicationError as e:
             st.light_error_latched = True
@@ -3594,10 +3995,21 @@ class VisionApp:
         while True:
             self._poll_plc_comm_events()
             self._poll_plc_error_test_request()
+            self._poll_camera_process_request()
+            camera_process_status = self._sync_camera_process_state()
 
             frame = None if st.camera_read_blocked else self._read_frame()
 
             if frame is None:
+                # read() may have caused the monitor to enter recovery. Refresh
+                # once before deciding whether this is a terminal camera error.
+                camera_process_status = self._sync_camera_process_state()
+                camera_process_state = str(camera_process_status.get("state", ""))
+                camera_recovering = camera_process_state == "RECOVERING"
+                isolated_camera_wait = bool(
+                    self._camera_recovery_capable()
+                    and camera_process_state in ("STARTING", "RUNNING", "RECOVERING")
+                )
                 now = time.time()
                 no_frame_sec = now - last_ok_frame_time
 
@@ -3608,6 +4020,7 @@ class VisionApp:
                     no_frame_sec > frame_timeout_sec
                     and now >= st.camera_error_grace_until
                     and not st.camera_error_latched
+                    and not camera_recovering
                 ):
                     error = RuntimeError(
                         f"camera frame unavailable for {no_frame_sec:.2f} sec"
@@ -3630,16 +4043,24 @@ class VisionApp:
 
                     st.status = "CAMERA FRAME ERROR: RESET REQUIRED"
 
+                elif camera_recovering:
+                    elapsed = float(
+                        camera_process_status.get("recovery_elapsed_sec", 0.0) or 0.0
+                    )
+                    st.status = f"CAMERA AUTO RECOVERY: {elapsed:.1f}s"
                 elif (
                     no_frame_sec > frame_timeout_sec
                     and not st.camera_error_latched
                 ):
                     st.status = "WAITING FOR CAMERA FRAME"
 
-                # 영상이 없어도 PLC reset/종료 명령과 UI는 계속 처리한다.
-                # camera_read_blocked가 True인 동안에는 다음 루프에서
-                # cap.read()를 다시 호출하지 않는다.
-                self._run_plc_inspect_tick(None, None)
+                # During isolated capture recovery, do not consume D200=1/2.
+                # They remain pending in the Modbus register and are processed
+                # after the first healthy frame. Reset/shutdown/emergency remain live.
+                if isolated_camera_wait:
+                    self._handle_camera_recovery_plc_tick()
+                else:
+                    self._run_plc_inspect_tick(None, None)
                 self._spot_timeout_tick()
                 self._run_service_soak_tick(None, None)
 
@@ -3656,7 +4077,7 @@ class VisionApp:
                     warning_layer,
                     (0, 0),
                     (self.frame_width, 72),
-                    (0, 0, 180),
+                    (0, 150, 210) if camera_recovering else (0, 0, 180),
                     -1,
                 )
                 cv2.addWeighted(
@@ -3667,9 +4088,17 @@ class VisionApp:
                     0,
                     no_frame_vis,
                 )
+                recovery_elapsed = float(
+                    camera_process_status.get("recovery_elapsed_sec", 0.0) or 0.0
+                )
+                warning_text = (
+                    f"CAMERA AUTO RECOVERY {recovery_elapsed:.1f}s - PLC/UI ACTIVE"
+                    if camera_recovering
+                    else "CAMERA FRAME UNAVAILABLE - PLC RESET / SERVICE CHECK"
+                )
                 cv2.putText(
                     no_frame_vis,
-                    "CAMERA FRAME UNAVAILABLE - PLC RESET / SERVICE CHECK",
+                    warning_text,
                     (24, 47),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.85,
@@ -3732,7 +4161,25 @@ class VisionApp:
                 last_camera_vis = vis.copy()
                 last_camera_vis_update_epoch = last_ok_frame_time
 
-            self._run_plc_inspect_tick(frame_gray8, vis)
+            pending_camera_cmd = self._pending_plc_camera_command
+            if pending_camera_cmd:
+                try:
+                    snapshot = self.plc.get_state_snapshot()
+                    command_value = int(snapshot.get("command", 0))
+                except Exception:
+                    command_value = 0
+                expected_value = 1 if pending_camera_cmd == "prepare" else 2
+                if command_value == expected_value:
+                    self._run_plc_inspect_tick(
+                        frame_gray8,
+                        vis,
+                        forced_cmd=pending_camera_cmd,
+                    )
+                else:
+                    self._pending_plc_camera_command = None
+                    self._run_plc_inspect_tick(frame_gray8, vis)
+            else:
+                self._run_plc_inspect_tick(frame_gray8, vis)
             self._spot_timeout_tick()
             self._run_service_soak_tick(frame_gray8, vis)
 

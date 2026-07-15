@@ -539,6 +539,16 @@ class ServicePanel:
         )
         logic_ready = ready_common
         recovery_ready = ready_common
+        camera_recovery_ready = bool(
+            test_enabled
+            and bool(test_summary.get("camera_recovery_capable", False))
+            and not edit_mode
+            and not service_test_active
+            and not soak_test_running
+            and not real_error_active
+            and status_value != 8
+            and command_value not in (8, 9)
+        )
 
         if not test_enabled:
             block_reason = "TEST DISABLED"
@@ -587,11 +597,14 @@ class ServicePanel:
             x1 = cx + idx * (btn_w + btn_gap)
             y1 = y + 8
             rect = (x1, y1, x1 + btn_w, y1 + btn_h)
-            _draw_button(img, rect, label, recovery_ready, (90, 105, 155))
+            button_ready = (
+                camera_recovery_ready if error_type == "camera" else recovery_ready
+            )
+            _draw_button(img, rect, label, button_ready, (90, 105, 155))
             self._buttons.append({
                 "rect": rect,
                 "action": f"test:recovery:{error_type}",
-                "enabled": recovery_ready,
+                "enabled": button_ready,
             })
         y += btn_h + 16
 
