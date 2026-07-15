@@ -136,10 +136,10 @@
             "tip_band_w_ratio": 0.65,
             "tip_band_h_ratio": 0.1,
 
-            "tip_left_gap_min": 1.0,
-            "tip_left_gap_max": 15.0,
+            "tip_left_gap_min": 0.0,
+            "tip_left_gap_max": 1.25,
             "tip_left_norm_min": -0.015,
-            "tip_left_norm_max": 0.08
+            "tip_left_norm_max": 0.008
           }
         }
       ],
