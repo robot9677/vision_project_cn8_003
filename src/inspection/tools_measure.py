@@ -1617,6 +1617,12 @@ def _lock_bracket_auto(img: np.ndarray, params: Dict[str, Any], ctx: Dict[str, A
     ok = True
     reason = "OK"
 
+    connector_left_x_min = params.get("connector_left_x_min", None)
+
+    if connector_left_x_min is not None and cx < float(connector_left_x_min):
+        ok = False
+        reason = "CONNECTOR_LEFT_X_LOW"
+
     if tip_coverage < min_coverage:
         ok = False
         reason = "TIP_LEFT_EDGE_COVERAGE_LOW"
