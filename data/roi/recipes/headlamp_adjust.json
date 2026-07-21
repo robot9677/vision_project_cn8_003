@@ -128,7 +128,7 @@
             "blur": 3,
 
             "connector_bright_thresh": 220,
-            "connector_min_area": 15000,
+            "connector_min_area": 14000,
             "connector_max_area": 45000,
             "connector_left_x_min": 30,
             "connector_min_w": 70,
