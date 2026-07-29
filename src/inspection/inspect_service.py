@@ -90,8 +90,14 @@ def run_inspect_once(
         state._inspect_cache = (overall_ok, results)
         state._inspect_frame_idx = 0
 
+    run_dir = ""
     try:
-        inspector.save_run(avg, vis_bgr.copy(), overall_ok, results)
+        run_dir = inspector.save_run(
+            avg,
+            vis_bgr.copy(),
+            overall_ok,
+            results,
+        )
     except Exception as e:
         print("[DBG] save_run failed:", e)
 
@@ -121,5 +127,18 @@ def run_inspect_once(
         pass
 
     _update_pose_bad_count(state, runtime_cfg)
+
+    try:
+        notifier = getattr(inspector, "email_notifier", None)
+        if notifier is not None:
+            notifier.handle_inspection(
+                overall_ok=bool(overall_ok),
+                results=state.last_results,
+                run_dir=run_dir,
+                recipe=getattr(inspector, "recipe", None),
+            )
+    except Exception as e:
+        # E-mail must never interrupt inspection or PLC result handling.
+        print("[EMAIL] inspection notification failed:", e)
 
     return overall_ok, state.last_results
