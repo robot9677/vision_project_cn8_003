@@ -33,3 +33,7 @@ venv/
 # temp
 temp_clean_repo/
 clean_repo/
+
+# local email credentials (keep only example in Git)
+data/config/email_config.json
+!data/config/email_config.example.json
