@@ -62,7 +62,7 @@
         {
           "tool": "measure.mean_raw_range",
           "params": {
-            "max_mean_raw": 140.0
+            "max_mean_raw": 145.0
           }
         }
       ],
