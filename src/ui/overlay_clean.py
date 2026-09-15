@@ -978,7 +978,7 @@ def draw_rois(
 
     base_font_scale = roi_text_scale
     # RUN mode ROI border: keep text thin, but make the ROI box clearly visible.
-    base_thickness = 4
+    base_thickness = 8
     line_spacing = max(4, int(round(roi_line_gap * 0.35)))
 
     roi_text_color = (0, 255, 0)
@@ -1076,7 +1076,7 @@ def draw_overall_banner(img, overall_ok, info=None):
 
     # ----- 위치 정책 (여기만 수정하면 전체 위치 변경됨) -----
     POS = {
-        "overall": ("ct", (0, 25)),      # center-top
+        "overall": ("ct", (0, 75)),      # center-top
         "debug":   ("rb", (12, 88)),     # right-bottom (버튼바 피해서)
     }
     # -------------------------------------------------------
@@ -1104,7 +1104,7 @@ def draw_overall_banner(img, overall_ok, info=None):
     align, (mx, my) = POS["overall"]
     x = w // 2 + mx
     y = my
-    draw_text(img, text, (x, y-10), color=color, scale=0.8, thickness=2, align=align)
+    draw_text(img, text, (x, y-10), color=color, scale=2.4, thickness=6, align=align)
 
     # ---- debug (우측 하단) ----
     if isinstance(info, dict):
