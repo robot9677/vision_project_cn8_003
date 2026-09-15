@@ -50,6 +50,9 @@ from ui.control_bar import render_control_bar, key_to_cmd, button_id_to_cmd
 from app.command_executor import execute_command
 from inspection.inspect_service import run_inspect_once
 from email_notifier import EmailNotifier
+# ===== START 2026-08-26 : Google Drive 일일 로그 백업 =====
+from inspection.google_drive_backup import GoogleDriveBackupUploader
+# ===== END 2026-08-26 : Google Drive 일일 로그 백업 =====
 from modes.run_renderer import draw_run_tracking
 from runtime.runtime_config_loader import load_runtime_config
 from runtime.service_soak_test import ServiceSoakTest
@@ -393,6 +396,9 @@ class VisionApp:
                 ),
                 logs_root=LOGS_ROOT,
                 static_context={
+                    # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+                    "equipment_name": self.inspector.log_archive.equipment_name,
+                    # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
                     "profile_name": profile_name,
                     "recipe_name": recipe_name,
                     "recipe_path": selected_recipe_path,
@@ -405,6 +411,42 @@ class VisionApp:
                 },
             )
             self.inspector.email_notifier = self.email_notifier
+            # ===== START 2026-08-26 : Google Drive 일일 로그 백업 =====
+            # Run archive creation/upload outside the inspection startup path.
+            # Drive/network failures must never block or change inspection/PLC/camera behavior.
+            def _daily_drive_backup_worker():
+                txt_path = ""
+                zip_path = ""
+                try:
+                    txt_path, zip_path = self.inspector.log_archive.finalize_latest_previous_day()
+                    if not txt_path or not zip_path:
+                        return
+
+                    uploader = GoogleDriveBackupUploader(
+                        token_path=os.path.join(DATA_DIR, "config", "google_drive_token.json"),
+                        root_folder_name="CN8_VISION_BACKUP",
+                        equipment_name=self.inspector.log_archive.equipment_name,
+                    )
+                    result = uploader.upload(zip_path)
+                    print("[INSPECT ARCHIVE] Google Drive backup OK:", result)
+                    self.email_notifier.send_daily_backup_status(
+                        txt_path, zip_path, drive_result=result
+                    )
+                except Exception as archive_error:
+                    print("[INSPECT ARCHIVE] Google Drive backup failed:", archive_error)
+                    try:
+                        self.email_notifier.send_daily_backup_status(
+                            txt_path, zip_path, error=str(archive_error)
+                        )
+                    except Exception:
+                        pass
+
+            threading.Thread(
+                target=_daily_drive_backup_worker,
+                daemon=True,
+                name="daily-drive-backup",
+            ).start()
+            # ===== END 2026-08-26 : Google Drive 일일 로그 백업 =====
         except Exception as e:
             print("[EMAIL] notifier setup failed:", e)
 
