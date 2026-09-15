@@ -977,7 +977,8 @@ def draw_rois(
     )
 
     base_font_scale = roi_text_scale
-    base_thickness = roi_text_thickness
+    # RUN mode ROI border: keep text thin, but make the ROI box clearly visible.
+    base_thickness = 4
     line_spacing = max(4, int(round(roi_line_gap * 0.35)))
 
     roi_text_color = (0, 255, 0)
