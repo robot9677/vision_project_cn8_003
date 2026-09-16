@@ -213,9 +213,9 @@ class CameraProcessProxy:
         )
 
         root = os.path.abspath(project_root or os.getcwd())
-        # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ===== START 2026-08-26 : ???? ??/???? ?? ?? =====
         self.project_root = root
-        # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ===== END 2026-08-26 : ???? ??/???? ?? ?? =====
         status_path = str(
             cfg.get("status_path", "data/runtime/camera_process_status.json")
         )
@@ -269,7 +269,7 @@ class CameraProcessProxy:
         self.cap = self
         self._write_status()
 
-    # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+    # ===== START 2026-08-26 : ???? ??/???? ?? ?? =====
     def _log_recovery_event(self, event: str, reason: str = "", elapsed_sec: float = 0.0) -> None:
         try:
             now = time.time()
@@ -288,7 +288,7 @@ class CameraProcessProxy:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         except Exception:
             pass
-    # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+    # ===== END 2026-08-26 : ???? ??/???? ?? ?? =====
 
     def set_profile(self, name: str) -> None:
         self._profile_name = str(name or "default")
@@ -524,9 +524,9 @@ class CameraProcessProxy:
             self._last_recovery_detail = ""
             self._last_state_change_epoch = time.time()
         self._write_status()
-        # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ===== START 2026-08-26 : ???? ??/???? ?? ?? =====
         self._log_recovery_event("CAMERA_RECOVERY_START", reason)
-        # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ===== END 2026-08-26 : ???? ??/???? ?? ?? =====
 
         self._recovery_thread = threading.Thread(
             target=self._recover_worker,
@@ -574,9 +574,9 @@ class CameraProcessProxy:
                         self._last_recovery_detail = "; ".join(details)
                         self._last_state_change_epoch = time.time()
                     self._write_status()
-                    # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+                    # ===== START 2026-08-26 : ???? ??/???? ?? ?? =====
                     self._log_recovery_event("CAMERA_RECOVERY_OK", self._last_recovery_reason, elapsed)
-                    # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+                    # ===== END 2026-08-26 : ???? ??/???? ?? ?? =====
                     return
 
                 self._drain_worker_events()
@@ -599,9 +599,9 @@ class CameraProcessProxy:
                 self._last_recovery_detail = str(exc)
                 self._last_state_change_epoch = time.time()
             self._write_status()
-            # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+            # ===== START 2026-08-26 : ???? ??/???? ?? ?? =====
             self._log_recovery_event("CAMERA_RECOVERY_FAIL", self._last_recovery_reason or str(exc), elapsed)
-            # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+            # ===== END 2026-08-26 : ???? ??/???? ?? ?? =====
         finally:
             self._recovery_lock.release()
 

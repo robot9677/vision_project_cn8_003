@@ -244,7 +244,7 @@ class Inspector:
             self.baseline = None
 
         self._roi_debug_window_init = False
-        # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ===== START 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
         equipment_cfg_path = os.path.join(PROJECT_ROOT, "data", "config", "equipment_config.json")
         try:
             with open(equipment_cfg_path, encoding="utf-8") as f:
@@ -257,12 +257,10 @@ class Inspector:
             equipment_name=equipment_cfg.get("equipment_name", "VISION"),
             keep_days=int(equipment_cfg.get("inspection_day_keep", 20)),
         )
-        try:
-            self.log_archive.finalize_latest_previous_day()
-            self.log_archive.prune_day_dirs()
-        except Exception as e:
-            print("[INSPECT ARCHIVE] startup maintenance failed:", e)
-        # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+        # ZIP 생성과 Drive 통신은 main_vp의 daemon worker에서만 수행한다.
+        # Inspector 생성 과정은 카메라/PLC 시작을 지연시키지 않는다.
+        self.email_notifier = None
+        # ===== END 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
         self._save_run_counter = 0
 
         register_enhance_tools()
@@ -467,12 +465,13 @@ class Inspector:
         )
         return overall_ok, results
 
-    # ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+    # ===== START 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
     def save_run(self, frame_gray8: np.ndarray, overlay_bgr: np.ndarray, overall_ok: bool, results: Dict[str, ROIResult]) -> str:
         """Save every OK/NG inspection. overlay_bgr is intentionally not persisted."""
-        inspection_frame = self.last_inspection_frame_gray8
-        if inspection_frame is None or not isinstance(inspection_frame, np.ndarray) or inspection_frame.size == 0:
-            inspection_frame = frame_gray8
+        # run_inspect_once()가 실제 판정에 사용한 평균 프레임을 직접 전달한다.
+        # 제거된 4K 전용 속성(last_inspection_frame_gray8,
+        # _inspection_scale_x/y)을 참조하면 RAW/결과 저장이 전부 실패한다.
+        inspection_frame = frame_gray8
 
         out = {
             "overall_ok": bool(overall_ok),
@@ -483,8 +482,6 @@ class Inspector:
                 "roi_coordinate_height": int(self.roi_mgr.H),
                 "inspection_width": int(inspection_frame.shape[1]),
                 "inspection_height": int(inspection_frame.shape[0]),
-                "inspection_scale_x": float(self._inspection_scale_x),
-                "inspection_scale_y": float(self._inspection_scale_y),
             },
             "results": {
                 k: {
@@ -495,7 +492,7 @@ class Inspector:
         }
         raw_path, _result_path, _day_dir = self.log_archive.save_run(inspection_frame, overall_ok, results, out)
         return raw_path
-    # ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+    # ===== END 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
 
     # def save_recipe(path: str, recipe: Dict[str, Any]) -> None:
     #     import os, json

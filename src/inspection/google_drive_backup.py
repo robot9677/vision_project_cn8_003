@@ -1,4 +1,4 @@
-# ===== START 2026-08-26 : Google Drive 일일 로그 백업 =====
+# ===== START 2026-09-16 : Google Drive 일일 로그 백업 공통 안정화 =====
 """Google Drive daily archive uploader.
 
 Inspection/PLC/camera logic does not depend on this module. Any Drive error is
@@ -60,12 +60,37 @@ class GoogleDriveBackupUploader:
         ).execute().get("files", [])
         return rows[0] if rows else None
 
-    def upload(self, zip_path):
-        from googleapiclient.http import MediaFileUpload
+    @staticmethod
+    def _write_marker(marker_path, file_id):
+        """Atomically record a Drive-confirmed upload."""
+        tmp = marker_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("{}\n".format(file_id or ""))
+        os.replace(tmp, marker_path)
 
+    def upload(self, zip_path):
         zip_path = os.path.abspath(zip_path)
         if not os.path.isfile(zip_path):
             raise FileNotFoundError("Daily ZIP not found: " + zip_path)
+
+        # Google Drive 업로드 완료 여부는 Jetson 로컬 마커로 관리한다.
+        # Drive에서 파일을 삭제해도 동일 ZIP을 다시 업로드하지 않는다.
+        marker_path = zip_path + ".drive_uploaded"
+
+        if os.path.isfile(marker_path):
+            try:
+                with open(marker_path, encoding="utf-8") as f:
+                    file_id = f.read().strip()
+            except OSError:
+                file_id = ""
+            return {
+                "status": "local_already_uploaded",
+                "id": file_id,
+                "name": os.path.basename(zip_path),
+                "size": os.path.getsize(zip_path),
+            }
+
+        from googleapiclient.http import MediaFileUpload
 
         service = self._service()
         root_id = self._find_folder(service, self.root_folder_name)
@@ -83,7 +108,14 @@ class GoogleDriveBackupUploader:
         size = os.path.getsize(zip_path)
         existing = self._find_file(service, name, equipment_id)
         if existing and int(existing.get("size", -1)) == size:
-            return {"status": "already_uploaded", "id": existing["id"], "name": name, "size": size}
+            self._write_marker(marker_path, existing["id"])
+
+            return {
+                "status": "already_uploaded",
+                "id": existing["id"],
+                "name": name,
+                "size": size,
+            }
 
         media = MediaFileUpload(zip_path, mimetype="application/zip", resumable=True)
         if existing:
@@ -98,6 +130,11 @@ class GoogleDriveBackupUploader:
                 fields="id,name,size,parents",
             ).execute()
             status = "uploaded"
+
         result["status"] = status
+
+        # uploaded / updated가 정상 완료된 경우에만 로컬 완료 마커 생성
+        self._write_marker(marker_path, result.get("id", ""))
+
         return result
-# ===== END 2026-08-26 : Google Drive 일일 로그 백업 =====
+# ===== END 2026-09-16 : Google Drive 일일 로그 백업 공통 안정화 =====

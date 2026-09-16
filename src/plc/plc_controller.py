@@ -165,6 +165,8 @@ class ModbusRtuSlaveController:
         regs_cfg = cfg.get("registers", {}) or {}
         heartbeat_cfg = cfg.get("heartbeat", {}) or {}
         vision_ready_cfg = cfg.get("vision_ready", {}) or {}
+        # ===== START 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
+        command_guard_cfg = cfg.get("command_guard", {}) or {}
 
         self.port = str(serial_cfg.get("port", "/dev/ttyUSB0"))
         self.baudrate = int(serial_cfg.get("baudrate", 9600))
@@ -207,6 +209,15 @@ class ModbusRtuSlaveController:
         self.vision_not_ready_value = int(
             vision_ready_cfg.get("not_ready_value", 0)
         )
+
+        # After every application start or serial reconnect, a shutdown
+        # command is accepted only after D200=0 has actually been observed.
+        # This prevents a retained/stale D200=8 from shutting the Jetson down
+        # again immediately after an interrupted power-off sequence.
+        self.require_zero_before_shutdown = bool(
+            command_guard_cfg.get("require_zero_before_shutdown", True)
+        )
+        # ===== END 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
 
         if not 1 <= self.slave_id <= 247:
             raise ValueError(
@@ -255,6 +266,10 @@ class ModbusRtuSlaveController:
         self._last_heartbeat_ts = 0.0
 
         self._last_cmd_seen = 0
+        # ===== START 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
+        self._shutdown_command_armed = not self.require_zero_before_shutdown
+        self._shutdown_ignore_logged = False
+        # ===== END 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
 
         self._lock = threading.Lock()
         self._ser = None
@@ -766,6 +781,10 @@ class ModbusRtuSlaveController:
             first_connection = not self._ever_connected
             self._ever_connected = True
             self._last_cmd_seen = self.CMD_NONE
+            self._shutdown_command_armed = (
+                not self.require_zero_before_shutdown
+            )
+            self._shutdown_ignore_logged = False
 
             if was_fault and self._comm_reset_required:
                 self.set_recovering(
@@ -887,9 +906,48 @@ class ModbusRtuSlaveController:
     def poll_command(self) -> Optional[str]:
         cmd = self._get_reg(self.reg_command)
 
+        # ===== START 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
+        # 시작/재연결 뒤 D200=0을 실제 수신하기 전에는 잔존 D200=8을
+        # 무시한다. 이후 들어오는 새로운 종료 요청은 정상 처리한다.
         if cmd == self.CMD_NONE:
+            if not self._shutdown_command_armed:
+                self._shutdown_command_armed = True
+                self._shutdown_ignore_logged = False
+                print(
+                    "[PLC] shutdown command armed after D200=0 observed"
+                )
+                self._trace_event(
+                    direction="APP",
+                    event="SHUTDOWN_COMMAND_ARMED",
+                    summary=(
+                        "D200=0 observed after application start or "
+                        "serial reconnect"
+                    ),
+                )
             self._last_cmd_seen = self.CMD_NONE
             return None
+
+        if (
+            cmd == self.CMD_SHUTDOWN
+            and not self._shutdown_command_armed
+        ):
+            self._last_cmd_seen = cmd
+            if not self._shutdown_ignore_logged:
+                self._shutdown_ignore_logged = True
+                print(
+                    "[PLC] startup/reconnect D200=8 ignored; "
+                    "waiting for D200=0"
+                )
+                self._trace_event(
+                    direction="APP",
+                    event="SHUTDOWN_IGNORED_UNTIL_ZERO",
+                    summary=(
+                        "D200=8 ignored until D200=0 is observed after "
+                        "application start or serial reconnect"
+                    ),
+                )
+            return None
+        # ===== END 2026-09-16 : D200 잔존 종료명령 공통 방어 =====
 
         if cmd == self._last_cmd_seen:
             return None
@@ -1126,6 +1184,9 @@ class ModbusRtuSlaveController:
             "ever_connected": bool(self._ever_connected),
             "link_verified": bool(self._link_verified),
             "ever_link_verified": bool(self._ever_link_verified),
+            "shutdown_command_armed": bool(
+                self._shutdown_command_armed
+            ),
             "reconnect_attempt_count": int(self._reconnect_attempt_count),
             "last_connect_epoch": self._last_connect_epoch,
             "last_disconnect_epoch": self._last_disconnect_epoch,

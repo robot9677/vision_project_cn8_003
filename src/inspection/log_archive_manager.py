@@ -1,4 +1,4 @@
-# ===== START 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+# ===== START 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
 """Inspection evidence storage, daily summary/archive, and retention policy.
 
 This module is intentionally independent from inspection decision logic.
@@ -38,6 +38,19 @@ class InspectionLogArchiveManager:
 
     def _day_dir(self, day):
         return os.path.join(self.logs_root, day)
+
+    def archive_paths(self, day):
+        """Return the summary, ZIP and upload-marker paths for one day."""
+        day_dir = self._day_dir(day)
+        stem = f"{self.equipment_name}_{day}"
+        txt_path = os.path.join(day_dir, stem + ".txt")
+        zip_path = os.path.join(day_dir, stem + ".zip")
+        return txt_path, zip_path, zip_path + ".drive_uploaded"
+
+    def is_day_uploaded(self, day):
+        """A marker is written only after Drive confirms the ZIP upload."""
+        _txt_path, _zip_path, marker_path = self.archive_paths(day)
+        return os.path.isfile(marker_path)
 
     def _next_sequence(self, day_dir):
         # ===== START 2026-08-27 : 구형/신형 로그 파일명 호환 =====
@@ -84,7 +97,6 @@ class InspectionLogArchiveManager:
         seq = self._next_sequence(day_dir)
         failed = self._failed_ids(results)
         verdict = "OK" if bool(overall_ok) else "{}_NG".format("_".join("ROI" + x for x in failed) or "UNKNOWN")
-        stem = f"{seq:04d}_{clock}_{mmm:03d}_{verdict}"
         # ===== START 2026-08-26 : 로그 파일명 정렬 구조 개선 =====
         raw_name = f"{seq:04d}_{clock}_{mmm:03d}_raw_{verdict}.png"
         result_name = f"{seq:04d}_{clock}_{mmm:03d}_result_{verdict}.json"
@@ -109,8 +121,8 @@ class InspectionLogArchiveManager:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp, result_path)
-        # Apply only the 20 inspection-day-folder policy; no capacity-based deletion.
-        self.prune_day_dirs()
+        # Retention is intentionally not run in the inspection path. It is
+        # applied by the backup worker only after a Drive upload succeeds.
         return raw_path, result_path, day_dir
 
     def save_inspect_summary(self, overall_ok, results):
@@ -176,6 +188,9 @@ class InspectionLogArchiveManager:
         return events
 
     def finalize_day(self, day):
+        if not re.fullmatch(r"\d{8}", str(day or "")):
+            raise ValueError("invalid inspection day: " + str(day))
+
         day_dir = self._day_dir(day)
         if not os.path.isdir(day_dir):
             return "", ""
@@ -202,10 +217,7 @@ class InspectionLogArchiveManager:
                 raw_file = (data.get("evidence") or {}).get("raw_file", "")
                 ng_details.append((raw_file, failed))
 
-        txt_name = f"{self.equipment_name}_{day}.txt"
-        zip_name = f"{self.equipment_name}_{day}.zip"
-        txt_path = os.path.join(day_dir, txt_name)
-        zip_path = os.path.join(day_dir, zip_name)
+        txt_path, zip_path, marker_path = self.archive_paths(day)
         camera_events = self._camera_events(day_dir)
         starts = [e for e in camera_events if e.get("event") == "CAMERA_RECOVERY_START"]
         successes = [e for e in camera_events if e.get("event") == "CAMERA_RECOVERY_OK"]
@@ -231,25 +243,57 @@ class InspectionLogArchiveManager:
             f.write("\n".join(lines) + "\n")
         os.replace(txt_path + ".tmp", txt_path)
 
-        # Archive source evidence only; exclude the archive itself to avoid recursion.
+        # Archive source evidence only. The completion marker must never be
+        # included because it is created after the upload and would otherwise
+        # change a ZIP that has already been uploaded.
         with zipfile.ZipFile(zip_path + ".tmp", "w", compression=zipfile.ZIP_STORED, allowZip64=True) as z:
-            for root, _, files in os.walk(day_dir):
-                for name in files:
+            for root, dirs, files in os.walk(day_dir):
+                dirs.sort()
+                for name in sorted(files):
                     p = os.path.join(root, name)
-                    if p in (zip_path, zip_path + ".tmp"):
+                    if p in (zip_path, zip_path + ".tmp", marker_path):
+                        continue
+                    if name.endswith(".tmp"):
                         continue
                     z.write(p, os.path.relpath(p, day_dir))
         os.replace(zip_path + ".tmp", zip_path)
         return txt_path, zip_path
 
-    def finalize_latest_previous_day(self):
+    def latest_previous_day(self):
+        """Return the newest completed inspection day before today.
+
+        Folders with only diagnostic/inspect-summary files are ignored. This
+        prevents an incomplete folder from blocking the latest valid backup.
+        """
         today = time.strftime("%Y%m%d")
-        days = sorted(d for d in os.listdir(self.logs_root) if re.fullmatch(r"\d{8}", d) and d < today and os.path.isdir(self._day_dir(d)))
-        if not days: return "", ""
-        return self.finalize_day(days[-1])
+        days = []
+        for name in os.listdir(self.logs_root):
+            day_dir = self._day_dir(name)
+            if not (
+                re.fullmatch(r"\d{8}", name)
+                and name < today
+                and os.path.isdir(day_dir)
+            ):
+                continue
+            if self._result_files(day_dir):
+                days.append(name)
+        return max(days) if days else ""
+
+    def finalize_latest_previous_day(self):
+        day = self.latest_previous_day()
+        if not day:
+            return "", ""
+        return self.finalize_day(day)
 
     def prune_day_dirs(self):
+        """Keep the newest N day folders and delete only uploaded old days."""
         days = sorted(d for d in os.listdir(self.logs_root) if re.fullmatch(r"\d{8}", d) and os.path.isdir(self._day_dir(d)))
         for day in days[:-self.keep_days]:
-            shutil.rmtree(self._day_dir(day))
-# ===== END 2026-08-26 : 검사결과 저장/로그백업 구조 변경 =====
+            if self.is_day_uploaded(day):
+                shutil.rmtree(self._day_dir(day))
+            else:
+                print(
+                    "[INSPECT ARCHIVE] retention skipped; Drive marker missing:",
+                    day,
+                )
+# ===== END 2026-09-16 : 검사결과 저장/로그백업 공통 안정화 =====
