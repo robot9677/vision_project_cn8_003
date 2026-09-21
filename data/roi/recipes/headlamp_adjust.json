@@ -124,7 +124,7 @@
         {
           "tool": "measure.mean_raw_range",
           "params": {
-            "min_mean_raw": 135.0,
+            "min_mean_raw": 130.0,
             "max_mean_raw": 190.0
           }
         }
