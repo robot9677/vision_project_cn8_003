@@ -99,7 +99,7 @@
           "params": {
             "ksize": 3,
             "thresh_min": 50.0,
-            "thresh_max": 98.0
+            "thresh_max": 100
           }
         },
         {
